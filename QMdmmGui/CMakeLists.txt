@@ -20,6 +20,7 @@ set(QMDMMGUI_QML_FILES
     qml/ConnectScene.qml
     qml/GameScene.qml
     qml/PlayerCard.qml
+    qml/StatusBar.qml
 )
 set(QMDMMGUI_RESOURCES
     assets/1.jpg

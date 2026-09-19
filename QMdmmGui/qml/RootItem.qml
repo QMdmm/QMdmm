@@ -43,6 +43,19 @@ Image {
         visible: game.gameState === "lobby" || game.gameState === "playing" || game.gameState === "gameover"
     }
 
+    // The client's own status and its error reports. It lives here rather than in a
+    // scene because either can happen while any of them is showing, and it has to stay
+    // below the popups, which are modal.
+    StatusBar {
+        id: statusBar
+
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 12
+        anchors.right: parent.right
+        anchors.rightMargin: 40
+        width: parent.width / 2 - 50
+    }
+
     // ---- simple popups ----------------------------------------------------
 
     Item {
