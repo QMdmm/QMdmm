@@ -16,6 +16,28 @@ Read these before touching code:
 
 ## Coding standards
 
+### Private implementations (`<Class>P`)
+
+- A public class's implementation may live in a private class whose name is the
+  public one with a `P` suffix: `RoomP` for `Room`, `SocketP` for `Socket`.
+  Declare it in `<class>_p.h`, inside the module's `p` namespace (`QMdmmCore::p`,
+  `QMdmmNetworking::p`), tagged with that module's private export macro
+  (`QMDMMCORE_PRIVATE_EXPORT` / `QMDMMNETWORKING_PRIVATE_EXPORT`), and put the
+  implementation in `<class>_p.cpp`. A P type with no out-of-line members -- a
+  plain data holder such as `RoomP` or `AgentP` -- needs no `<class>_p.cpp`.
+- The public header only forward-declares it (`class ClientP;` / `struct RoomP;`)
+  and keeps the instance private -- behind a `d` member, or behind a file-scope
+  static in its own translation unit where there is no per-instance state.
+  Wrap the forward declaration and the `friend` declaration, if any, in
+  `#ifndef DOXYGEN` so neither reaches the published documentation.
+- A derived implementation is named `<base P>_<concrete type>`:
+  `SocketP_QTcpSocket` / `SocketP_QLocalSocket` / `SocketP_QWebSocket`,
+  `SettingsWrapperP_QSettings` / `SettingsWrapperP_QVariantMap`.
+- List the private headers and sources in the module's
+  `QMDMM<MODULE>_PRIVATE_HEADERS` / `QMDMM<MODULE>_PRIVATE_SOURCES`. The private
+  headers are installed (under `include/<Module>/private/<version>`) only when
+  `QMDMM_EXPORT_PRIVATE` is on.
+
 ### Memory management
 
 - Do not use `QScopedPointer` -- it is deprecated in Qt. Use `std::unique_ptr`
