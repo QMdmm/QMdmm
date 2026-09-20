@@ -338,15 +338,27 @@ QList<int> Bot::desiredActionOrders(const QList<int> &remainedOrders, int select
 
 bool Bot::blowWouldFinish(const QMdmmCore::Player *attacker, const QMdmmCore::Player *victim) const
 {
-    if (!attacker->canSlash(victim))
-        return false;
-
-    // A slash takes the victim down by the attacker's knife damage. Whether what
-    // is left is fatal is a rule of the match (see
+    // Both blows that carry damage are modelled. Whether one of them could be
+    // thrown at all is asked of the player -- Player::canSlash() for the knife,
+    // Player::canKick() for the horse -- and each predicate already carries its
+    // own half of the rule: the two standing in the same place, both of them
+    // alive, and, for the kick, outside the Village. Restating those here would
+    // only give them a second place to drift.
+    //
+    // Leaving the kick out reads a second, separately configured weapon as
+    // harmless: the horse deals its own damage, and the safety condition this
+    // feeds -- "waiting is only safe while no blow on the field can be fatal" --
+    // is then answered off the weaker half of the field only.
+    //
+    // Whether what a blow leaves behind is fatal is a rule of the match (see
     // LogicConfiguration::zeroHpAsDead), so it is asked of the victim rather than
     // assumed -- the same predicate canSlashSafely() uses for this bot's own life.
-    const int hpLeft = victim->hp() - attacker->knifeDamage();
-    return victim->deadAtHp(hpLeft);
+    const auto wouldFinish = [victim](int damage) { return victim->deadAtHp(victim->hp() - damage); };
+
+    if (attacker->canSlash(victim) && wouldFinish(attacker->knifeDamage()))
+        return true;
+
+    return attacker->canKick(victim) && wouldFinish(attacker->horseDamage());
 }
 
 bool Bot::aPeerCouldFinishSelf() const

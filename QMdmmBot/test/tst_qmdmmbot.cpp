@@ -269,16 +269,33 @@ ActionOrderReply askForActionOrder(QMdmmNetworking::Client &client, const QList<
 }
 
 // Lays one player out the way the action-order cases need it: standing in a place
-// of its own, at full HP, holding a knife of a stated damage. Places are told
-// apart by comparing them, so any three distinct values stand for two cities and
-// the Village.
-void placeArmedPlayer(QMdmmCore::Player *player, int place, int hp, int knifeDamage)
+// of its own, at full HP, and with no weapon in hand. Places are told apart by
+// comparing them, so any three distinct values stand for two cities and the
+// Village.
+void placePlayer(QMdmmCore::Player *player, int place, int hp)
 {
     player->setPlace(place);
     player->setMaxHp(hp);
     player->setHp(hp);
+}
+
+// The same, holding a knife of a stated damage.
+void placeArmedPlayer(QMdmmCore::Player *player, int place, int hp, int knifeDamage)
+{
+    placePlayer(player, place, hp);
     player->setKnifeDamage(knifeDamage);
     player->setHasKnife(true);
+}
+
+// The same, in the saddle instead: a horse of a stated damage and no knife. The
+// two are laid out apart because the blows are counted apart -- a slash and a kick
+// are two different ways to finish somebody, and a case that means to exercise one
+// of them must not leave the other lying around.
+void placeMountedPlayer(QMdmmCore::Player *player, int place, int hp, int horseDamage)
+{
+    placePlayer(player, place, hp);
+    player->setHorseDamage(horseDamage);
+    player->setHasHorse(true);
 }
 
 // What one bot's requests came to over a whole match: how many were put to it,
@@ -468,6 +485,15 @@ private slots:
     void actionOrder_grabsTheEarliestOrderWhenItsOwnLifeIsOnTheLine();
     void actionOrder_grabsTheEarliestOrderWhenAKillIsOnTheTable();
     void actionOrder_grabsTheEarliestOrderWhenAPeerCouldBeFinished();
+
+    // The same three rounds once more, with the horse as the only weapon on the
+    // field. A kick is the second way a blow lands -- a different weapon, armed on
+    // its own -- so the field has to be read off both of them; read off the knife
+    // alone, a round whose only lethal blow is a kick looks harmless and the bot
+    // waits in it.
+    void actionOrder_grabsTheEarliestOrderWhenAPeersKickWouldFinishSelf();
+    void actionOrder_grabsTheEarliestOrderWhenItsOwnKickWouldFinishAPeer();
+    void actionOrder_grabsTheEarliestOrderWhenAPeersKickCouldFinishSomebody();
 
     // Where the death threshold lies is a rule of the match, so the same layout
     // answers differently under the two rules: one blow that leaves a peer on
@@ -1578,6 +1604,106 @@ void tst_QMdmmBot::actionOrder_grabsTheEarliestOrderWhenAPeerCouldBeFinished()
         placeArmedPlayer(self, 1, 4, 1);
         placeArmedPlayer(bbb, 2, 4, 4);
         placeArmedPlayer(ccc, 2, 4, 1);
+
+        const ActionOrderReply early = askForActionOrder(client, {1, 2}, 1);
+        QCOMPARE(early.count, 1);
+        QCOMPARE(early.order, (QList<int> {1}));
+        QVERIFY(!early.order.contains(0));
+    }
+}
+
+void tst_QMdmmBot::actionOrder_grabsTheEarliestOrderWhenAPeersKickWouldFinishSelf()
+{
+    // The horse is the other way this bot's life can be on the line: a peer
+    // standing where it stands, in the saddle, whose kick would finish it off.
+    // Neither of them holds a knife, so the danger here is the horse and nothing
+    // but the horse -- the round a knife-only reading of the field would have
+    // called harmless, and answered with the latest order.
+    const QStringList styles = {u"knifePreferred"_s, u"horsePreferred"_s};
+
+    for (const QString &style : styles) {
+        QMdmmNetworking::Client client {QMdmmNetworking::ClientConfiguration::defaults()};
+        Bot *bot = Bot::createBot(style, &client);
+        QVERIFY(bot != nullptr);
+
+        QMdmmCore::Room *room = client.room();
+        QMdmmCore::Player *self = room->addPlayer(client.objectName());
+        QMdmmCore::Player *bbb = room->addPlayer(u"bbb"_s);
+        QMdmmCore::Player *ccc = room->addPlayer(u"ccc"_s);
+        QVERIFY(self != nullptr);
+        QVERIFY(bbb != nullptr);
+        QVERIFY(ccc != nullptr);
+
+        // The horse standing here kicks for everything this bot has, and "ccc" is
+        // out of everyone's reach.
+        placePlayer(self, 1, 4);
+        placeMountedPlayer(bbb, 1, 4, 4);
+        placePlayer(ccc, 2, 4);
+
+        const ActionOrderReply early = askForActionOrder(client, {1, 2}, 1);
+        QCOMPARE(early.count, 1);
+        QCOMPARE(early.order, (QList<int> {1}));
+        QVERIFY(!early.order.contains(0));
+    }
+}
+
+void tst_QMdmmBot::actionOrder_grabsTheEarliestOrderWhenItsOwnKickWouldFinishAPeer()
+{
+    // And the other way round: this bot is the one in the saddle, and the peer
+    // standing here would go down to its kick. What that peer holds is too weak to
+    // finish this bot off, so it is the kill -- the only way to an upgrade point --
+    // and not the danger that turns the answer around.
+    const QStringList styles = {u"knifePreferred"_s, u"horsePreferred"_s};
+
+    for (const QString &style : styles) {
+        QMdmmNetworking::Client client {QMdmmNetworking::ClientConfiguration::defaults()};
+        Bot *bot = Bot::createBot(style, &client);
+        QVERIFY(bot != nullptr);
+
+        QMdmmCore::Room *room = client.room();
+        QMdmmCore::Player *self = room->addPlayer(client.objectName());
+        QMdmmCore::Player *bbb = room->addPlayer(u"bbb"_s);
+        QMdmmCore::Player *ccc = room->addPlayer(u"ccc"_s);
+        QVERIFY(self != nullptr);
+        QVERIFY(bbb != nullptr);
+        QVERIFY(ccc != nullptr);
+
+        placeMountedPlayer(self, 1, 4, 4);
+        placeArmedPlayer(bbb, 1, 4, 1);
+        placeArmedPlayer(ccc, 2, 4, 1);
+
+        const ActionOrderReply early = askForActionOrder(client, {1, 2}, 1);
+        QCOMPARE(early.count, 1);
+        QCOMPARE(early.order, (QList<int> {1}));
+        QVERIFY(!early.order.contains(0));
+    }
+}
+
+void tst_QMdmmBot::actionOrder_grabsTheEarliestOrderWhenAPeersKickCouldFinishSomebody()
+{
+    // The guard side, in the shape the knife case above already has: this bot is
+    // neither in danger nor carrying a kill of its own, but a kick between two
+    // peers would finish one of them, and a death can end the round before a late
+    // order runs. The kick is the only fatal blow on the field here, and it is
+    // enough on its own to give up on waiting.
+    const QStringList styles = {u"knifePreferred"_s, u"horsePreferred"_s};
+
+    for (const QString &style : styles) {
+        QMdmmNetworking::Client client {QMdmmNetworking::ClientConfiguration::defaults()};
+        Bot *bot = Bot::createBot(style, &client);
+        QVERIFY(bot != nullptr);
+
+        QMdmmCore::Room *room = client.room();
+        QMdmmCore::Player *self = room->addPlayer(client.objectName());
+        QMdmmCore::Player *bbb = room->addPlayer(u"bbb"_s);
+        QMdmmCore::Player *ccc = room->addPlayer(u"ccc"_s);
+        QVERIFY(self != nullptr);
+        QVERIFY(bbb != nullptr);
+        QVERIFY(ccc != nullptr);
+
+        placePlayer(self, 1, 4);
+        placeMountedPlayer(bbb, 2, 4, 4);
+        placePlayer(ccc, 2, 4);
 
         const ActionOrderReply early = askForActionOrder(client, {1, 2}, 1);
         QCOMPARE(early.count, 1);

@@ -171,13 +171,16 @@ protected slots: // NOLINT(readability-redundant-access-specifiers)
     [[nodiscard]] QMdmmCore::Player *attackTarget();
 
 private:
-    // Whether one blow from `attacker` would finish `victim` off this round. The
-    // blow has to be one that could be thrown at all -- the two standing in the
-    // same place, both alive, a knife in the attacker's hand (see
-    // Player::canSlash()) -- and what the victim is left with has to be at or
-    // below its death threshold. Where that threshold lies is a rule of the
-    // match, so it is asked of the player rather than assumed: the same
-    // predicate canSlashSafely() uses for this bot's own life.
+    // Whether one blow from `attacker` would finish `victim` off this round.
+    // Either blow that carries damage counts: a slash, where the attacker holds a
+    // knife (Player::canSlash()), and a kick, where it is in the saddle
+    // (Player::canKick()). Both are asked of the player, which is what keeps the
+    // rules of reach in one place -- each predicate already carries its own half:
+    // the two standing in the same place, both alive, and, for the kick, outside
+    // the Village. What the victim is left with has to be at or below its death
+    // threshold. Where that threshold lies is a rule of the match, so it is asked
+    // of the player rather than assumed: the same predicate canSlashSafely() uses
+    // for this bot's own life.
     [[nodiscard]] bool blowWouldFinish(const QMdmmCore::Player *attacker, const QMdmmCore::Player *victim) const;
 
     // Whether this bot's life is on the line this round: a peer standing where it
