@@ -281,6 +281,11 @@ namespace v0 {
  * flag, leaves the remaining flags alone, and reports the result back through the ordinary
  * @c NotifyAgentStateChanged broadcast. It is the runtime counterpart of the managed flag a sign-in
  * carries, for a client UI that toggles being managed while the connection is up.
+ *
+ * A payload that is not an object, or whose @c managed is not a bool, is a protocol error: the
+ * server raises @c Socket::ProtocolError and drops the connection rather than ignoring the notify.
+ * The same happens on a socket that has not signed in -- there is no player whose flag could be
+ * applied.
  */
 
 /**
