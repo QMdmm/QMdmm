@@ -57,8 +57,10 @@ void configErrorArgs(QString &message, T &&arg, Rest &&...rest)
 {
     if constexpr (requires { message.arg(std::forward<T>(arg)); })
         message = message.arg(std::forward<T>(arg));
-    else
+    else if constexpr (requires { QAnyStringView(std::forward<T>(arg)); })
         message = message.arg(QAnyStringView(std::forward<T>(arg)).toString());
+    else
+        static_assert(QMdmmCore::Utilities::dependentFalse<T>, "configError: You are passing arguments which can't be passed to QString::arg.");
     configErrorArgs(message, std::forward<Rest>(rest)...);
 }
 

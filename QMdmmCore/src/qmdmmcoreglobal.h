@@ -148,6 +148,14 @@ QMDMM_EXPORT_NAME(QMdmmGlobal)
 namespace Utilities {
 QMDMM_EXPORT_NAME(QMdmmUtilities)
 
+template<typename...>
+struct DependentFalse : std::false_type
+{
+};
+
+template<typename... Args>
+inline constexpr bool dependentFalse = DependentFalse<Args...>::value;
+
 template<typename T>
 [[nodiscard]]
 auto list2Set(const T &l)
