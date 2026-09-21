@@ -24,6 +24,13 @@ project(QMdmm
     DESCRIPTION "A game which is played in primary / high school"
 )
 
+get_filename_component(QMDMM_SOURCE_DIR_ABSOLUTE "${CMAKE_SOURCE_DIR}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+get_filename_component(QMDMM_BINARY_DIR_ABSOLUTE "${CMAKE_BINARY_DIR}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+
+if (QMDMM_SOURCE_DIR_ABSOLUTE STREQUAL QMDMM_BINARY_DIR_ABSOLUTE)
+    message(FATAL_ERROR "Please!!!!! Do not in-place build QMdmm. Instead make a separate build directory and build from there. See CMake manual for details.")
+endif()
+
 include(.FsEnv.cmake OPTIONAL)
 
 option(BUILD_SHARED_LIBS "Build shared libraries" true)
