@@ -140,3 +140,17 @@ Read these before touching code:
   if (x)              \
       v << u"" x ""_s;
   ```
+
+### Qt names are always versioned
+
+- Use the versioned spelling for every Qt function and target --
+  `qt6_add_executable`, `Qt6::Core` -- never the versionless one
+  (`qt_add_executable`, `Qt::Core`).
+- The root `CMakeLists.txt` sets `QT_NO_CREATE_VERSIONLESS_FUNCTIONS` and
+  `QT_NO_CREATE_VERSIONLESS_TARGETS`, so a versionless name is not something
+  that works but is discouraged: the alias is never created, CMake does not
+  know the command, and configure fails outright.
+- The reason is not that this tree once mixed Qt 5.15 and 6.5. It is that the
+  project has to let several Qt versions coexist in a single build pass, which
+  versionless names make impossible -- a versionless alias belongs to whichever
+  Qt version's `find_package` ran, so only one can win per pass.
