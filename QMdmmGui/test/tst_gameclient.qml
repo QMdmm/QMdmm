@@ -58,10 +58,10 @@ TestCase {
         verify(announced.count >= game.players.length, "every arriving player has to be announced");
 
         // A state that changes later (the managed toggle, a drop, a reconnect) rides on the same
-        // map through the client's state-change notification, but nothing in the GUI can move a
-        // state yet -- the runtime entry is its own task -- so no case drives one here. The wire
-        // half of that path is guarded in tst_qmdmmnetworking (the managed-toggle case), and what
-        // this case leaves unguarded is measured: taking the connect out leaves the suite green.
+        // map through the client's state-change notification, but this case only watches the
+        // states players arrive with -- a drop and a reconnect are the wire's to stage. The
+        // notification half has its own case below (the managed flag), so taking that connect out
+        // turns the suite red.
     }
 
     function test_botObjectNameDiffersFromScreenName() {
@@ -170,6 +170,31 @@ TestCase {
         tryVerify(function () {
             return rpsResult.count > before;
         }, 15000);
+    }
+
+    function test_theManagedFlagIsDeclaredAndComesBack() {
+        // The one piece of an agent's state the client sets rather than only reads. The
+        // declaration is not taken as the final word: the server applies the flag and broadcasts
+        // the new state back, and the map the player cards read has to follow the broadcast --
+        // which is why the wait is for the value and not for a local change. The reply is what
+        // makes this the round trip rather than a set and forget.
+        game.playerCount = 2;
+        game.startLocalGame("Tester");
+        tryVerify(function () {
+            return game.agentStates[game.localName] === 0x10;
+        }, 15000);
+
+        game.setManaged(true);
+        tryVerify(function () {
+            return game.agentStates[game.localName] === 0x18;
+        }, 15000);
+
+        game.setManaged(false);
+        tryVerify(function () {
+            return game.agentStates[game.localName] === 0x10;
+        }, 15000);
+
+        game.disconnectAll();
     }
 
     name: "GameClient"

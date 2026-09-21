@@ -12,7 +12,13 @@ Item {
     // reaches the view, so spelling it out is the card's job -- the managed flag has nowhere
     // else on screen to show up.
     property int agentState: 0
+    // Only your own card carries the switch -- nobody hands another player over -- and only while
+    // that player is online, since the declaration a click makes needs a connection to travel on.
+    readonly property bool canManage: you && (agentState & stateOnline) !== 0
     property string displayName
+    // The managed flag is the one bit of the state that is set from this side rather than only
+    // read, and the switch beside the state line is where it is set. See game.setManaged.
+    readonly property bool managed: (agentState & stateManaged) !== 0
     property var player
     readonly property int stateBot: 0x01
     readonly property int stateManaged: 0x08
@@ -107,13 +113,50 @@ Item {
         }
     }
 
-    Text {
+    Row {
+        id: stateRow
+
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: itemsRow.bottom
         anchors.topMargin: 8
-        color: "#9fd0ff"
-        font.pixelSize: 20
-        text: card.stateText(card.agentState)
+        spacing: 10
+
+        Text {
+            color: "#9fd0ff"
+            font.pixelSize: 20
+            height: 28
+            text: card.stateText(card.agentState)
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        // Handing the player over: the fill shows the flag, the click asks for the opposite of
+        // what is on show, and the card redraws from the state the server broadcasts back -- a
+        // local flip would not survive the next broadcast.
+        Rectangle {
+            border.color: card.managed ? "#7c4" : "#888"
+            border.width: 1
+            color: card.managed ? "#2f5f2f" : "#444"
+            height: 28
+            objectName: "managedToggle"
+            radius: 6
+            visible: card.canManage
+            width: toggleLabel.width + 16
+
+            Text {
+                id: toggleLabel
+
+                anchors.centerIn: parent
+                color: "white"
+                font.pixelSize: 16
+                text: qsTr("Manage")
+            }
+
+            MouseArea {
+                anchors.fill: parent
+
+                onClicked: game.setManaged(!card.managed)
+            }
+        }
     }
 
     Text {

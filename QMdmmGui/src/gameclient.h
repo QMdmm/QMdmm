@@ -66,6 +66,10 @@ public:
     Q_INVOKABLE void replyUpgrade(const QVariantList &items);
     Q_INVOKABLE void speak(const QString &text);
 
+    // The managed flag (Data::StateMaskTrust) of the human's own player -- the one piece of an
+    // agent's state that is set from this side rather than only read.
+    Q_INVOKABLE void setManaged(bool managed);
+
     // Helpers for the action / upgrade UI
     [[nodiscard]] Q_INVOKABLE QVariantList getActionOptions() const;
     [[nodiscard]] Q_INVOKABLE QVariantList getUpgradeOptions() const;

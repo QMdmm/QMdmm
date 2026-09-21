@@ -423,6 +423,15 @@ void QMdmmGameClient::speak(const QString &text)
         m_human->agent()->speak(text);
 }
 
+void QMdmmGameClient::setManaged(bool managed)
+{
+    // Declared, not flipped: the server owns the agent state, applies the flag and broadcasts the
+    // result back, and that broadcast is what the player cards redraw from (see
+    // Agent::setManaged). Nothing to declare while there is no client.
+    if (m_human != nullptr)
+        m_human->agent()->setManaged(managed);
+}
+
 QVariantList QMdmmGameClient::actionListFor(const QMdmmCore::Player *from) const
 {
     QVariantList ret;
