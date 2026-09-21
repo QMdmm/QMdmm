@@ -186,7 +186,7 @@ set(CPACK_SOURCE_IGNORE_FILES
     [[CMakeLists\\.txt\\.user]]
 )
 set(CPACK_RPM_PACKAGE_LICENSE "AGPLv3")
-set(CPACK_PACKAGE_CONTACT "Frank Su <fsu0413@vip.qq.com>")
+set(CPACK_PACKAGE_CONTACT "Neve M. Nguyen <nemn9852@agent.qq.com>")
 
 if (CMAKE_SYSTEM_NAME MATCHES "[Ll]inux")
     list(APPEND CPACK_GENERATOR RPM DEB)
