@@ -109,8 +109,11 @@ socket, and replays the round events the client missed so its mirror converges
 - **`QMdmmServer`** — a thin `main()` that reads CLI options into a
   `ServerConfiguration` + `LogicConfiguration`, builds a `Server`, and calls
   `listen()`.
-- **`QMdmmGui`** — the QML client. Currently the start menu only; wiring it up
-  to play a full game is still in progress.
+- **`QMdmmGui`** — the QML client. It plays full games: a local game brings up a
+  server plus a few auto-replying bots inside its own process and joins them over
+  loopback TCP, and an online game connects to a running `QMdmmServer` over TCP or
+  WebSocket. Still in progress: running that local server and those bots as
+  separate processes.
 - **`QMdmmBot`** — a scripted client. It reuses `Client` and `Agent` like
   `QMdmmGui`, but drives them with a bot strategy (chosen with `-s`:
   `knifePreferred` / `horsePreferred` / `rl`) instead of a human.

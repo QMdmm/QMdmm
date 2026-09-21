@@ -53,12 +53,14 @@ config-gated (`enableLetMove`).
 | `QMdmmCore` | Game rules engine (players / rooms / round state machine / config) | Usable, tested |
 | `QMdmmNetworking` | Network layer (server / client / signaling) | Main flow + reconnect work; spectate / lobby missing |
 | `QMdmmServer` | Standalone server program | Runs; full CLI configuration |
-| `QMdmmGui` | Graphical client (QML) | Start menu only; cannot play a full game yet |
+| `QMdmmGui` | Graphical client (QML) | Playable: a local game (in-process server + bots) or an online one |
 | `QMdmmBot` | Scripted client that plays automatically via a bot strategy | Runs; `knifePreferred` / `horsePreferred` implemented, `rl` not yet |
 
-In other words: the headless smoke test plays a full game end-to-end (including
-a mid-game reconnect), but the GUI cannot play one yet. The core library is
-solid; what is missing is wiring the GUI to the network layer.
+In other words: the GUI plays full games now. A local game brings up a server
+and a few auto-replying bots inside its own process and joins them over loopback
+TCP; an online game connects to a running `QMdmmServer` over TCP or WebSocket.
+Still in progress: running that local server and those bots as separate
+`QMdmmServer` / `QMdmmBot` processes.
 
 ## Documentation
 
