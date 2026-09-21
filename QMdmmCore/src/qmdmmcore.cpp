@@ -297,6 +297,22 @@ QVersionNumber Global::version()
  */
 
 /**
+ * @class QMdmmCore::Utilities::DependentFalse
+ * @brief a workaround helper class for CWG2518
+ *
+ * Before CWG2518, `static_assert(false, "")` is ill-formed even if in a template which will never instantiate.
+ *
+ * Workaround is to use `static_assert(QMdmmCore::Utilities::dependentFalse<T>, "")` instead.
+ */
+
+/**
+ * @var QMdmmCore::Utilities::dependentFalse
+ * @brief a workaround helper class for CWG2518
+ *
+ * @sa @c QMdmmCore::Utilities::DependentFalse
+ */
+
+/**
  * @fn QMdmmCore::Utilities::list2Set(const T &l)
  * @brief Convenience function of converting a QList to QSet
  * @tparam T The type of the list
