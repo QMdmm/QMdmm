@@ -27,8 +27,28 @@ project(QMdmm
 get_filename_component(QMDMM_SOURCE_DIR_ABSOLUTE "${CMAKE_SOURCE_DIR}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 get_filename_component(QMDMM_BINARY_DIR_ABSOLUTE "${CMAKE_BINARY_DIR}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
-if (QMDMM_SOURCE_DIR_ABSOLUTE STREQUAL QMDMM_BINARY_DIR_ABSOLUTE)
-    message(FATAL_ERROR "Please!!!!! Do not in-place build QMdmm. Instead make a separate build directory and build from there. See CMake manual for details.")
+file(WRITE "${CMAKE_BINARY_DIR}/casecheck.txt" "casecheck")
+file(WRITE "${CMAKE_BINARY_DIR}/CaseCheck.txt" "CaseCheck")
+file(READ "${CMAKE_BINARY_DIR}/casecheck.txt" QMDMM_FILESYSTEM_CASE_CHECK_RESULT)
+
+if (QMDMM_FILESYSTEM_CASE_CHECK_RESULT STREQUAL "CaseCheck")
+    string(TOLOWER "${QMDMM_SOURCE_DIR_ABSOLUTE}" QMDMM_SOURCE_DIR_ABSOLUTE_CASEFOLD)
+    string(TOLOWER "${QMDMM_BINARY_DIR_ABSOLUTE}" QMDMM_BINARY_DIR_ABSOLUTE_CASEFOLD)
+else()
+    set(QMDMM_SOURCE_DIR_ABSOLUTE_CASEFOLD "${QMDMM_SOURCE_DIR_ABSOLUTE}")
+    set(QMDMM_BINARY_DIR_ABSOLUTE_CASEFOLD "${QMDMM_BINARY_DIR_ABSOLUTE}")
+endif()
+
+if (QMDMM_SOURCE_DIR_ABSOLUTE_CASEFOLD STREQUAL QMDMM_BINARY_DIR_ABSOLUTE_CASEFOLD)
+    message(FATAL_ERROR [[Please!!!!! Do not in-place build QMdmm. Instead make a separate build directory and build from there. See CMake manual for details.
+        Delete CMakeCache.txt (Not CMakeLists.txt) file and CMakeFiles directory before you continue.]])
+endif()
+
+string(LENGTH "${QMDMM_SOURCE_DIR_ABSOLUTE_CASEFOLD}" QMDMM_SOURCE_DIR_ABSOLUTE_LENGTH)
+string(SUBSTRING "${QMDMM_BINARY_DIR_ABSOLUTE_CASEFOLD}" 0 "${QMDMM_SOURCE_DIR_ABSOLUTE_LENGTH}" QMDMM_BINARY_DIR_ABSOLUTE_CASEFOLD_PREFIX)
+
+if (QMDMM_BINARY_DIR_ABSOLUTE_CASEFOLD_PREFIX STREQUAL QMDMM_SOURCE_DIR_ABSOLUTE_CASEFOLD)
+    message(AUTHOR_WARNING "It is a bad idea to place the build directory inside the source directory since grep-ing for the source code can accidently match build results. Consider move it out.")
 endif()
 
 include(.FsEnv.cmake OPTIONAL)
