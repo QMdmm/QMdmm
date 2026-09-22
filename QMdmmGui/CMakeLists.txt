@@ -47,15 +47,24 @@ if (Qt6_FOUND)
         # CMake's own install-time rpath fixup is skipped for a bundle whose
         # executable is reached through a symlink.
         list(APPEND QMDMMGUI_TARGET_PROPERTIES
+            # Without this the bundle is identified as com.yourcompany.QMdmm6,
+            # which is the placeholder CMake falls back to.  The 6 is the Qt
+            # major version this branch builds against, as in the target name.
+            MACOSX_BUNDLE_GUI_IDENTIFIER "me.fsu0413.QMdmm6"
             MACOSX_BUNDLE_BUNDLE_VERSION "${QMdmm_VERSION}"
             MACOSX_BUNDLE_SHORT_VERSION_STRING "${QMdmm_VERSION}"
         )
         # Where the bundle looks for the Qt frameworks and for this project's
-        # own libraries.  The deploy step moves both into the bundle, and it
-        # needs the installed libdir while it does so.  Set on its own because
-        # the value contains the list separator.
+        # own libraries: the frameworks directory inside the bundle, and the
+        # libdir of the prefix the bundle is installed into.  That libdir is
+        # named relative to the executable rather than absolutely, because the
+        # deploy step also runs while the tree is staged for a disk image,
+        # under a prefix that is not the configure-time one; an absolute path
+        # baked in at configure time sends the deploy looking for the libraries
+        # in the wrong prefix, and the bundle is then left without them.  Set
+        # on its own because the value contains the list separator.
         set_target_properties(QMdmm6 PROPERTIES
-            INSTALL_RPATH "@executable_path/../Frameworks;${CMAKE_INSTALL_FULL_LIBDIR}"
+            INSTALL_RPATH "@executable_path/../Frameworks;@executable_path/../../../${CMAKE_INSTALL_LIBDIR}"
         )
     else()
         list(APPEND QMDMMGUI_TARGET_PROPERTIES
@@ -107,6 +116,14 @@ if (Qt6_FOUND)
             OUTPUT_SCRIPT QMdmm6_deploy_script
         )
         install(SCRIPT "${QMdmm6_deploy_script}" COMPONENT "6")
+
+        # The note that sits next to the app in the disk image and says what to
+        # do with it.  Installed at the top of the prefix, which is where the
+        # image takes its contents from.
+        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/macos/readme.md"
+            DESTINATION "."
+            COMPONENT "6"
+        )
     endif()
 
     if (BUILD_TESTING)

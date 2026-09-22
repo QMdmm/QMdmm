@@ -111,6 +111,17 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build/${CMAKE_INSTALL_BI
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build/${CMAKE_INSTALL_LIBDIR}")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build/${CMAKE_INSTALL_LIBDIR}")
 
+# Where the runtime programs are installed.  On macOS the GUI is a bundle, it
+# has to sit at the top of the prefix (Qt's deploy commands address it as
+# <name>.app, relative to the prefix), and the command line programs it starts
+# as child processes are installed inside it - so that the installed bundle is
+# what carries them.  Everywhere else they stay siblings in bin/.
+if (APPLE)
+    set(QMDMM6_INSTALL_RUNTIME_DIR "QMdmm6.app/Contents/MacOS")
+else()
+    set(QMDMM6_INSTALL_RUNTIME_DIR "${CMAKE_INSTALL_BINDIR}")
+endif()
+
 if (WIN32)
     set(CMAKE_SHARED_MODULE_PREFIX "")
     set(CMAKE_SHARED_LIBRARY_PREFIX "")
@@ -126,8 +137,11 @@ add_subdirectory(3rdparty)
 add_subdirectory(QMdmmCore)
 add_subdirectory(QMdmmNetworking)
 add_subdirectory(QMdmmServer)
-add_subdirectory(QMdmmGui)
+# QMdmmGui comes after every directory whose programs are installed inside its
+# bundle: the deploy step signs the bundle once it is in place, and a file
+# added afterwards leaves the signature sealing a bundle it does not describe.
 add_subdirectory(QMdmmBot)
+add_subdirectory(QMdmmGui)
 add_subdirectory(smoke) # Networked local-game playability regression test
 add_subdirectory(doc) # MAKE SURE this is the last one in the add_subdirectory list
 
@@ -263,6 +277,15 @@ if (CMAKE_SYSTEM_NAME MATCHES "[Ll]inux")
     # dev-common / doc intentionally carry no Qt dependencies: dev-common is
     # version-agnostic headers only. CPack emits one harmless
     # "CPACK_DEBIAN_PACKAGE_DEPENDS not set" note for dev-common — expected.
+endif()
+
+if (APPLE)
+    # A disk image is the macOS form of the runtime artefact.  What the image
+    # carries, and the adjustment its staging tree needs, are set per generator
+    # in cmake/CPackProjectConfig.cmake, so that the tar archives keep
+    # installing every component.
+    list(APPEND CPACK_GENERATOR DragNDrop)
+    set(CPACK_PROJECT_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CPackProjectConfig.cmake")
 endif()
 
 include(CPack)

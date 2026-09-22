@@ -29,9 +29,19 @@ if (Qt6_FOUND)
                QMdmm6::Networking
     )
 
+    if (APPLE)
+        # On macOS this program is installed inside the GUI's bundle, as a
+        # sibling of the GUI itself, and reaches this project's libraries one
+        # level up, in Contents/Frameworks, where the GUI's deploy step puts
+        # them.
+        set_target_properties(QMdmmServer6 PROPERTIES
+            INSTALL_RPATH "@executable_path/../Frameworks"
+        )
+    endif()
+
     install(TARGETS QMdmmServer6
         COMPONENT "6"
-        DESTINATION "${CMAKE_INSTALL_BINDIR}"
+        DESTINATION "${QMDMM6_INSTALL_RUNTIME_DIR}"
         RUNTIME
         LIBRARY
     )
