@@ -34,12 +34,35 @@ if (Qt6_FOUND)
 
     qt6_add_executable(QMdmm6 WIN32 MACOSX_BUNDLE ${QMDMMGUI_SOURCES})
 
-    set_target_properties(QMdmm6 PROPERTIES
+    set(QMDMMGUI_TARGET_PROPERTIES
         AUTOMOC ON
         AUTOUIC ON
         AUTORCC ON
-        VERSION "${QMdmm_VERSION}"
     )
+    if (APPLE)
+        # The bundle is the artefact on macOS and it carries its version in
+        # Info.plist.  Versioning the executable inside it as well (QMdmm6-0.0.1,
+        # with QMdmm6 a symlink to it) would make Qt's deploy commands look for a
+        # bundle named after that executable rather than after the bundle, and
+        # CMake's own install-time rpath fixup is skipped for a bundle whose
+        # executable is reached through a symlink.
+        list(APPEND QMDMMGUI_TARGET_PROPERTIES
+            MACOSX_BUNDLE_BUNDLE_VERSION "${QMdmm_VERSION}"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING "${QMdmm_VERSION}"
+        )
+        # Where the bundle looks for the Qt frameworks and for this project's
+        # own libraries.  The deploy step moves both into the bundle, and it
+        # needs the installed libdir while it does so.  Set on its own because
+        # the value contains the list separator.
+        set_target_properties(QMdmm6 PROPERTIES
+            INSTALL_RPATH "@executable_path/../Frameworks;${CMAKE_INSTALL_FULL_LIBDIR}"
+        )
+    else()
+        list(APPEND QMDMMGUI_TARGET_PROPERTIES
+            VERSION "${QMdmm_VERSION}"
+        )
+    endif()
+    set_target_properties(QMdmm6 PROPERTIES ${QMDMMGUI_TARGET_PROPERTIES})
 
     # QMdmm6::* rather than the bare target names: these are the names an
     # installed dev package provides, so the GUI builds unchanged both inside
@@ -68,10 +91,23 @@ if (Qt6_FOUND)
 
     install(TARGETS QMdmm6
         COMPONENT "6"
-        DESTINATION "${CMAKE_INSTALL_BINDIR}"
-        RUNTIME
-        BUNDLE
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+        BUNDLE DESTINATION "."
     )
+
+    if (APPLE)
+        # An installed bundle has to carry its own Qt: nothing on the target
+        # machine provides the frameworks, the platform plugins or the QML
+        # modules the GUI imports.  Qt's deploy commands address the bundle as
+        # <name>.app relative to the install prefix, which is why the bundle is
+        # installed at the top of the prefix, and they run after install(TARGETS)
+        # because they patch the copy that is already in place.
+        qt6_generate_deploy_qml_app_script(
+            TARGET QMdmm6
+            OUTPUT_SCRIPT QMdmm6_deploy_script
+        )
+        install(SCRIPT "${QMdmm6_deploy_script}" COMPONENT "6")
+    endif()
 
     if (BUILD_TESTING)
         add_subdirectory(test)
