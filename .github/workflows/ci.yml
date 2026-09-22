@@ -129,7 +129,7 @@ jobs:
       - name: Generate coverage report
         run: |
           mkdir -p build/coverage
-          gcovr --root . \
+          gcovr --root QMdmm \
             --filter 'QMdmmCore/src/' \
             --filter 'QMdmmNetworking/src/' \
             --filter 'QMdmmGui/src/' \
@@ -142,8 +142,8 @@ jobs:
         env:
           COVERAGE_TOKEN: ${{ secrets.QMDMM_DOCS_TOKEN }}
         run: |
-          git config --global user.name "`git log -1 "--pretty=format:%an"`"
-          git config --global user.email "`git log -1 "--pretty=format:%ae"`"
+          git config --global user.name "`git -C QMdmm log -1 "--pretty=format:%an"`"
+          git config --global user.email "`git -C QMdmm log -1 "--pretty=format:%ae"`"
           cd build/coverage
           touch .nojekyll
           git init -b main
@@ -190,8 +190,8 @@ jobs:
         env:
           DOCS_TOKEN: ${{ secrets.QMDMM_DOCS_TOKEN }}
         run: |
-          git config --global user.name "`git log -1 "--pretty=format:%an"`"
-          git config --global user.email "`git log -1 "--pretty=format:%ae"`"
+          git config --global user.name "`git -C QMdmm log -1 "--pretty=format:%an"`"
+          git config --global user.email "`git -C QMdmm log -1 "--pretty=format:%ae"`"
           cd build/doc/html
           touch .nojekyll
           git init -b main
