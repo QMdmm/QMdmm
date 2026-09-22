@@ -11,10 +11,16 @@ file(GLOB QMDMM_STAGED_BUNDLES "${CPACK_TEMPORARY_DIRECTORY}/*/QMdmm6.app")
 foreach (QMDMM_STAGED_BUNDLE IN LISTS QMDMM_STAGED_BUNDLES)
     get_filename_component(QMDMM_STAGING_ROOT "${QMDMM_STAGED_BUNDLE}" DIRECTORY)
 
-    # lib/ holds this project's two shared libraries.  The deploy step has
-    # already copied both of them into Contents/Frameworks and pointed the
-    # bundle's load commands at that copy; what is staged here is the flat
-    # copy a prefix install keeps for the development packages, and the image
-    # should not carry the same libraries twice.
-    file(REMOVE_RECURSE "${QMDMM_STAGING_ROOT}/lib")
+    # The disk image is the app and the note beside it.  These are the
+    # directories a prefix install produces beside the bundle, and what they
+    # hold is for make install and for the development packages: the libraries
+    # are already inside the bundle (the deploy step copied them into
+    # Contents/Frameworks and pointed the load commands at that copy), and the
+    # headers, the CMake package files and the documentation are not part of
+    # what a user drags to Applications.
+    foreach (QMDMM_STAGED_FLAT_DIR IN ITEMS bin lib include share)
+        if (IS_DIRECTORY "${QMDMM_STAGING_ROOT}/${QMDMM_STAGED_FLAT_DIR}")
+            file(REMOVE_RECURSE "${QMDMM_STAGING_ROOT}/${QMDMM_STAGED_FLAT_DIR}")
+        endif()
+    endforeach()
 endforeach()
