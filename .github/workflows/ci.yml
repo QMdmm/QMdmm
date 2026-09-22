@@ -129,12 +129,12 @@ jobs:
       - name: Generate coverage report
         run: |
           mkdir -p build/coverage
-          gcovr --root QMdmm \
-            --filter 'QMdmmCore/src/' \
-            --filter 'QMdmmNetworking/src/' \
-            --filter 'QMdmmGui/src/' \
-            --filter 'QMdmmServer/src/' \
-            --filter 'QMdmmBot/src/' \
+          gcovr --root . \
+            --filter 'QMdmm/QMdmmCore/src/' \
+            --filter 'QMdmm/QMdmmNetworking/src/' \
+            --filter 'QMdmm/QMdmmGui/src/' \
+            --filter 'QMdmm/QMdmmServer/src/' \
+            --filter 'QMdmm/QMdmmBot/src/' \
             --html-details build/coverage/index.html \
             --print-summary
 
