@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          path: QMdmm
 
       - name: Set timezone (Linux)
         run: |
@@ -22,7 +24,7 @@ jobs:
       - name: Check non-ASCII characters
         run: |
           if LC_ALL=C grep -rn $'[^\t -~]' \
-              --include='*.cpp' --include='*.h' --include='*.qml' .; then
+              --include='*.cpp' --include='*.h' --include='*.qml' QMdmm; then
             echo "::error:: non-ASCII characters found in source files (see above)"
             exit 1
           fi
@@ -39,6 +41,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          path: QMdmm
 
       - name: Set timezone (Linux)
         if: runner.os == 'Linux'
@@ -68,7 +72,7 @@ jobs:
 
       - name: Configure
         run: |
-          cmake_args=(-B build -G "Unix Makefiles"
+          cmake_args=(-B build -S QMdmm -G "Unix Makefiles"
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
             -DBUILD_TESTING=ON
             -DQMDMM_EXPORT_PRIVATE=NO)
@@ -90,6 +94,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          path: QMdmm
 
       - name: Set timezone (Linux)
         run: |
@@ -107,7 +113,7 @@ jobs:
 
       - name: Configure
         run: >
-          cmake -B build -G "Unix Makefiles"
+          cmake -B build -S QMdmm -G "Unix Makefiles"
           -DCMAKE_BUILD_TYPE=Debug
           -DBUILD_TESTING=ON
           -DQMDMM_EXPORT_PRIVATE=NO
@@ -153,6 +159,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          path: QMdmm
 
       - name: Set timezone (macOS)
         run: |
@@ -170,7 +178,7 @@ jobs:
 
       - name: Configure
         run: >
-          cmake -B build -G "Unix Makefiles"
+          cmake -B build -S QMdmm -G "Unix Makefiles"
           -DCMAKE_BUILD_TYPE=Release
           -DBUILD_TESTING=OFF
           -DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH"
@@ -188,6 +196,6 @@ jobs:
           touch .nojekyll
           git init -b main
           git add -A
-          git commit -m "docs: publish doxygen-generated API reference"
+          git commit -m "docs: publish doxygen-generated API reference for ${{ github.sha }}"
           git remote add origin "https://x-access-token:${DOCS_TOKEN}@github.com/nemn9852/qmdmm-docs.git"
           git push -f origin main
