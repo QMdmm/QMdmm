@@ -196,13 +196,24 @@ void QMdmmGameClient::wireClient(QMdmmNetworking::Client *client)
     // speech are sent back through the same agent.
     QMdmmNetworking::Agent *agent = client->agent();
 
-    // request signals -> re-emit for QML
-    connect(agent, &QMdmmNetworking::Agent::rockPaperScissorsRequested, this,
-            [this](const QStringList &playerNames, int strivedOrder) { emit requestRockPaperScissors(playerNames, strivedOrder); });
-    connect(agent, &QMdmmNetworking::Agent::actionOrderRequested, this,
-            [this](const QList<int> &remainedOrders, int maximumOrder, int selectionNum) { emit requestActionOrder(remainedOrders, maximumOrder, selectionNum); });
-    connect(agent, &QMdmmNetworking::Agent::actionRequested, this, [this](int currentOrder) { emit requestAction(currentOrder); });
-    connect(agent, &QMdmmNetworking::Agent::upgradeRequested, this, [this](int remainingTimes) { emit requestUpgrade(remainingTimes); });
+    // request signals -> re-emit for QML, unless the player is managed and the request is given up
+    // on its behalf instead (see requestIsForTheHuman)
+    connect(agent, &QMdmmNetworking::Agent::rockPaperScissorsRequested, this, [this](const QStringList &playerNames, int strivedOrder) {
+        if (requestIsForTheHuman())
+            emit requestRockPaperScissors(playerNames, strivedOrder);
+    });
+    connect(agent, &QMdmmNetworking::Agent::actionOrderRequested, this, [this](const QList<int> &remainedOrders, int maximumOrder, int selectionNum) {
+        if (requestIsForTheHuman())
+            emit requestActionOrder(remainedOrders, maximumOrder, selectionNum);
+    });
+    connect(agent, &QMdmmNetworking::Agent::actionRequested, this, [this](int currentOrder) {
+        if (requestIsForTheHuman())
+            emit requestAction(currentOrder);
+    });
+    connect(agent, &QMdmmNetworking::Agent::upgradeRequested, this, [this](int remainingTimes) {
+        if (requestIsForTheHuman())
+            emit requestUpgrade(remainingTimes);
+    });
 
     // notify signals -> re-emit (and keep the local view in sync)
     connect(agent, &QMdmmNetworking::Agent::logicConfigurationNotified, this, [this]() {
@@ -373,6 +384,25 @@ void QMdmmGameClient::disconnectAll()
     setStatusMessage(tr("Disconnected"));
 }
 
+bool QMdmmGameClient::requestIsForTheHuman()
+{
+    // A managed (entrusted) player does not answer for itself: the request is given up on its
+    // behalf, and the server answers it with the same default reply a timeout gets, so the match
+    // keeps moving with nobody at this keyboard. The player still stays connected, and what comes
+    // back -- the throw, the action, the upgrades the default reply picked -- is broadcast and
+    // shown like anyone else's. Only the asking stops.
+    //
+    // Taken from the agent's own flag rather than waiting for the server's broadcast of it: the
+    // declaration is what the player asked for, and a request that arrives before the broadcast
+    // comes back is just as much one to give up on. See setManaged for the request that is
+    // already in flight when the flag goes on.
+    if (m_human != nullptr && m_human->agent()->managed()) {
+        m_human->agent()->giveUpRequest();
+        return false;
+    }
+    return true;
+}
+
 void QMdmmGameClient::replyRps(int rps)
 {
     if (m_human != nullptr)
@@ -428,8 +458,21 @@ void QMdmmGameClient::setManaged(bool managed)
     // Declared, not flipped: the server owns the agent state, applies the flag and broadcasts the
     // result back, and that broadcast is what the player cards redraw from (see
     // Agent::setManaged). Nothing to declare while there is no client.
-    if (m_human != nullptr)
-        m_human->agent()->setManaged(managed);
+    if (m_human == nullptr)
+        return;
+
+    m_human->agent()->setManaged(managed);
+
+    // Handing the player over takes in the request that is already in flight, not only the ones
+    // after it: give up on it now, so turning the flag on never leaves the match waiting for a
+    // decision that this side has stopped making. With nothing in flight the give-up is a no-op
+    // (see ClientP::sendRequestGivenUp), and the view is told to take down whatever it shows --
+    // an overlay still asking for a request that has just been answered would be asking for a
+    // decision that is no longer open.
+    if (managed) {
+        m_human->agent()->giveUpRequest();
+        emit requestWithdrawn();
+    }
 }
 
 QVariantList QMdmmGameClient::actionListFor(const QMdmmCore::Player *from) const

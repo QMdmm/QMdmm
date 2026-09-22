@@ -699,6 +699,14 @@ Item {
             activeRequest = "upgrade";
         }
 
+        function onRequestWithdrawn() {
+            // Handing this player over answers the request that is on screen as well, so the
+            // overlay has to come down with it -- left up, it would keep asking for a decision
+            // that is no longer open. The requests after it are given up as they arrive and never
+            // reach the scene at all.
+            activeRequest = "";
+        }
+
         function onRoundOver() {
             bannerText.text = qsTr("Round over");
             banner.visible = true;

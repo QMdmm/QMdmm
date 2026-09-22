@@ -67,7 +67,8 @@ public:
     Q_INVOKABLE void speak(const QString &text);
 
     // The managed flag (Data::StateMaskTrust) of the human's own player -- the one piece of an
-    // agent's state that is set from this side rather than only read.
+    // agent's state that is set from this side rather than only read. A managed player answers
+    // nothing: every request is given up on its behalf (see requestIsForTheHuman).
     Q_INVOKABLE void setManaged(bool managed);
 
     // Helpers for the action / upgrade UI
@@ -93,6 +94,10 @@ signals:
     void requestActionOrder(const QList<int> &remainedOrders, int maximumOrder, int selectionNum);
     void requestAction(int currentOrder);
     void requestUpgrade(int remainingTimes);
+    // A request the view is still showing has been given up on the player's behalf, because the
+    // player is managed (see setManaged): it is no longer open, so the overlay asking for it has
+    // to come down.
+    void requestWithdrawn();
 
     void playerAdded(const QString &playerName, const QString &screenName, int agentState);
     void playerRemoved(const QString &playerName);
@@ -114,6 +119,7 @@ private:
     void setGameState(GameState s);
     void setStatusMessage(const QString &msg);
     void setLogicConfiguration(const QMdmmCore::LogicConfiguration &conf);
+    [[nodiscard]] bool requestIsForTheHuman();
     [[nodiscard]] QMdmmCore::Player *localPlayer() const;
     QVariantList actionListFor(const QMdmmCore::Player *from) const;
 

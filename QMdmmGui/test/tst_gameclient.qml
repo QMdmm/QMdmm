@@ -28,6 +28,45 @@ TestCase {
         verify(game !== null, "GameClient should instantiate");
     }
 
+    function test_aHandedOverPlayerIsNotAskedForTheRequestsAfterIt() {
+        // The other half of the hand-over: with the flag on, a request is given up as it arrives
+        // and never reaches the view. The action request is the one to watch -- every living
+        // player acts in every round, so there is always one to give up on -- and the marker that
+        // it was answered is this player's own action coming back broadcast (the default reply
+        // plays DoNothing), which cannot arrive before the server has asked for it.
+        var actionAsked = createTemporaryObject(signalSpyComponent, testCase, {
+                                                    target: game,
+                                                    signalName: "requestAction"
+                                                });
+        var actions = createTemporaryObject(signalSpyComponent, testCase, {
+                                                target: game,
+                                                signalName: "actionResult"
+                                            });
+        var throwAsked = createTemporaryObject(signalSpyComponent, testCase, {
+                                                   target: game,
+                                                   signalName: "requestRockPaperScissors"
+                                               });
+
+        game.playerCount = 2;
+        game.startLocalGame("Tester");
+        tryCompare(game, "gameState", "playing", 15000);
+
+        // Hand over with the throw in flight, so the match is past the point where this side was
+        // last asked for anything.
+        tryCompare(throwAsked, "count", 1, 15000);
+        game.setManaged(true);
+
+        tryVerify(function () {
+            for (var i = 0; i < actions.count; ++i) {
+                if (actions.signalArguments[i][0] === game.localName)
+                    return true;
+            }
+            return false;
+        }, 15000);
+
+        compare(actionAsked.count, 0);
+    }
+
     function test_agentStatesFollowTheRoom() {
         // Every player's agent state is broadcast with the player list, and the bridge has to
         // keep the map the player cards read in step with it -- a bot has to read as a bot, not
@@ -92,6 +131,36 @@ TestCase {
         verify(sawBot, "expected to observe a bot player");
 
         game.disconnectAll();
+    }
+
+    function test_handingThePlayerOverAnswersTheRequestInFlight() {
+        // A managed player answers nothing. Handing the player over is taken to cover the request
+        // that is already in flight, not only the ones after it -- this is the half a gate on the
+        // arriving requests alone would miss. The throw below is left unanswered on purpose, which
+        // is what makes the progress the give-up's doing: requestTimeout is seconds-scale (20 s +
+        // 60 s grace, see ServerConfiguration), far beyond the window here.
+        var throwAsked = createTemporaryObject(signalSpyComponent, testCase, {
+                                                   target: game,
+                                                   signalName: "requestRockPaperScissors"
+                                               });
+        var throwResolved = createTemporaryObject(signalSpyComponent, testCase, {
+                                                      target: game,
+                                                      signalName: "rpsResult"
+                                                  });
+
+        game.playerCount = 2;
+        game.startLocalGame("Tester");
+        tryCompare(game, "gameState", "playing", 15000);
+
+        // The server asks this side for a throw, and gets no reply from it.
+        tryCompare(throwAsked, "count", 1, 15000);
+
+        var before = throwResolved.count;
+        game.setManaged(true);
+
+        tryVerify(function () {
+            return throwResolved.count > before;
+        }, 15000);
     }
 
     function test_localGameFillsRoomAndStarts() {

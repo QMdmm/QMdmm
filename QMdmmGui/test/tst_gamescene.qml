@@ -52,6 +52,20 @@ TestCase {
         return scene;
     }
 
+    function test_aWithdrawnRequestTakesTheOverlayDown() {
+        const scene = makeScene();
+
+        // Handing this player over answers the request that is on screen as well, so the overlay
+        // has to come down with it -- left up, it keeps asking for a decision that is no longer
+        // open. The requests after it never reach the view at all, so nothing else would put this
+        // case on trial.
+        game.requestAction(3);
+        compare(scene.activeRequest, "action");
+
+        game.requestWithdrawn();
+        compare(scene.activeRequest, "");
+    }
+
     function test_actionOrderRequestShowsTheRange() {
         const scene = makeScene();
 
