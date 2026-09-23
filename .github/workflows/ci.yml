@@ -138,7 +138,21 @@ jobs:
             --filter 'QMdmm/QMdmmServer/src/' \
             --filter 'QMdmm/QMdmmBot/src/' \
             --html-details build/coverage/index.html \
-            --print-summary
+            --print-summary > build/coverage-summary.txt 2>&1
+          cat build/coverage-summary.txt
+
+      - name: Check the coverage report is not empty
+        run: |
+          # gcovr resolves --filter against the working directory, so a change of
+          # layout can make every filter miss. It then only warns and still exits
+          # 0, and this job publishes whatever it gets -- on 2026-09-22 the report
+          # came out as "0 out of 0" while the run was green. Check that some lines
+          # were measured before believing the reading.
+          if ! grep -qE '^lines: .*out of [1-9][0-9]*\)' build/coverage-summary.txt; then
+            echo "::error::the coverage filters matched nothing -- the report is empty"
+            exit 1
+          fi
+          grep '^lines: ' build/coverage-summary.txt
 
       - name: Publish to qmdmm-coverage
         env:
