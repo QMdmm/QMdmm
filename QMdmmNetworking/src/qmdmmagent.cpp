@@ -107,8 +107,10 @@ void Agent::setState(const QMdmmCore::Data::AgentState &state)
  * @brief Whether the player is managed
  * @return @c true when the @c StateMaskTrust flag is set
  *
- * A managed (entrusted) player still replies from its own client, only with default values; see
- * @c StateMaskTrust.
+ * The bit is only declared, carried and reported here -- this class changes nothing about what it
+ * does because of it. A client that manages its player gives up on that player's requests from its
+ * own side (@c giveUpRequest), which leaves the server to reply with the same default a timeout
+ * gets. See @c setManaged and @c StateMaskTrust.
  */
 bool Agent::managed() const
 {

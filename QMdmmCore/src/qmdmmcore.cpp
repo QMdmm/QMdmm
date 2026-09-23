@@ -191,8 +191,13 @@ namespace v0 {
  * @var QMdmmCore::Data::AgentStateEnum Data::StateMaskTrust
  * @brief Mask of the "managed" flag
  *
- * A managed (entrusted) player still replies from its own client; only a dropped player gets the
- * server-side default reply (DoNothing). A reconnecting player must NOT be re-trusted by default.
+ * The flag only travels: the operation side declares it, the server owns it and reports it back
+ * (see @c Protocol::NotifyManagedChanged). What being managed means below the wire is a
+ * client-side decision: a client that manages its player gives up on that player's requests --
+ * answering them with an empty reply instead of asking -- so the server replies with the same
+ * default a timeout gets. The managed player stays connected while that happens, and its default
+ * replies are broadcast like anyone else's. A reconnecting player must NOT be re-trusted by
+ * default.
  */
 
 /**
