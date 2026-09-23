@@ -115,9 +115,13 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build/${CMAKE_INSTALL_LI
 # has to sit at the top of the prefix (Qt's deploy commands address it as
 # <name>.app, relative to the prefix), and the command line programs it starts
 # as child processes are installed inside it - so that the installed bundle is
-# what carries them.  Everywhere else they stay siblings in bin/.
+# what carries them.  Everywhere else they stay siblings in bin/.  The number in
+# the bundle name is the Qt major version, as in the target names, so anything
+# else installed inside the bundle goes through this variable rather than
+# spelling the name out again.
 if (APPLE)
-    set(QMDMM6_INSTALL_RUNTIME_DIR "QMdmm6.app/Contents/MacOS")
+    set(QMDMM6_INSTALL_BUNDLE_DIR "QMdmm6.app")
+    set(QMDMM6_INSTALL_RUNTIME_DIR "${QMDMM6_INSTALL_BUNDLE_DIR}/Contents/MacOS")
 else()
     set(QMDMM6_INSTALL_RUNTIME_DIR "${CMAKE_INSTALL_BINDIR}")
 endif()

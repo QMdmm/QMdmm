@@ -111,6 +111,23 @@ if (Qt6_FOUND)
         # <name>.app relative to the install prefix, which is why the bundle is
         # installed at the top of the prefix, and they run after install(TARGETS)
         # because they patch the copy that is already in place.
+
+        # The deploy step picks its plugins from the Qt modules the application
+        # resolves to, and drops the platform plugins from that set on purpose:
+        # it hands the choice to the deploy tool, which copies the one the
+        # application actually runs on - here, cocoa alone.  A bundle that only
+        # starts under cocoa cannot be driven headless, so the whole set is
+        # installed instead.  This has to precede the deploy script: that script
+        # signs the bundle, and a file added afterwards leaves the signature
+        # describing a bundle that no longer exists.  The deploy tool walks the
+        # bundle as it finds it, so it rewrites these plugins' dependencies and
+        # signs them along with the rest, and it leaves alone what it did not
+        # put there.
+        install(DIRECTORY "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}/platforms/"
+            DESTINATION "${QMDMM6_INSTALL_BUNDLE_DIR}/Contents/PlugIns/platforms"
+            COMPONENT "6"
+        )
+
         qt6_generate_deploy_qml_app_script(
             TARGET QMdmm6
             OUTPUT_SCRIPT QMdmm6_deploy_script
