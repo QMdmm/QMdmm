@@ -24,7 +24,9 @@ jobs:
       - name: Check non-ASCII characters
         run: |
           if LC_ALL=C grep -rn $'[^\t -~]' \
-              --include='*.cpp' --include='*.h' --include='*.qml' QMdmm; then
+              --include='*.cpp' --include='*.h' --include='*.qml' \
+              --include='*.cmake' --include='CMake*.txt' --include='*.yml' \
+              QMdmm; then
             echo "::error:: non-ASCII characters found in source files (see above)"
             exit 1
           fi

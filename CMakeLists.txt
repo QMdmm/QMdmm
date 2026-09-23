@@ -309,7 +309,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "[Ll]inux")
         "cmake, qt6-qtbase-devel, qt6-qtdeclarative-devel, qt6-qtwebsockets-devel, qt6-qttools-devel, qmdmm-6, qmdmm-common-devel")
     # dev-common / doc intentionally carry no Qt dependencies: dev-common is
     # version-agnostic headers only. CPack emits one harmless
-    # "CPACK_DEBIAN_PACKAGE_DEPENDS not set" note for dev-common — expected.
+    # "CPACK_DEBIAN_PACKAGE_DEPENDS not set" note for dev-common - expected.
 endif()
 
 if (APPLE AND QMDMM_MACOS_APP_BUNDLE)
