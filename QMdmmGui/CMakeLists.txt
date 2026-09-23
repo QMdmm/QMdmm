@@ -32,15 +32,24 @@ set(QMDMMGUI_RESOURCES
 if (Qt6_FOUND)
     find_package(Qt6 REQUIRED COMPONENTS Widgets LinguistTools)
 
-    qt6_add_executable(QMdmm6 WIN32 MACOSX_BUNDLE ${QMDMMGUI_SOURCES})
+    # What makes CMake treat this program as a macOS application instead of as a
+    # command.  The plain shape leaves it out, so that all three programs are
+    # laid out the same way and the GUI finds the other two where it puts them.
+    if (APPLE AND QMDMM_MACOS_APP_BUNDLE)
+        set(QMDMMGUI_BUNDLE_KEYWORD "MACOSX_BUNDLE")
+    else()
+        set(QMDMMGUI_BUNDLE_KEYWORD "")
+    endif()
+
+    qt6_add_executable(QMdmm6 WIN32 ${QMDMMGUI_BUNDLE_KEYWORD} ${QMDMMGUI_SOURCES})
 
     set(QMDMMGUI_TARGET_PROPERTIES
         AUTOMOC ON
         AUTOUIC ON
         AUTORCC ON
     )
-    if (APPLE)
-        # The bundle is the artefact on macOS and it carries its version in
+    if (APPLE AND QMDMM_MACOS_APP_BUNDLE)
+        # In this shape the bundle is the artefact and it carries the version in
         # Info.plist.  Versioning the executable inside it as well (QMdmm6-0.0.1,
         # with QMdmm6 a symlink to it) would make Qt's deploy commands look for a
         # bundle named after that executable rather than after the bundle, and
@@ -101,10 +110,10 @@ if (Qt6_FOUND)
     install(TARGETS QMdmm6
         COMPONENT "6"
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-        BUNDLE DESTINATION "."
+        BUNDLE DESTINATION "${QMDMM6_INSTALL_BUNDLE_DESTINATION}"
     )
 
-    if (APPLE)
+    if (APPLE AND QMDMM_MACOS_APP_BUNDLE)
         # An installed bundle has to carry its own Qt: nothing on the target
         # machine provides the frameworks, the platform plugins or the QML
         # modules the GUI imports.  Qt's deploy commands address the bundle as

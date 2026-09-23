@@ -62,6 +62,21 @@ option(BUILD_TESTING "Build test binaries" false)
 
 option(QMDMM_EXPORT_PRIVATE "Export private symbols, copy headers of private classes" false)
 
+# macOS has two ways of putting this project's programs on a machine, and they
+# are not variations of one another.  One is a self-contained application
+# bundle: the GUI sits at the top of the prefix, carries its own Qt and the
+# programs it starts, and is what the disk image holds.  The other is the plain
+# prefix layout, the programs as siblings in bin/, with Qt provided by the
+# machine - the shape a distribution package or a Homebrew bottle is built out
+# of.  This switch is read on macOS and nowhere else; the other platforms have
+# the plain layout by construction.
+if (APPLE)
+    set(QMDMM_MACOS_APP_BUNDLE_DEFAULT true)
+else()
+    set(QMDMM_MACOS_APP_BUNDLE_DEFAULT false)
+endif()
+option(QMDMM_MACOS_APP_BUNDLE "Install the GUI as a self-contained application bundle on macOS" ${QMDMM_MACOS_APP_BUNDLE_DEFAULT})
+
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED true)
 set(CMAKE_CXX_STANDARD 20)
@@ -111,19 +126,33 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build/${CMAKE_INSTALL_BI
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build/${CMAKE_INSTALL_LIBDIR}")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build/${CMAKE_INSTALL_LIBDIR}")
 
-# Where the runtime programs are installed.  On macOS the GUI is a bundle, it
-# has to sit at the top of the prefix (Qt's deploy commands address it as
-# <name>.app, relative to the prefix), and the command line programs it starts
-# as child processes are installed inside it - so that the installed bundle is
-# what carries them.  Everywhere else they stay siblings in bin/.  The number in
-# the bundle name is the Qt major version, as in the target names, so anything
-# else installed inside the bundle goes through this variable rather than
-# spelling the name out again.
-if (APPLE)
+# Where the runtime programs are installed.  In the bundle shape the GUI has to
+# sit at the top of the prefix, because Qt's deploy commands address it as
+# <name>.app relative to the prefix, and the command line programs it starts as
+# child processes are installed inside it - so that the installed bundle is what
+# carries them.  In the plain shape all three are siblings in bin/, which is
+# also the directory the GUI has to look for them in.  The number in the bundle
+# name is the Qt major version, as in the target names, so anything else
+# installed inside the bundle goes through this variable rather than spelling
+# the name out again.
+if (APPLE AND QMDMM_MACOS_APP_BUNDLE)
     set(QMDMM6_INSTALL_BUNDLE_DIR "QMdmm6.app")
+    set(QMDMM6_INSTALL_BUNDLE_DESTINATION ".")
     set(QMDMM6_INSTALL_RUNTIME_DIR "${QMDMM6_INSTALL_BUNDLE_DIR}/Contents/MacOS")
 else()
+    set(QMDMM6_INSTALL_BUNDLE_DESTINATION "${CMAKE_INSTALL_BINDIR}")
     set(QMDMM6_INSTALL_RUNTIME_DIR "${CMAKE_INSTALL_BINDIR}")
+endif()
+
+if (APPLE AND NOT QMDMM_MACOS_APP_BUNDLE)
+    # Nothing carries this project's libraries in the plain shape, so the
+    # programs reach them through the libdir of the prefix, the way they do on
+    # every other platform.  Qt is not on the target machine either, by
+    # definition of this shape, so the place it was found is kept in the rpath
+    # as well; a package manager that knows where it will relocate the install
+    # overrides both through CMAKE_INSTALL_RPATH.
+    set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_FULL_LIBDIR}")
+    set(CMAKE_INSTALL_RPATH_USE_LINK_PATH true)
 endif()
 
 if (WIN32)
@@ -283,11 +312,11 @@ if (CMAKE_SYSTEM_NAME MATCHES "[Ll]inux")
     # "CPACK_DEBIAN_PACKAGE_DEPENDS not set" note for dev-common — expected.
 endif()
 
-if (APPLE)
-    # A disk image is the macOS form of the runtime artefact.  What the image
-    # carries, and the adjustment its staging tree needs, are set per generator
-    # in cmake/CPackProjectConfig.cmake, so that the tar archives keep
-    # installing every component.
+if (APPLE AND QMDMM_MACOS_APP_BUNDLE)
+    # A disk image is the macOS form of the runtime artefact, and it exists to
+    # carry the bundle.  What the image holds, and the adjustment its staging
+    # tree needs, are set per generator in cmake/CPackProjectConfig.cmake, so
+    # that the tar archives keep installing every component.
     list(APPEND CPACK_GENERATOR DragNDrop)
     set(CPACK_PROJECT_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CPackProjectConfig.cmake")
 endif()

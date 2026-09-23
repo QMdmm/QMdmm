@@ -34,7 +34,7 @@ if (Qt6_FOUND)
                QMdmm6::Networking
     )
 
-    if (APPLE)
+    if (APPLE AND QMDMM_MACOS_APP_BUNDLE)
         # On macOS this program is installed inside the GUI's bundle, as a
         # sibling of the GUI itself, and reaches this project's libraries one
         # level up, in Contents/Frameworks, where the GUI's deploy step puts
