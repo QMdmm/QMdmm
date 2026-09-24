@@ -17,7 +17,7 @@
 # be installed side by side. Version compatibility is therefore checked against
 # the QMdmm product version (see QMdmm6ConfigVersionImpl.cmake).
 #
-#   find_package(QMdmm6 0.0.1 REQUIRED COMPONENTS Core Networking)
+#   find_package(QMdmm6 0.0.2 REQUIRED COMPONENTS Core Networking)
 
 @PACKAGE_INIT@
 

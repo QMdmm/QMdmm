@@ -50,7 +50,7 @@ if (Qt6_FOUND)
     )
     if (APPLE AND QMDMM_MACOS_APP_BUNDLE)
         # In this shape the bundle is the artefact and it carries the version in
-        # Info.plist.  Versioning the executable inside it as well (QMdmm6-0.0.1,
+        # Info.plist.  Versioning the executable inside it as well (QMdmm6-0.0.2,
         # with QMdmm6 a symlink to it) would make Qt's deploy commands look for a
         # bundle named after that executable rather than after the bundle, and
         # CMake's own install-time rpath fixup is skipped for a bundle whose

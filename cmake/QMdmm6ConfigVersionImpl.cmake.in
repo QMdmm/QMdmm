@@ -8,9 +8,9 @@
 # satisfied; requesting a newer version is not.
 #
 #   find_package(QMdmm6)          -> satisfied (no version requested)
-#   find_package(QMdmm6 0.0.1)    -> satisfied, exact
+#   find_package(QMdmm6 0.0.2)    -> satisfied, exact
 #   find_package(QMdmm6 0.0.0)    -> satisfied, not exact
-#   find_package(QMdmm6 0.0.2)    -> NOT satisfied (newer than installed)
+#   find_package(QMdmm6 0.0.3)    -> NOT satisfied (newer than installed)
 #
 # The Qt generation is NOT part of this check: QMdmm6 and QMdmm7 install into
 # different directories and namespaces, so they never contend for a version.
