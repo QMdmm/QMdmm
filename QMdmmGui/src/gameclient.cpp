@@ -2,8 +2,11 @@
 
 #include "gameclient.h"
 
+#include <QCoreApplication>
+#include <QDir>
 #include <QJsonObject>
 #include <QRandomGenerator>
+#include <QStandardPaths>
 #include <QVariantMap>
 
 #include <QMdmmAgent>
@@ -18,6 +21,12 @@ using namespace Qt::StringLiterals;
 
 namespace {
 constexpr char LOCAL_HOST[] = "qmdmm://localhost:6366";
+
+// The two programs a local game runs as child processes, named the way the build tree and the
+// packages lay them out. The number in each name is the Qt major version, as in the target
+// names; the executable it points at may carry a version suffix of its own.
+constexpr char SERVER_PROGRAM[] = "QMdmmServer6";
+constexpr char BOT_PROGRAM[] = "QMdmmBot6";
 } // namespace
 
 QMdmmGameClient::QMdmmGameClient(QObject *parent)
@@ -122,6 +131,60 @@ void QMdmmGameClient::setPlayerCount(int n)
         return;
     m_playerCount = n;
     emit playerCountChanged();
+}
+
+QString QMdmmGameClient::serverProgram() const
+{
+    return m_serverProgram;
+}
+
+QString QMdmmGameClient::botProgram() const
+{
+    return m_botProgram;
+}
+
+void QMdmmGameClient::setProgramPaths(const QString &serverProgram, const QString &botProgram)
+{
+    const QString server = locateProgram(QString::fromLatin1(SERVER_PROGRAM), serverProgram);
+    const QString bot = locateProgram(QString::fromLatin1(BOT_PROGRAM), botProgram);
+    if (server == m_serverProgram && bot == m_botProgram)
+        return;
+    m_serverProgram = server;
+    m_botProgram = bot;
+    emit programPathsChanged();
+}
+
+QString QMdmmGameClient::locateProgram(const QString &programName, const QString &explicitPath)
+{
+    // A path given on the command line is the one the user asked for, whether or not there is
+    // anything at it: reporting a path that leads nowhere is the job of whatever starts the
+    // program.
+    if (!explicitPath.isEmpty())
+        return explicitPath;
+
+    // Otherwise look next to this program. That is where both installed layouts keep the
+    // three of them: the bundle carries the command line programs next to this one, and the
+    // plain shape puts all three in one bin/. A build tree keeps them in one bin/ too, but on
+    // macOS the bundle puts this program three levels down inside it, so the second candidate
+    // covers that shape. The lookup is left to QStandardPaths rather than done by hand, so
+    // that each name is tried with the suffix the platform runs and taken only if it is
+    // executable.
+    const QDir dir(QCoreApplication::applicationDirPath());
+    const QDir above(dir.filePath(u"../../../"_s));
+    const QStringList candidates {
+        dir.absolutePath(),
+        above.absolutePath(),
+    };
+    for (const QString &candidate : candidates) {
+        const QString found = QStandardPaths::findExecutable(programName, {candidate});
+        if (found.isEmpty())
+            continue;
+        // TODO: a program found this way, unlike one named on the command line, has not been
+        // vouched for by the user; verify its signature before starting it.
+        return found;
+    }
+
+    return {};
 }
 
 void QMdmmGameClient::setGameState(GameState s)

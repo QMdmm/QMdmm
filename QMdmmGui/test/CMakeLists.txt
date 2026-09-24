@@ -18,6 +18,11 @@ add_executable(tst_qmdmmgui6 EXCLUDE_FROM_ALL
 )
 add_dependencies(QMdmmGui_Test tst_qmdmmgui6)
 
+# The paths the bridge resolves for the local game's server and bot (see
+# QMdmmGameClient::setProgramPaths) are read back by the test cases, so both programs have to
+# be there when the tests run -- which is next to the test, as the build lays them out.
+add_dependencies(tst_qmdmmgui6 QMdmmServer6 QMdmmBot6)
+
 target_link_libraries(tst_qmdmmgui6
     PUBLIC QMdmm6::Core
            QMdmm6::Networking

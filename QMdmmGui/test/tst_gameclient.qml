@@ -241,6 +241,21 @@ TestCase {
         }, 15000);
     }
 
+    function test_theLocalGameProgramsAreLookedUpNextToThisOne() {
+        // A path given on the command line is taken as it is, whether or not anything is at it:
+        // a path that leads nowhere is the business of whoever starts the program, not of the
+        // lookup.
+        game.setProgramPaths("/nowhere/QMdmmServer6", "/nowhere/QMdmmBot6");
+        compare(game.serverProgram, "/nowhere/QMdmmServer6");
+        compare(game.botProgram, "/nowhere/QMdmmBot6");
+
+        // With neither path given, both are looked for next to this program -- which is where
+        // the build tree keeps them, next to this test.
+        game.setProgramPaths("", "");
+        verify(game.serverProgram.endsWith("/QMdmmServer6"), game.serverProgram);
+        verify(game.botProgram.endsWith("/QMdmmBot6"), game.botProgram);
+    }
+
     function test_theManagedFlagIsDeclaredAndComesBack() {
         // The one piece of an agent's state the client sets rather than only reads. The
         // declaration is not taken as the final word: the server applies the flag and broadcasts

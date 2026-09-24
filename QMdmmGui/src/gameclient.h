@@ -28,6 +28,8 @@ class QMdmmGameClient : public QObject
     Q_PROPERTY(QVariantMap logicConfiguration READ logicConfiguration NOTIFY logicConfigurationChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
     Q_PROPERTY(int playerCount READ playerCount WRITE setPlayerCount NOTIFY playerCountChanged)
+    Q_PROPERTY(QString serverProgram READ serverProgram NOTIFY programPathsChanged)
+    Q_PROPERTY(QString botProgram READ botProgram NOTIFY programPathsChanged)
 
 public:
     Q_DISABLE_COPY_MOVE(QMdmmGameClient)
@@ -53,6 +55,15 @@ public:
     [[nodiscard]] QString statusMessage() const;
     [[nodiscard]] int playerCount() const;
     void setPlayerCount(int n);
+
+    // Where the two programs a local game needs live: the server that owns the room and
+    // the bot that fills a seat. Both are resolved once, from the path given on the command
+    // line if there is one and from next to this program otherwise (see setProgramPaths).
+    // An empty path means "not found" -- not an error yet, because nothing needs either
+    // program until a local game is asked for.
+    [[nodiscard]] QString serverProgram() const;
+    [[nodiscard]] QString botProgram() const;
+    Q_INVOKABLE void setProgramPaths(const QString &serverProgram, const QString &botProgram);
 
     Q_INVOKABLE void startLocalGame(const QString &playerName);
     Q_INVOKABLE void connectOnline(const QString &host, const QString &playerName);
@@ -89,6 +100,7 @@ signals:
     void logicConfigurationChanged();
     void statusMessageChanged(const QString &);
     void playerCountChanged();
+    void programPathsChanged();
 
     void requestRockPaperScissors(const QStringList &playerNames, int strivedOrder);
     void requestActionOrder(const QList<int> &remainedOrders, int maximumOrder, int selectionNum);
@@ -122,6 +134,7 @@ private:
     [[nodiscard]] bool requestIsForTheHuman();
     [[nodiscard]] QMdmmCore::Player *localPlayer() const;
     QVariantList actionListFor(const QMdmmCore::Player *from) const;
+    [[nodiscard]] static QString locateProgram(const QString &programName, const QString &explicitPath);
 
     QMdmmNetworking::Client *m_human = nullptr;
     QMdmmNetworking::Server *m_server = nullptr;
@@ -135,6 +148,8 @@ private:
     QVariantMap m_logicConfiguration;
     QString m_status;
     int m_playerCount = 3;
+    QString m_serverProgram;
+    QString m_botProgram;
 
     QHash<QString, QString> m_screenNames;
     QHash<QString, QMdmmCore::Data::AgentState> m_agentStates;

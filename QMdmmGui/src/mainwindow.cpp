@@ -11,7 +11,7 @@
 
 using namespace Qt::StringLiterals;
 
-MainWindow::MainWindow(QWidget *parent)
+MainWindow::MainWindow(const QString &serverProgram, const QString &botProgram, QWidget *parent)
     : QMainWindow(parent)
 {
     setWindowTitle(QObject::tr("QMdmm"));
@@ -22,6 +22,11 @@ MainWindow::MainWindow(QWidget *parent)
     qmlRegisterUncreatableType<QMdmmCore::Player>("QMdmm.Core", 1, 0, "Player", u"Player is created by the engine"_s);
 
     QMdmmGameClient *game = new QMdmmGameClient(this);
+
+    // Where the local game starts its server and its bots from, as given on the
+    // command line; the client resolves the rest and holds on to both paths until
+    // the local game asks for them.
+    game->setProgramPaths(serverProgram, botProgram);
 
     QQuickWidget *qw = new QQuickWidget(u"qrc:///qt/qml/QMdmm/Gui/qml/main.qml"_s, this);
 
