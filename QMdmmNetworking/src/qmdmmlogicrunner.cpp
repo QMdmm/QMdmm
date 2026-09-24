@@ -155,10 +155,11 @@ Agent *LogicRunner::reconnectAgent(Agent *agent)
         return nullptr;
 
     // Restore the online flag that onSocketDisconnected cleared. Trust (the "managed" flag) is
-    // NOT restored by default: a reconnecting player must not be automatically trusted -- a
-    // managed player still replies from its own client, and only a dropped player gets the
-    // server-side default reply. setState emits stateChanged, which LogicRunnerP::agentStateChanged
-    // turns into a notifyAgentStateChange broadcast to every agent -- this is what lets the other,
+    // NOT restored by default: a reconnecting player must not be automatically trusted. The flag
+    // only travels -- a client declares that it manages its player and gives up on that player's
+    // requests, so the server answers them with the same default a timeout gets while the player
+    // stays connected. setState emits stateChanged, which LogicRunnerP::agentStateChanged turns
+    // into a notifyAgentStateChange broadcast to every agent -- this is what lets the other,
     // still-connected clients see that the player is back online.
     QMdmmCore::Data::AgentState state = agent->state();
     state.setFlag(QMdmmCore::Data::StateMaskOnline, true);
