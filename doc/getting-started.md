@@ -110,9 +110,8 @@ falling back to the default.
 
 The start menu's "Start game" screen plays a full match: a local game starts a
 `QMdmmServer` process of its own and connects to it over a local socket, filling
-the other seats with auto-replying bots that still live inside the GUI's own
-process; an online game connects to a running `QMdmmServer`. What is still in
-progress is running those bots as separate `QMdmmBot` processes.
+the other seats with `QMdmmBot` processes; an online game connects to a running
+`QMdmmServer`.
 
 ## Play a headless game (bots)
 

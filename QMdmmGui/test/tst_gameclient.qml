@@ -117,6 +117,29 @@ TestCase {
         compare(game.players.length, 2);
     }
 
+    function test_aLocalGameWithNoBotProgramLeavesTheSeatEmptyAndReportsIt() {
+        // The bot program is wanted when a seat is filled, not when the game is asked for: a
+        // bridge that was told about one which is not there still brings the game up, and the
+        // seat it would have held stays empty. The two are asserted apart on purpose -- the seat
+        // count is what says the bot is the program at all (a bridge that filled the seat on its
+        // own would do so whatever the path says), and the report is what says the missing
+        // program was noticed rather than silently swallowed.
+        game.setProgramPaths("", "/nowhere/QMdmmBot6");
+        game.playerCount = 2;
+        game.startLocalGame("Tester");
+
+        // The human's own arrival is what says the server program was found and the game came up.
+        tryVerify(function () {
+            return game.players.length === 1;
+        }, 15000);
+        // ...and the seat stays empty the whole time a bot would have needed to take it: filling
+        // the room is what a local game's bots do within half a second of being started, so the
+        // wait is what makes "still empty" an observation rather than a snapshot taken early.
+        wait(3000);
+        compare(game.players.length, 1);
+        verify(game.statusMessage.indexOf("bot") >= 0, game.statusMessage);
+    }
+
     function test_aLocalGameWithNoServerProgramIsReportedAndNotStarted() {
         // A local game needs the server program, and a bridge that was told about one which is
         // not there has to say so rather than half start a game whose server never appears. The

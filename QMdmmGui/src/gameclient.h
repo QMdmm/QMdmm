@@ -129,6 +129,7 @@ private:
     void addBot(const QString &name);
     void reset();
     void stopLocalServer();
+    void stopBots();
     void setGameState(GameState s);
     void setStatusMessage(const QString &msg);
     void setLogicConfiguration(const QMdmmCore::LogicConfiguration &conf);
@@ -139,7 +140,8 @@ private:
 
     QMdmmNetworking::Client *m_human = nullptr;
     QProcess *m_serverProcess = nullptr;
-    QList<QMdmmNetworking::Client *> m_bots;
+    // One QMdmmBot process per seat this side fills, stopped with the game they belong to.
+    QList<QProcess *> m_bots;
     QMdmmCore::Room *m_room = nullptr;
 
     QString m_localName;

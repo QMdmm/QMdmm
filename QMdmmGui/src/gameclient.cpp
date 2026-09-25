@@ -6,7 +6,6 @@
 #include <QDir>
 #include <QJsonObject>
 #include <QProcess>
-#include <QRandomGenerator>
 #include <QStandardPaths>
 #include <QVariantMap>
 
@@ -16,9 +15,10 @@
 using namespace Qt::StringLiterals;
 
 // Bridge between the QML GUI and the networking / core engine: owns the human
-// Client, the QMdmmServer process a local game runs on, and a few auto-replying
-// bot Clients (so a single user can fill a room and actually play a full match),
-// and exposes a QML-friendly view of the synchronized Room model.
+// Client, the QMdmmServer process a local game runs on, and the QMdmmBot
+// processes that fill the other seats (so a single user can fill a room and
+// actually play a full match), and exposes a QML-friendly view of the
+// synchronized Room model.
 
 namespace {
 // The local socket a local game's server listens on. It is the server's own default
@@ -26,16 +26,35 @@ namespace {
 // told to reach a local socket (SocketP::typeByConnectAddr).
 constexpr char LOCAL_SOCKET_NAME[] = "QMdmm";
 
-// How long the server of a local game gets to appear and to go away again before the bridge
-// stops waiting for it.
-constexpr int ServerStartTimeoutMs = 5000;
-constexpr int ServerShutdownTimeoutMs = 5000;
+// How long a program a local game runs gets to appear and to go away again before the bridge
+// stops waiting for it. The server is what the game is played on and the bots are what fill its
+// seats, so the two of them are watched over the same clock.
+constexpr int ProcessStartTimeoutMs = 5000;
+constexpr int ProcessShutdownTimeoutMs = 5000;
 
 // The two programs a local game runs as child processes, named the way the build tree and the
 // packages lay them out. The number in each name is the Qt major version, as in the target
 // names; the executable it points at may carry a version suffix of its own.
 constexpr char SERVER_PROGRAM[] = "QMdmmServer6";
 constexpr char BOT_PROGRAM[] = "QMdmmBot6";
+
+// A process a local game started has no business outliving the game it belongs to: it is asked to
+// go, and the bridge waits for it to be gone rather than leaving it to the next game, which would
+// find the local socket name taken by it.
+void stopProcess(QProcess *process)
+{
+    if (process == nullptr)
+        return;
+
+    if (process->state() != QProcess::NotRunning) {
+        process->terminate();
+        if (!process->waitForFinished(ProcessShutdownTimeoutMs))
+            process->kill();
+        process->waitForFinished(ProcessShutdownTimeoutMs);
+    }
+
+    delete process;
+}
 } // namespace
 
 QMdmmGameClient::QMdmmGameClient(QObject *parent)
@@ -50,8 +69,7 @@ QMdmmGameClient::~QMdmmGameClient()
 
 void QMdmmGameClient::reset()
 {
-    qDeleteAll(m_bots);
-    m_bots.clear();
+    stopBots();
 
     delete m_human;
     m_human = nullptr;
@@ -72,22 +90,17 @@ void QMdmmGameClient::reset()
     emit playersChanged();
 }
 
+void QMdmmGameClient::stopBots()
+{
+    const QList<QProcess *> bots = m_bots;
+    m_bots.clear();
+    for (QProcess *bot : bots)
+        stopProcess(bot);
+}
+
 void QMdmmGameClient::stopLocalServer()
 {
-    if (m_serverProcess == nullptr)
-        return;
-
-    // A local game's server has no business outliving the game: it is asked to go, and the
-    // bridge waits for it to be gone rather than leaving it to the next game, which would find
-    // the local socket name taken.
-    if (m_serverProcess->state() != QProcess::NotRunning) {
-        m_serverProcess->terminate();
-        if (!m_serverProcess->waitForFinished(ServerShutdownTimeoutMs))
-            m_serverProcess->kill();
-        m_serverProcess->waitForFinished(ServerShutdownTimeoutMs);
-    }
-
-    delete m_serverProcess;
+    stopProcess(m_serverProcess);
     m_serverProcess = nullptr;
 }
 
@@ -397,34 +410,31 @@ void QMdmmGameClient::wireClient(QMdmmNetworking::Client *client)
 
 void QMdmmGameClient::addBot(const QString &name)
 {
-    QMdmmNetworking::ClientConfiguration cfg;
-    cfg.setScreenName(name);
-    QMdmmNetworking::Client *bot = new QMdmmNetworking::Client(cfg, this);
+    // A seat other than the human's is held by a QMdmmBot process of its own -- the same program
+    // a player would start by hand -- pointed at the room's local socket and told what to call
+    // itself. Which style it plays is left to the program's own default rather than spelled out
+    // here, so a bot seat is exactly what a bot started by hand is.
+    //
+    // Filling the seats is the first moment that program is wanted, so it is the first moment a
+    // missing one is worth reporting (see setProgramPaths). Reporting it here rather than before
+    // the game is what leaves the rest of the game standing when a seat cannot be filled. A
+    // program that was never found is not started at all; one that was named but leads nowhere is
+    // the failure start() reports below.
+    if (m_botProgram.isEmpty()) {
+        setStatusMessage(tr("The bot program was not found, so the seat cannot be filled"));
+        return;
+    }
 
-    // Auto-reply: mirror the server's default-reply behavior so the room fills
-    // and the match progresses without a human driving the bot. The bot's own
-    // agent is the controller: requests arrive on its xxxRequested signals, and
-    // replies are sent back through its bare-verb methods.
-    QMdmmNetworking::Agent *botAgent = bot->agent();
-    connect(botAgent, &QMdmmNetworking::Agent::rockPaperScissorsRequested, bot,
-            [botAgent]() { botAgent->rockPaperScissors(static_cast<QMdmmCore::Data::RockPaperScissors>(QRandomGenerator::global()->generate() % 3)); });
-    connect(botAgent, &QMdmmNetworking::Agent::actionOrderRequested, bot, [botAgent](const QList<int> &remainedOrders, int, int selectionNum) {
-        QList<int> ao;
-        ao.reserve(selectionNum);
-        for (int i = 0; i < selectionNum && i < remainedOrders.size(); ++i)
-            ao.append(remainedOrders.at(i));
-        botAgent->actionOrder(ao);
-    });
-    connect(botAgent, &QMdmmNetworking::Agent::actionRequested, bot, [botAgent]() { botAgent->action(QMdmmCore::Data::DoNothing, {}, 0); });
-    connect(botAgent, &QMdmmNetworking::Agent::upgradeRequested, bot, [botAgent](int remainingTimes) {
-        QList<QMdmmCore::Data::UpgradeItem> ups;
-        ups.reserve(remainingTimes);
-        for (int i = 0; i < remainingTimes; ++i)
-            ups.append(QMdmmCore::Data::UpgradeMaxHp);
-        botAgent->upgrade(ups);
-    });
+    QProcess *bot = new QProcess(this);
+    bot->setProgram(m_botProgram);
+    bot->setArguments({u"--host"_s, QString::fromLatin1(LOCAL_SOCKET_NAME), u"--name"_s, name});
+    bot->start();
+    if (!bot->waitForStarted(ProcessStartTimeoutMs)) {
+        setStatusMessage(tr("Failed to start a bot"));
+        delete bot;
+        return;
+    }
 
-    bot->connectToHost(QString::fromLatin1(LOCAL_SOCKET_NAME), QMdmmCore::Data::StateOnlineBot);
     m_bots.append(bot);
 }
 
@@ -433,8 +443,9 @@ void QMdmmGameClient::startLocalGame(const QString &playerName)
     reset();
 
     // A local game runs on a server of its own -- a QMdmmServer process, the same program a
-    // player would start by hand. Asking for a local game is the first moment either program is
+    // player would start by hand. Asking for a local game is the first moment that program is
     // wanted, so it is the first moment a missing one is worth reporting (see setProgramPaths).
+    // A missing bot program is reported at the seat it would fill instead (see addBot).
     if (m_serverProgram.isEmpty()) {
         setStatusMessage(tr("The local server program was not found, so a local game cannot be started"));
         return;
@@ -446,7 +457,7 @@ void QMdmmGameClient::startLocalGame(const QString &playerName)
     m_serverProcess->setProgram(m_serverProgram);
     m_serverProcess->setArguments({u"--players"_s, QString::number(m_playerCount)});
     m_serverProcess->start();
-    if (!m_serverProcess->waitForStarted(ServerStartTimeoutMs)) {
+    if (!m_serverProcess->waitForStarted(ProcessStartTimeoutMs)) {
         setStatusMessage(tr("Failed to start the local server"));
         stopLocalServer();
         return;
@@ -463,12 +474,15 @@ void QMdmmGameClient::startLocalGame(const QString &playerName)
     // the client retries on its own, so the clients may be pointed at the socket right away.
     m_human->connectToHost(QString::fromLatin1(LOCAL_SOCKET_NAME), QMdmmCore::Data::StateOnline);
 
-    for (int i = 1; i < m_playerCount; ++i)
-        addBot(u"Bot %1"_s.arg(i));
-
     emit localNameChanged();
     setGameState(GameState::Lobby);
     setStatusMessage(tr("Connected to local server, waiting for other players..."));
+
+    // Filling a seat can fail on its own, and that failure is the last word on the strip: it is
+    // reported after this point on purpose, so that a seat left empty is not talked over by the
+    // line above.
+    for (int i = 1; i < m_playerCount; ++i)
+        addBot(u"Bot %1"_s.arg(i));
 }
 
 void QMdmmGameClient::connectOnline(const QString &host, const QString &playerName)
