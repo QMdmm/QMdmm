@@ -28,6 +28,28 @@ TestCase {
         verify(game !== null, "GameClient should instantiate");
     }
 
+    function test_aBareNameIsHandedOverAsALocalSocketName() {
+        // The address reaches the client exactly as it was typed: which transport a string names
+        // is the networking layer's call (the scheme whitelist), and a string with no scheme names
+        // a local socket. The bridge must not write a scheme in on the way -- the name below read
+        // as a TCP host is a hostname that does not exist, and the room would never fill.
+        //
+        // The name is the one a local game's server listens on (the configuration defaults), and
+        // that server is left running in the other bridge for the length of this case, so there is
+        // something at the other end of the name rather than only a failure to compare against.
+        var host = createTemporaryObject(gameComponent, testCase, {
+                                             playerCount: 2
+                                         });
+        host.startLocalGame("Host");
+
+        var joiner = createTemporaryObject(gameComponent, testCase, {});
+        joiner.connectOnline("QMdmm", "Joiner");
+
+        tryVerify(function () {
+            return joiner.players.length >= 1;
+        }, 15000);
+    }
+
     function test_aHandedOverPlayerIsNotAskedForTheRequestsAfterIt() {
         // The other half of the hand-over: with the flag on, a request is given up as it arrives
         // and never reaches the view. The action request is the one to watch -- every living

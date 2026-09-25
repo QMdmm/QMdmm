@@ -430,10 +430,11 @@ void QMdmmGameClient::connectOnline(const QString &host, const QString &playerNa
     m_room = m_human->room();
     wireClient(m_human);
 
-    QString addr = host.trimmed();
-    if (!addr.contains(QLatin1String("://")))
-        addr = u"qmdmm://"_s + addr;
-    m_human->connectToHost(addr, QMdmmCore::Data::StateOnline);
+    // The address is handed to the client as it is: which transport it names is the networking
+    // layer's call (SocketP::typeByConnectAddr), and an address with no scheme names a local
+    // socket. Writing a scheme in here would be a second, competing reading of the same string --
+    // and the one that turns a local socket name into a hostname to look up.
+    m_human->connectToHost(host.trimmed(), QMdmmCore::Data::StateOnline);
 
     emit localNameChanged();
     setGameState(GameState::Lobby);
