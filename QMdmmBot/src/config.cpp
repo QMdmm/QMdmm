@@ -31,7 +31,8 @@ Bot:
                                      One of:
                                        knifePreferred      prefer the knife
                                        horsePreferred      prefer the horse
-                                       rl                  reinforcement learning (not implemented)
+                                       rl                  reinforcement learning (not implemented; exits
+                                                           at startup)
 )help"_s;
     return text;
 }

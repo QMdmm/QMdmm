@@ -54,7 +54,7 @@ config-gated (`enableLetMove`).
 | `QMdmmNetworking` | Network layer (server / client / signaling) | Main flow + reconnect work; spectate / lobby missing |
 | `QMdmmServer` | Standalone server program | Runs; full CLI configuration |
 | `QMdmmGui` | Graphical client (QML) | Playable: a local game (a spawned `QMdmmServer` process + `QMdmmBot` processes) or an online one |
-| `QMdmmBot` | Scripted client that plays automatically via a bot strategy | Runs; `knifePreferred` / `horsePreferred` implemented, `rl` not yet |
+| `QMdmmBot` | Scripted client that plays automatically via a bot strategy | Runs; `knifePreferred` / `horsePreferred` implemented, `rl` not implemented (exits at startup) |
 
 In other words: the GUI plays full games now. A local game starts a `QMdmmServer`
 process of its own and joins it over a local socket, and fills the other seats by
