@@ -26,6 +26,11 @@ TestCase {
     function init() {
         game = gameComponent.createObject(testCase);
         verify(game !== null, "GameClient should instantiate");
+        // A fresh bridge knows nothing of the two programs a local game needs until it is told,
+        // exactly as the product tells it at startup (from the paths the command line carries).
+        // Here there is no command line, so the empty pair is handed over -- which is what makes
+        // both programs be looked up next to this test.
+        game.setProgramPaths("", "");
     }
 
     function test_aBareNameIsHandedOverAsALocalSocketName() {
@@ -40,6 +45,9 @@ TestCase {
         var host = createTemporaryObject(gameComponent, testCase, {
                                              playerCount: 2
                                          });
+        // A bridge made here does not go through init(), so it is told the same way -- it has to
+        // find the server program before it can start the game the joiner below connects to.
+        host.setProgramPaths("", "");
         host.startLocalGame("Host");
 
         var joiner = createTemporaryObject(gameComponent, testCase, {});
@@ -87,6 +95,19 @@ TestCase {
         }, 15000);
 
         compare(actionAsked.count, 0);
+    }
+
+    function test_aLocalGameWithNoServerProgramIsReportedAndNotStarted() {
+        // A local game needs the server program, and a bridge that was told about one which is
+        // not there has to say so rather than half start a game whose server never appears. The
+        // bridge stays where it was, which is what makes this the report of a failure to start
+        // rather than of a game that started. Nothing else here looks at the paths, so a bridge
+        // that ignored them for this would start a game and be green.
+        game.setProgramPaths("/nowhere/QMdmmServer6", "/nowhere/QMdmmBot6");
+        game.startLocalGame("Tester");
+
+        compare(game.gameState, "start");
+        verify(game.statusMessage.length > 0, "the failure has to be reported");
     }
 
     function test_agentStatesFollowTheRoom() {

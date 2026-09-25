@@ -41,6 +41,16 @@ public:
 public slots:
     void qmlEngineAvailable(QQmlEngine *engine)
     {
+        // A local game runs on the QMdmmServer program, and a bridge is told where the two
+        // programs it needs are (MainWindow does it from the paths the command line carries).
+        // This fixture has no command line, so it hands over the same empty pair: both are then
+        // looked up next to this test, which is where the build tree keeps them.
+        //
+        // It happens here rather than in the constructor because the setup object is built
+        // before the application is: this is the first point at which "next to this program"
+        // means anything.
+        m_game->setProgramPaths({}, {});
+
         engine->rootContext()->setContextProperty(u"game"_s, m_game);
     }
 

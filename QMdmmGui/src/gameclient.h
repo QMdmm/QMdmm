@@ -5,6 +5,7 @@
 
 #include <QHash>
 #include <QObject>
+#include <QProcess>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
@@ -12,7 +13,6 @@
 #include <QMdmmClient>
 #include <QMdmmPlayer>
 #include <QMdmmRoom>
-#include <QMdmmServer>
 
 QMDMM_EXPORT_NAME(QMdmmGameClient)
 
@@ -128,6 +128,7 @@ private:
     void wireClient(QMdmmNetworking::Client *client);
     void addBot(const QString &name);
     void reset();
+    void stopLocalServer();
     void setGameState(GameState s);
     void setStatusMessage(const QString &msg);
     void setLogicConfiguration(const QMdmmCore::LogicConfiguration &conf);
@@ -137,7 +138,7 @@ private:
     [[nodiscard]] static QString locateProgram(const QString &programName, const QString &explicitPath);
 
     QMdmmNetworking::Client *m_human = nullptr;
-    QMdmmNetworking::Server *m_server = nullptr;
+    QProcess *m_serverProcess = nullptr;
     QList<QMdmmNetworking::Client *> m_bots;
     QMdmmCore::Room *m_room = nullptr;
 
