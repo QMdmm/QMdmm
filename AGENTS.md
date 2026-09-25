@@ -98,6 +98,12 @@ Read these before touching code:
 - User-visible strings must go through i18n: `tr()` in C++ / `qsTr()` in QML,
   with translations in `QMdmmGui/translations/*.ts`. Never hardcode Chinese
   (or any natural-language) strings in code.
+- Command-line strings are the exception: the `--help` output and the option
+  names, value names and descriptions behind it are not translated. The console
+  front ends (`QMdmmServer/src/config.cpp`, `QMdmmBot/src/config.cpp`) and the
+  GUI's own command-line handling (`QMdmmGui/src/main.cpp`) write them as they
+  are, with no `tr()`. The rule above is about what the GUI shows, not about
+  what a program prints to a terminal.
 
 ### Code formatting
 
