@@ -102,6 +102,46 @@ transports, room size and the request timeout under `server`; the game rules
 may move between groups, and a value stored under the old name is then ignored,
 falling back to the default.
 
+## Run bots against a server
+
+`QMdmmBot` is a client with an auto-player on top of it: it connects, takes a
+seat, and answers whatever the server asks it. Start a server with three seats,
+then start one bot per seat:
+
+```sh
+./build/build/bin/QMdmmServer6 -3
+```
+
+```sh
+./build/build/bin/QMdmmBot6 -l qmdmm://127.0.0.1:6366 -n Blade -s knifePreferred
+./build/build/bin/QMdmmBot6 -l qmdmm://127.0.0.1:6366 -n Hoof -s horsePreferred
+./build/build/bin/QMdmmBot6 -l qmdmm://127.0.0.1:6366 -n Spur -s knifePreferred
+```
+
+(`-3` is shorthand for `--players=3`.) The server starts the game as soon as the
+last seat is taken. With no human in the room nothing waits on input, so the
+bots play the game out at once; the room then goes quiet, the server takes the
+next room, and each bot stays in its event loop.
+
+### Addresses
+
+The bot's `-l, --host` takes an address, and what comes before `://` picks the
+transport:
+
+| Address | Transport |
+|---|---|
+| `qmdmm://host:port` | TCP; the port defaults to 6366 |
+| `ws://host:port`, `wss://host:port` | WebSocket (give a port; the server's is 6367) |
+| a bare name, with no `://` in it | local socket, named by the server's `-L, --local-name` (default `QMdmm`) |
+
+The scheme is matched case-insensitively, as URI schemes are (RFC 3986). Any
+other scheme is refused outright rather than guessed at, `qmdmms://` included:
+it would promise TLS over a transport that is still plaintext.
+
+The server listens on TCP, on WebSocket and on the local socket, all three at
+once by default; `--tcp`, `--websocket` and `--local` turn each one on or off.
+The GUI's online mode takes the same kind of address as the bot's `--host`.
+
 ## Run a client (GUI)
 
 ```sh
