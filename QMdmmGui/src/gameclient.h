@@ -78,8 +78,10 @@ public:
     Q_INVOKABLE void speak(const QString &text);
 
     // The managed flag (Data::StateMaskTrust) of the human's own player -- the one piece of an
-    // agent's state that is set from this side rather than only read. A managed player answers
-    // nothing: every request is given up on its behalf (see requestIsForTheHuman).
+    // agent's state that is set from this side rather than only read. A managed player picks
+    // nothing: every request is given up on its behalf and the peer answers with its own default
+    // reply, so the round goes on and the upgrade point still gets spent (see
+    // requestIsForTheHuman).
     Q_INVOKABLE void setManaged(bool managed);
 
     // Helpers for the action / upgrade UI

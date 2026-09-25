@@ -193,11 +193,18 @@ namespace v0 {
  *
  * The flag only travels: the operation side declares it, the server owns it and reports it back
  * (see @c Protocol::NotifyManagedChanged). What being managed means below the wire is a
- * client-side decision: a client that manages its player gives up on that player's requests --
- * answering them with an empty reply instead of asking -- so the server replies with the same
- * default a timeout gets. The managed player stays connected while that happens, and its default
- * replies are broadcast like anyone else's. A reconnecting player must NOT be re-trusted by
- * default.
+ * client-side decision: a client that manages its player gives up on that player's requests
+ * instead of asking -- answering each with the protocol's give-up marker, a null reply value --
+ * so the server answers each one with the default reply it keeps for that kind of request (see
+ * @c Protocol::RequestId). The managed player stays connected while that happens, and those
+ * default replies are broadcast like anyone else's.
+ *
+ * Entrusting a player therefore changes who chooses, not whether anything happens. The upgrade
+ * point is the clearest case: the default reply there is an empty list, which the logic replaces
+ * with a fallback of its own (@c Logic::upgradeReply) that spends every point, knife damage
+ * first. A managed player goes through the upgrade phase and spends its points like anyone else.
+ *
+ * A reconnecting player must NOT be re-trusted by default.
  */
 
 /**

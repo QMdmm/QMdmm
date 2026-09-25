@@ -520,8 +520,12 @@ bool QMdmmGameClient::requestIsForTheHuman()
     // A managed (entrusted) player does not answer for itself: the request is given up on its
     // behalf, and the server answers it with the same default reply a timeout gets, so the match
     // keeps moving with nobody at this keyboard. The player still stays connected, and what comes
-    // back -- the throw, the action, the upgrades the default reply picked -- is broadcast and
-    // shown like anyone else's. Only the asking stops.
+    // back -- a random throw, DoNothing, the first of the offered action orders -- is broadcast
+    // and shown like anyone else's. Only the asking stops.
+    //
+    // The upgrade point is spent all the same: the default reply there is an empty list, which
+    // the logic replaces with its own fallback (D-036) -- every point spent, knife damage first.
+    // Entrusting a player hands the choices over; it does not park the player for the round.
     //
     // Taken from the agent's own flag rather than waiting for the server's broadcast of it: the
     // declaration is what the player asked for, and a request that arrives before the broadcast
