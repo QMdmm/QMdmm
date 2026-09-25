@@ -374,6 +374,21 @@ void QMdmmGameClient::wireClient(QMdmmNetworking::Client *client)
         m_chat.append(entry);
         emit chatLogChanged();
     });
+    // The transport's own account of a connection that was lost or refused, reported as soon as
+    // it is known: this is where the real reason ("Connection refused" and the like) arrives,
+    // while the give-up notice below only lands once the automatic reconnect has spent its
+    // retries -- and says the same generic thing whatever went wrong, so without this the user
+    // waits out the whole retry chain to be told nothing about the cause.
+    //
+    // Not while this bridge is running a server of its own. A local game points its client at the
+    // socket in the same breath as spawning the server, so the first attempt is refused there by
+    // design and the client retries on its own (see startLocalGame): a reason shown then would be
+    // an error on the screen of a game that is starting up normally. A local game whose server
+    // never comes up is still covered, by the give-up notice below.
+    connect(client, &QMdmmNetworking::Client::socketConnectionLost, this, [this](const QString &errorString) {
+        if (m_serverProcess == nullptr)
+            emit errorOccurred(errorString);
+    });
     connect(client, &QMdmmNetworking::Client::socketErrorDisconnected, this, [this](const QString &errorString) {
         setStatusMessage(errorString);
         emit errorOccurred(errorString);

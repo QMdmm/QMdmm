@@ -97,6 +97,26 @@ TestCase {
         compare(actionAsked.count, 0);
     }
 
+    function test_aLocalGameStartingUpIsNotReportedAsAnError() {
+        // A local game points its client at the socket in the same breath as spawning the server,
+        // so the first attempt is refused and the client retries on its own (see startLocalGame).
+        // That refusal is part of coming up rather than a failure to act on: reported as an error,
+        // it would sit on the strip as a red reason through a game that is running perfectly well.
+        var errors = createTemporaryObject(signalSpyComponent, testCase, {
+                                               target: game,
+                                               signalName: "errorOccurred"
+                                           });
+
+        game.playerCount = 2;
+        game.startLocalGame("Tester");
+
+        tryCompare(game, "gameState", "playing", 15000);
+        // The refused attempt lands long before the match starts, so by here it would have been
+        // reported -- while the game the user is looking at is fine.
+        compare(errors.count, 0);
+        compare(game.players.length, 2);
+    }
+
     function test_aLocalGameWithNoServerProgramIsReportedAndNotStarted() {
         // A local game needs the server program, and a bridge that was told about one which is
         // not there has to say so rather than half start a game whose server never appears. The
