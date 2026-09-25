@@ -53,14 +53,14 @@ config-gated (`enableLetMove`).
 | `QMdmmCore` | Game rules engine (players / rooms / round state machine / config) | Usable, tested |
 | `QMdmmNetworking` | Network layer (server / client / signaling) | Main flow + reconnect work; spectate / lobby missing |
 | `QMdmmServer` | Standalone server program | Runs; full CLI configuration |
-| `QMdmmGui` | Graphical client (QML) | Playable: a local game (in-process server + bots) or an online one |
+| `QMdmmGui` | Graphical client (QML) | Playable: a local game (a spawned `QMdmmServer` process + in-process bots) or an online one |
 | `QMdmmBot` | Scripted client that plays automatically via a bot strategy | Runs; `knifePreferred` / `horsePreferred` implemented, `rl` not yet |
 
-In other words: the GUI plays full games now. A local game brings up a server
-and a few auto-replying bots inside its own process and joins them over loopback
-TCP; an online game connects to a running `QMdmmServer` over TCP or WebSocket.
-Still in progress: running that local server and those bots as separate
-`QMdmmServer` / `QMdmmBot` processes.
+In other words: the GUI plays full games now. A local game starts a `QMdmmServer`
+process of its own and joins it over a local socket, with a few auto-replying
+bots for the other seats still inside the GUI's own process; an online game
+connects to a running `QMdmmServer` over TCP or WebSocket. Still in progress:
+running those bots as separate `QMdmmBot` processes.
 
 ## Documentation
 

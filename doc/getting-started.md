@@ -2,8 +2,7 @@
 
 Build QMdmm and run a complete game end-to-end. The GUI plays full games too;
 the "play a game" section below uses the headless smoke test (bots) because it
-needs no display, and it runs the same in-process server + clients the GUI's
-local-game mode is built on.
+needs no display, and that test brings up its own in-process server + clients.
 
 ## Prerequisites
 
@@ -109,11 +108,11 @@ falling back to the default.
 ./build/build/bin/QMdmm6
 ```
 
-The start menu's "Start game" screen plays a full match: a local game brings up
-a server and a few auto-replying bots inside the GUI's own process, and an
-online game connects to a running `QMdmmServer`. What is still in progress is
-running that local server and those bots as separate `QMdmmServer` / `QMdmmBot`
-processes.
+The start menu's "Start game" screen plays a full match: a local game starts a
+`QMdmmServer` process of its own and connects to it over a local socket, filling
+the other seats with auto-replying bots that still live inside the GUI's own
+process; an online game connects to a running `QMdmmServer`. What is still in
+progress is running those bots as separate `QMdmmBot` processes.
 
 ## Play a headless game (bots)
 
