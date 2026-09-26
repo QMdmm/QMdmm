@@ -128,6 +128,11 @@ struct InitializeQSettings
 {
     InitializeQSettings()
     {
+        // A QSettings constructor that takes a Scope always goes to the native format -- the
+        // call below does not reach it, and the format is what decides where a file lives. So
+        // the two instances built in SettingsP name IniFormat explicitly: without that, both
+        // paths set here are never used and the per-user configuration lands in the native
+        // store instead (on macOS a plist under ~/Library/Preferences).
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, u"" QMDMM_CONFIGURATION_PREFIX ""_s);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, QDir::home().absoluteFilePath(u".QMdmm"_s));
@@ -144,8 +149,10 @@ SettingsP::SettingsP()
 {
     static InitializeQSettings initializeQSettings;
 
-    globalConfig = std::make_unique<SettingsWrapperP_QSettings>(QSettings::SystemScope, u"Fsu0413.me"_s, u"QMdmm"_s);
-    userConfig = std::make_unique<SettingsWrapperP_QSettings>(QSettings::UserScope, u"Fsu0413.me"_s, u"QMdmm"_s);
+    // The format is named on purpose: it, not setDefaultFormat(), is what routes these two
+    // through the paths InitializeQSettings sets.
+    globalConfig = std::make_unique<SettingsWrapperP_QSettings>(QSettings::IniFormat, QSettings::SystemScope, u"Fsu0413.me"_s, u"QMdmm"_s);
+    userConfig = std::make_unique<SettingsWrapperP_QSettings>(QSettings::IniFormat, QSettings::UserScope, u"Fsu0413.me"_s, u"QMdmm"_s);
     specifiedConfig = std::make_unique<SettingsWrapperP_QVariantMap>();
 }
 
@@ -186,6 +193,12 @@ QSettings::Status SettingsP::saveConfig(Settings::Instance instance)
 
     foreach (const QString &key, specifiedConfig->map.keys())
         toBeSaved->setValue(key, specifiedConfig->value(key, {}));
+
+    // A file backend writes on sync, not on setValue; until then status() reports NoError
+    // just as well. The one caller saves right before exiting with the returned status, and
+    // std::exit() runs no destructor -- without this sync the configuration would be
+    // silently dropped while the run still looks like a successful save.
+    toBeSaved->sync();
 
     return toBeSaved->status();
 }
