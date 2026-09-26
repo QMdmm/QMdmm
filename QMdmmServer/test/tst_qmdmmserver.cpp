@@ -24,9 +24,10 @@ struct RunResult
 // Runs the executable under test with @p arguments and collects what it printed.
 //
 // The runs made here all finish on their own: --help and --show-current-configuration
-// print and exit, and a value the configuration code rejects goes through
-// configError(), which writes the reason to stderr and exits 3. None of them
-// starts a server, so a run that outlives the timeout means the executable
+// print and exit, and everything the configuration code rejects -- a value out of
+// range, a value that cannot be parsed, an option pair that cannot both be meant --
+// goes through configError(), which writes the reason to stderr and exits 3. None of
+// them starts a server, so a run that outlives the timeout means the executable
 // stopped exiting where it is expected to -- abort rather than report a
 // half-collected result.
 RunResult runServer(const QStringList &arguments, int timeoutMs = 60000)
@@ -59,6 +60,7 @@ class tst_QMdmmServer : public QObject
 
 private slots:
     void help_printsTheUsageAndExitsZero();
+    void savingToBothInstances_isRejected();
     void v1Presets_reachThePrintedConfiguration();
     void outOfRangeValue_isRejected();
     void crossedPairs_areRejected_data();
@@ -80,6 +82,22 @@ void tst_QMdmmServer::help_printsTheUsageAndExitsZero()
     // The usage text is the point of the option, so check that it carries the
     // options too rather than stopping after the first line.
     QVERIFY(result.standardOutput.contains(u"--save-configuration"_s));
+}
+
+// -c and -C name two different destinations for one run's worth of configuration,
+// and they are not interchangeable: the two files sit under different prefixes, only
+// one of them normally needs elevated rights to write, and a later run reads the
+// per-user one before the global one. A run that asks to save both is therefore a
+// usage error rather than a case where one of them quietly wins -- picking either
+// would write where the user did not ask.
+void tst_QMdmmServer::savingToBothInstances_isRejected()
+{
+    const RunResult result = runServer({u"-c"_s, u"-C"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+
+    QVERIFY(result.standardError.contains(u"save both per-user configuration and global configuration"_s));
 }
 
 // -1 selects the v1 presets. Their maximum-maxhp is 7, exactly the floor the
