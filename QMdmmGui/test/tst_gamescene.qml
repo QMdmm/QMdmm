@@ -14,12 +14,11 @@ import QtTest 1.2
 // orders come from, which turn is being acted on) and none of that is visible
 // unless the overlay says it. The rules strip is guarded here for the same
 // reason: the logic configuration is broadcast once and nothing else on screen
-// would show what the match is played under. The agent-state lookup is guarded
-// here too: the scene is what picks each player's entry out of the broadcast
-// map, and the card that renders it is guarded in tst_playercard. What is NOT
-// covered is the two wired together -- a scene holding a live room cannot be
-// torn down yet (see the log for 2026-09-20), so no case plays that last step
-// through.
+// would show what the match is played under. The agent-state chain is guarded
+// here end to end: the scene is what picks each player's entry out of the
+// broadcast map, the card that renders it is guarded in tst_playercard, and the
+// case that plays a local game through the scene is what pins the two together
+// -- the cards a live room builds have to read their state off that map.
 //
 // Like tst_scene.qml, the scene is loaded from the source tree (the QMdmm.Gui
 // module resource lives in the QMdmm6 executable, which this test does not
@@ -135,6 +134,31 @@ TestCase {
 
         compare(scene.agentStateOf("p1"), 0x18);
         compare(scene.agentStateOf("p2"), 0);
+    }
+
+    function test_eachCardTakesItsStateOffTheMap() {
+        // The last step of the chain, and the one nothing else in the suite reaches: the scene
+        // builds the cards out of the room mirror and hands each one its entry. A card wired to a
+        // fixed state instead of the lookup reads as offline -- or as anybody's state -- and no
+        // other case would notice, because no other case plays a room through a scene.
+        const scene = makeScene();
+
+        game.playerCount = 2;
+        game.startLocalGame("Tester");
+        tryVerify(function () {
+            return hasText(scene, "Online, Bot") && hasText(scene, "Online") && !hasText(scene, "Offline");
+        }, 15000);
+
+        verify(!hasText(scene, "Offline"), "no card may read offline while every entry is in the map");
+
+        // The cards have to be gone before the room is: each one holds a player the room owns, and
+        // a room that dies under them takes the process down with it. destroy() defers the
+        // deletion, so the wait is what actually lands it -- disconnecting before that is the
+        // crash. The framework then finds nothing left to destroy, which it handles: it skips
+        // objects that are already gone.
+        scene.destroy();
+        wait(200);
+        game.disconnectAll();
     }
 
     function test_gameStartIsLogged() {
