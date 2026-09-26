@@ -102,6 +102,31 @@ transports, room size and the request timeout under `server`; the game rules
 may move between groups, and a value stored under the old name is then ignored,
 falling back to the default.
 
+### Where the settings are stored
+
+Both stores are INI files carrying the same file name:
+
+| Store | File |
+|---|---|
+| per-user | `$HOME/.QMdmm/Fsu0413.me/QMdmm.ini` |
+| system-global | `<configuration prefix>/Fsu0413.me/QMdmm.ini` |
+
+The configuration prefix is fixed when the project is configured: `/etc/QMdmm`
+when the install prefix is `/usr` or `/`, and `<install prefix>/etc/QMdmm`
+otherwise, so a default build with prefix `/usr/local` writes to
+`/usr/local/etc/QMdmm`.
+
+A value is looked up in three places, in order: the value given on the command
+line, then the per-user file, then the system-global file. The first place that
+holds the key wins, so a per-user value overrides a system-global one.
+
+`-c, --save-configuration` writes the per-user file and `-C,
+--save-global-configuration` the system-global one; the run then exits with the
+`QSettings::Status` of the save as its exit code, so 0 means it went through.
+The system-global file usually sits in a root-owned directory, and the per-user
+file overrides it anyway - when the target cannot be written the server says so
+on stderr and exits non-zero rather than quietly storing the values elsewhere.
+
 ## Run bots against a server
 
 `QMdmmBot` is a client with an auto-player on top of it: it connects, takes a
