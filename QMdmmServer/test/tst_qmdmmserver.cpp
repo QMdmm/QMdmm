@@ -61,7 +61,8 @@ private slots:
     void help_printsTheUsageAndExitsZero();
     void v1Presets_reachThePrintedConfiguration();
     void outOfRangeValue_isRejected();
-    void crossedPair_isRejected();
+    void crossedPairs_areRejected_data();
+    void crossedPairs_areRejected();
     void unknownPunishHpRoundStrategy_isRejected();
 };
 
@@ -117,14 +118,31 @@ void tst_QMdmmServer::outOfRangeValue_isRejected()
 // maximum-maxhp, yet an attribute cannot grow from 15 to 7. Left unrejected this
 // pair leaves the attribute with no room to grow at all, which Room::isGameOver()
 // reads as "this player is the winner".
-void tst_QMdmmServer::crossedPair_isRejected()
+//
+// One row per pair the check walks. It is a loop over an array, so a row dropped
+// from that array puts the self-inflicting configuration back; with a case on every
+// pair, that turns this suite red instead of leaving it green.
+void tst_QMdmmServer::crossedPairs_areRejected_data()
 {
-    const RunResult result = runServer({u"-m"_s, u"15"_s, u"-M"_s, u"7"_s});
+    QTest::addColumn<QStringList>("arguments");
+    QTest::addColumn<QString>("message");
+
+    QTest::newRow("slash") << QStringList {u"-s"_s, u"15"_s, u"-S"_s, u"7"_s} << u"slash must not exceed maximum-slash"_s;
+    QTest::newRow("kick") << QStringList {u"-k"_s, u"12"_s, u"-K"_s, u"5"_s} << u"kick must not exceed maximum-kick"_s;
+    QTest::newRow("maxhp") << QStringList {u"-m"_s, u"15"_s, u"-M"_s, u"7"_s} << u"maxhp must not exceed maximum-maxhp"_s;
+}
+
+void tst_QMdmmServer::crossedPairs_areRejected()
+{
+    QFETCH(QStringList, arguments);
+    QFETCH(QString, message);
+
+    const RunResult result = runServer(arguments);
 
     QVERIFY(result.exitStatus == QProcess::NormalExit);
     QCOMPARE(result.exitCode, 3);
 
-    QVERIFY(result.standardError.contains(u"maxhp must not exceed maximum-maxhp"_s));
+    QVERIFY(result.standardError.contains(message));
 }
 
 // An unknown --punish-hp-round-strategy is a typo, not a value to fall back on,
