@@ -101,6 +101,8 @@ jobs:
           #
           # sudo does not always carry PATH over, so resolve ctest here.
           sudo "$(command -v ctest)" --test-dir build -R 'tst_qmdmmsettings' -V > "${RUNNER_TEMP}/system-scope.log" 2>&1
+          # chown every possible file the above command possibly created, back to the runner user
+          sudo chown -R "$(id -nu):$(id -ng)" build
           cat "${RUNNER_TEMP}/system-scope.log"
 
       - name: Check that the system-wide configuration case ran
@@ -112,47 +114,12 @@ jobs:
             exit 1
           fi
 
-  coverage:
-    name: Code coverage (gcovr)
-    runs-on: ubuntu-26.04
-    if: github.event_name != 'pull_request'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          path: QMdmm
-
-      - name: Set timezone (Linux)
+      - name: generate coverage
+        if: ${{ github.event_name != 'pull_request' && matrix.build_type == 'Debug' && matrix.os == 'ubuntu-26.04' }}
+        env:
+          COVERAGE_TOKEN: ${{ secrets.QMDMM_DOCS_TOKEN }}
         run: |
-          sudo ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
-          date
-
-      - name: Install Qt (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            qt6-base-dev qt6-websockets-dev qt6-declarative-dev qt6-tools-dev
-
-      - name: Install gcovr
-        run: pip3 install gcovr
-
-      - name: Configure
-        run: >
-          cmake -B build -S QMdmm -G "Unix Makefiles"
-          -DCMAKE_BUILD_TYPE=Debug
-          -DBUILD_TESTING=ON
-          -DQMDMM_EXPORT_PRIVATE=NO
-          -DCMAKE_C_FLAGS="--coverage"
-          -DCMAKE_CXX_FLAGS="--coverage"
-
-      - name: Build
-        run: cmake --build build --parallel
-
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
-
-      - name: Generate coverage report
-        run: |
+          pip3 install gcovr
           mkdir -p build/coverage
           gcovr --root . \
             --filter 'QMdmm/QMdmmCore/src/' \
@@ -163,9 +130,7 @@ jobs:
             --html-details build/coverage/index.html \
             --print-summary > build/coverage-summary.txt 2>&1
           cat build/coverage-summary.txt
-
-      - name: Check the coverage report is not empty
-        run: |
+          #
           # gcovr resolves --filter against the working directory, so a change of
           # layout can make every filter miss. It then only warns and still exits
           # 0, and this job publishes whatever it gets -- on 2026-09-22 the report
@@ -176,11 +141,6 @@ jobs:
             exit 1
           fi
           grep '^lines: ' build/coverage-summary.txt
-
-      - name: Publish to qmdmm-coverage
-        env:
-          COVERAGE_TOKEN: ${{ secrets.QMDMM_DOCS_TOKEN }}
-        run: |
           git config --global user.name "`git -C QMdmm log -1 "--pretty=format:%an"`"
           git config --global user.email "`git -C QMdmm log -1 "--pretty=format:%ae"`"
           cd build/coverage
