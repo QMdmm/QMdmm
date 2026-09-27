@@ -178,6 +178,36 @@ The start menu's "Start game" screen plays a full match: a local game starts a
 the other seats with `QMdmmBot` processes; an online game connects to a running
 `QMdmmServer`.
 
+### The programs a local game runs
+
+A local game runs the two command-line programs, and `--server <path>` and
+`--bot <path>` say which to run. They are the only options the client takes
+besides `--help`:
+
+```sh
+./build/build/bin/QMdmm6 --server /path/to/QMdmmServer6 --bot /path/to/QMdmmBot6
+```
+
+A path given this way is used as it is. Left out, each program is looked for by
+name - `QMdmmServer6` and `QMdmmBot6` - first next to the client program, then
+three levels above it, which is where a build tree keeps them when the client
+runs from inside the bundle. Each name is tried with the suffix the platform
+runs and taken only if it is executable. Both installed layouts keep the three
+programs together: the bundle carries them side by side in `Contents/MacOS/`,
+and the plain shape puts all three in `<prefix>/bin/`.
+
+Neither a path that leads nowhere nor a name that was not found is an error at
+startup: nothing needs either program until a local game is asked for, and
+asking for one is what reports it - "The local server program was not found, so
+a local game cannot be started" when the game is started, "The bot program was
+not found, so the seat cannot be filled" at the seat left empty. Both lines name
+the program that was wanted, and the two options above are how to point at a
+different one.
+
+The server a local game runs is given the room size and otherwise its own
+defaults, so it listens on the default local socket name `QMdmm` (`-L,
+--local-name`); that is the name the client and the bots reach it by.
+
 ## Play a headless game (bots)
 
 The smoke test spins up an in-process server plus two auto-driven clients and
