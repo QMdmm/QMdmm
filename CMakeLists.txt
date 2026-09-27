@@ -70,12 +70,7 @@ option(QMDMM_EXPORT_PRIVATE "Export private symbols, copy headers of private cla
 # machine - the shape a distribution package or a Homebrew bottle is built out
 # of.  This switch is read on macOS and nowhere else; the other platforms have
 # the plain layout by construction.
-if (APPLE)
-    set(QMDMM_MACOS_APP_BUNDLE_DEFAULT true)
-else()
-    set(QMDMM_MACOS_APP_BUNDLE_DEFAULT false)
-endif()
-option(QMDMM_MACOS_APP_BUNDLE "Install the GUI as a self-contained application bundle on macOS" ${QMDMM_MACOS_APP_BUNDLE_DEFAULT})
+option(QMDMM_MACOS_APP_BUNDLE "Install the GUI as a self-contained application bundle on macOS" false)
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED true)

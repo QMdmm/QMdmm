@@ -23,14 +23,28 @@ Binaries land in `build/build/bin/`.
 ## Install (macOS)
 
 Installing is `cmake --install`, and on macOS it comes in two shapes, selected
-by `QMDMM_MACOS_APP_BUNDLE` (default `ON` on macOS; the other platforms always
-install in the plain shape).
+by `QMDMM_MACOS_APP_BUNDLE` (off by default, so a plain `cmake --install` gives
+the plain shape below; the other platforms only have that one).
 
-### Self-contained bundle (default)
+### Plain prefix layout (default)
 
-The GUI is installed as `QMdmm6.app` at the top of the prefix, and it carries
-what it needs: the Qt libraries, the QML modules, the platform plugins, and the
-`QMdmmServer6` / `QMdmmBot6` programs it starts as child processes.
+The three programs are installed as siblings in `<prefix>/bin/`, with Qt
+expected on the machine. No Qt content is copied, so a Qt from a package
+manager - Homebrew included - is fine here. This is the shape a distribution
+package or a bottle is built from.
+
+An official Qt archive works here as well - the programs then reach its
+libraries through the rpath the build records - but that install is not
+distributable: it still needs that Qt to be on the machine. The bundle below is
+the shape a release is made of, and it cannot be built against a package
+manager's Qt at all, which is why it is not the default.
+
+### Self-contained bundle
+
+Configure with `-DQMDMM_MACOS_APP_BUNDLE=ON`. The GUI is then installed as
+`QMdmm6.app` at the top of the prefix, and it carries what it needs: the Qt
+libraries, the QML modules, the platform plugins, and the `QMdmmServer6` /
+`QMdmmBot6` programs it starts as child processes.
 
 That step deploys Qt into the bundle, so it wants an official Qt archive rather
 than a package manager's build of Qt:
@@ -44,6 +58,7 @@ Then point the build at it:
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DQMDMM_MACOS_APP_BUNDLE=ON \
     -DCMAKE_PREFIX_PATH="$HOME/Qt/<qt-version>/macos" \
     -DCMAKE_IGNORE_PREFIX_PATH=/opt/homebrew
 cmake --build build
@@ -59,17 +74,10 @@ Homebrew's Qt does not work for this shape: its QML plugins are symlinks into
 the Homebrew cellar, and copying those into the bundle leaves them dangling, so
 the installed `.app` does not start.
 
-### Plain prefix layout
-
-Configure with `-DQMDMM_MACOS_APP_BUNDLE=OFF` and the three programs are
-installed as siblings in `<prefix>/bin/` instead, with Qt expected on the
-machine. No Qt content is copied, so a Qt from a package manager - Homebrew
-included - is fine here. This is the shape a distribution package or a bottle
-is built from.
-
 ### Disk image
 
-The bundle shape also produces a disk image:
+The bundle shape also produces a disk image (it is configured only when
+`QMDMM_MACOS_APP_BUNDLE` is on):
 
 ```sh
 cpack --config build/CPackConfig.cmake -G DragNDrop
