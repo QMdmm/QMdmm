@@ -6,6 +6,8 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QScopeGuard>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
@@ -28,6 +30,7 @@ private slots:
     void initTestCase();
 
     void perUserConfigurationIsAnIniFileUnderTheHomeDirectory();
+    void globalConfigurationIsAnIniFileUnderSystemDirectory();
 
 private:
     QTemporaryDir home;
@@ -58,6 +61,67 @@ void tst_QMdmmSettings::perUserConfigurationIsAnIniFileUnderTheHomeDirectory()
     // process' HOME, so a regression to the native store leaves no trace under the temporary
     // home at all -- a negative assertion about it would hold no matter what the code does.
     const QString iniFile = home.filePath(u".QMdmm/Fsu0413.me/QMdmm.ini"_s);
+    QVERIFY(QFile::exists(iniFile));
+    QCOMPARE(QSettings(iniFile, QSettings::IniFormat).value(u"logic/slash"_s).toInt(), 3);
+}
+
+// The other half of the pair: the global instance goes through the system scope, whose
+// directory the build fixes at configure time (the install prefix's sysconfdir) and no case
+// can redirect. So this one can only say something on a machine where that directory can be
+// created and written, and it skips -- rather than fails -- where it cannot: an installed
+// /usr prefix is the ordinary case and there is nothing to assert on it.
+void tst_QMdmmSettings::globalConfigurationIsAnIniFileUnderSystemDirectory()
+{
+    QDir prefix(QString::fromLatin1(QMDMM_CONFIGURATION_PREFIX));
+
+    if (!prefix.mkpath(u"."_s))
+        QSKIP("the system configuration directory cannot be created here");
+
+    if (!QFileInfo(prefix.absolutePath()).isWritable())
+        QSKIP("the system configuration directory is not writable here");
+
+    // The file name QSettings derives from that directory for the system scope: the same
+    // organization and application the per-user case above pins, under the configured
+    // directory instead of the home.
+    const QString iniFile = prefix.absoluteFilePath(u"Fsu0413.me/QMdmm.ini"_s);
+
+    // This is a directory on the machine rather than a temporary one, so what was in the
+    // file is put back however this case ends -- including when an assertion below fails
+    // and returns early. A value left behind would be read by every later run of the server
+    // on this machine.
+    QFile existing(iniFile);
+    const bool hadFile = existing.exists();
+    QByteArray previous;
+    if (hadFile) {
+        QVERIFY(existing.open(QIODevice::ReadOnly));
+        previous = existing.readAll();
+        existing.close();
+    }
+    const auto putBack [[maybe_unused]] = qScopeGuard([iniFile, hadFile, previous] {
+        if (!hadFile) {
+            QFile::remove(iniFile);
+            return;
+        }
+
+        QFile file(iniFile);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            file.write(previous);
+    });
+
+    {
+        // The keys are arbitrary: this case is about where the configuration file goes, not
+        // about what the game puts in it.
+        Settings settings;
+        settings.beginGroup(u"logic"_s);
+        settings.setValue(u"slash"_s, 3);
+        settings.endGroup();
+        QCOMPARE(static_cast<int>(settings.saveConfig(Settings::Global)), static_cast<int>(QSettings::NoError));
+    }
+
+    // Asserting this file name is what ties the two halves of the case together: that the
+    // global instance is written as an INI file at all -- a regression to the native store
+    // would leave this file unwritten and put the value in the platform's own preferences
+    // instead -- and that it goes into the directory the build configured.
     QVERIFY(QFile::exists(iniFile));
     QCOMPARE(QSettings(iniFile, QSettings::IniFormat).value(u"logic/slash"_s).toInt(), 3);
 }
