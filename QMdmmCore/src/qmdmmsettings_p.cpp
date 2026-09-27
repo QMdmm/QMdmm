@@ -195,9 +195,11 @@ QSettings::Status SettingsP::saveConfig(Settings::Instance instance)
         toBeSaved->setValue(key, specifiedConfig->value(key, {}));
 
     // A file backend writes on sync, not on setValue; until then status() reports NoError
-    // just as well. The one caller saves right before exiting with the returned status, and
-    // std::exit() runs no destructor -- without this sync the configuration would be
-    // silently dropped while the run still looks like a successful save.
+    // just as well. What this call buys is the truth about the write, not the write itself:
+    // the object saved into here is a Q_GLOBAL_STATIC, so std::exit() does reach it and its
+    // destruction would put the file on disk -- measured, removing this sync() still leaves
+    // the file behind. What would not happen is the error: until the write is attempted an
+    // unwritable target is reported as saved, and the caller exits 0 on that status.
     toBeSaved->sync();
 
     return toBeSaved->status();
