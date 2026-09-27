@@ -89,6 +89,29 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+      - name: Test the system-wide configuration path (as root)
+        run: |
+          # The system scope of QSettings resolves under the install prefix's sysconfdir,
+          # and with the default prefix that is /usr/local/etc/QMdmm: root-owned, so the
+          # case skips under the ordinary user above. ctest reports a skip as "Passed"
+          # just as it does a pass, and --output-on-failure keeps a passing test's
+          # output, so this log has read green for a case that never ran. Run the one
+          # test that needs root and keep its output, which is where a skip shows up;
+          # every other test still runs as the ordinary user.
+          #
+          # sudo does not always carry PATH over, so resolve ctest here.
+          sudo "$(command -v ctest)" --test-dir build -R 'tst_qmdmmsettings' -V > "${RUNNER_TEMP}/system-scope.log" 2>&1
+          cat "${RUNNER_TEMP}/system-scope.log"
+
+      - name: Check that the system-wide configuration case ran
+        run: |
+          # Ask for the case's PASS line rather than for the absence of a failure: a skip
+          # is not a failure, so the latter would answer this the wrong way.
+          if ! grep -q 'PASS   : tst_QMdmmSettings::globalConfigurationIsAnIniFileUnderSystemDirectory' "${RUNNER_TEMP}/system-scope.log"; then
+            echo "::error::the system-wide configuration case did not run as root"
+            exit 1
+          fi
+
   coverage:
     name: Code coverage (gcovr)
     runs-on: ubuntu-26.04
