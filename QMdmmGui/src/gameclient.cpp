@@ -595,9 +595,13 @@ void QMdmmGameClient::speak(const QString &text)
 
 void QMdmmGameClient::setManaged(bool managed)
 {
-    // Declared, not flipped: the server owns the agent state, applies the flag and broadcasts the
-    // result back, and that broadcast is what the player cards redraw from (see
-    // Agent::setManaged). Nothing to declare while there is no client.
+    // Flipped first and declared with it: the agent's own flag goes on right away (see
+    // Agent::setManaged), so the requests that follow are answered for without waiting for the
+    // server to say the same thing back -- which is exactly what requestIsForTheHuman reads. The
+    // server owns the state all the same: it applies the flag and broadcasts its own view, and
+    // that broadcast is what this bridge's map -- and so the player cards -- follows, which is how
+    // a flag the server turns back off ends up off here too. Nothing to flip while there is no
+    // client.
     if (m_human == nullptr)
         return;
 
