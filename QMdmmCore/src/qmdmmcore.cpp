@@ -319,7 +319,7 @@ QVersionNumber Global::version()
 
 /**
  * @var QMdmmCore::Utilities::dependentFalse
- * @brief a workaround helper class for CWG2518
+ * @brief a workaround helper variable for CWG2518, dependent on its template arguments
  *
  * @sa @c QMdmmCore::Utilities::DependentFalse
  */
