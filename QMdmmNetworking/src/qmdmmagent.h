@@ -49,8 +49,10 @@ public:
     void setState(const QMdmmCore::Data::AgentState &state);
 
     // The managed flag (StateMaskTrust) is read out of `state` rather than being a property of its
-    // own: it has no NOTIFY of its own to give, and the operation side *declares* it on the wire
-    // instead of setting it locally, so it cannot be described by a plain change signal.
+    // own: it has no NOTIFY of its own to give, and it moves as part of the state on both sides --
+    // set here the moment the operation side declares it, and set from the wire again when the
+    // server's own state arrives (see setManaged) -- so it cannot be described by a plain change
+    // signal.
     [[nodiscard]] bool managed() const;
     void setManaged(bool managed);
 
