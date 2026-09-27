@@ -354,7 +354,7 @@ inline QString punishHpRoundStrategyToString(QMdmmCore::LogicConfiguration::Puni
 void Config::read_(QMdmmCore::Settings *setting, QCommandLineParser *parser)
 {
     // NOLINTBEGIN(cppcoreguidelines-avoid-do-while,cppcoreguidelines-macro-usage)
-#define CONFIG_ITEM(type, conf, settingName, parserConvert, ValueName)                          \
+#define CONFIG_ITEM(type, conf, settingName, parserConvert, ValueName, isLogic)                 \
     do {                                                                                        \
         QString s;                                                                              \
         int f = 0;                                                                              \
@@ -362,8 +362,10 @@ void Config::read_(QMdmmCore::Settings *setting, QCommandLineParser *parser)
             f = 1;                                                                              \
             s = parser->value(u"" settingName ""_s);                                            \
         } else if (setting->contains(u"" settingName ""_s)) {                                   \
-            f = 2;                                                                              \
-            s = setting->value(u"" settingName ""_s).toString();                                \
+            if (!((isLogic) && v1set)) {                                                        \
+                f = 2;                                                                          \
+                s = setting->value(u"" settingName ""_s).toString();                            \
+            }                                                                                   \
         }                                                                                       \
         if (f != 0) {                                                                           \
             std::optional<type> v = parserConvert(s);                                           \
@@ -382,16 +384,21 @@ void Config::read_(QMdmmCore::Settings *setting, QCommandLineParser *parser)
         }                                                                                       \
     } while (false)
 
+    const bool v1set = parser->isSet(u"1"_s);
+
+    if (v1set)
+        logicConfiguration_ = QMdmmCore::LogicConfiguration::v1();
+
     setting->beginGroup(u"server"_s);
 
-    CONFIG_ITEM(bool, serverConfiguration_, "tcp", stringToBool, TcpEnabled);
-    CONFIG_ITEM(uint16_t, serverConfiguration_, "tcp-port", stringToUint16, TcpPort);
-    CONFIG_ITEM(bool, serverConfiguration_, "local", stringToBool, LocalEnabled);
-    CONFIG_ITEM(QString, serverConfiguration_, "local-name", , LocalSocketName);
-    CONFIG_ITEM(bool, serverConfiguration_, "websocket", stringToBool, WebsocketEnabled);
-    CONFIG_ITEM(QString, serverConfiguration_, "websocket-name", , WebsocketName);
-    CONFIG_ITEM(uint16_t, serverConfiguration_, "websocket-port", stringToUint16, WebsocketPort);
-    CONFIG_ITEM(int, serverConfiguration_, "timeout", stringToInt, RequestTimeout);
+    CONFIG_ITEM(bool, serverConfiguration_, "tcp", stringToBool, TcpEnabled, false);
+    CONFIG_ITEM(uint16_t, serverConfiguration_, "tcp-port", stringToUint16, TcpPort, false);
+    CONFIG_ITEM(bool, serverConfiguration_, "local", stringToBool, LocalEnabled, false);
+    CONFIG_ITEM(QString, serverConfiguration_, "local-name", , LocalSocketName, false);
+    CONFIG_ITEM(bool, serverConfiguration_, "websocket", stringToBool, WebsocketEnabled, false);
+    CONFIG_ITEM(QString, serverConfiguration_, "websocket-name", , WebsocketName, false);
+    CONFIG_ITEM(uint16_t, serverConfiguration_, "websocket-port", stringToUint16, WebsocketPort, false);
+    CONFIG_ITEM(int, serverConfiguration_, "timeout", stringToInt, RequestTimeout, false);
 
     {
         int players = 0;
@@ -424,7 +431,7 @@ void Config::read_(QMdmmCore::Settings *setting, QCommandLineParser *parser)
 
             serverConfiguration_.setPlayerNumPerRoom(players);
         } else {
-            CONFIG_ITEM(int, serverConfiguration_, "players", stringToInt, PlayerNumPerRoom);
+            CONFIG_ITEM(int, serverConfiguration_, "players", stringToInt, PlayerNumPerRoom, false);
         }
     }
 
@@ -442,20 +449,17 @@ void Config::read_(QMdmmCore::Settings *setting, QCommandLineParser *parser)
 
     setting->beginGroup(u"logic"_s);
 
-    if (parser->isSet(u"1"_s))
-        logicConfiguration_ = QMdmmCore::LogicConfiguration::v1();
-
-    CONFIG_ITEM(int, logicConfiguration_, "slash", stringToInt, InitialKnifeDamage);
-    CONFIG_ITEM(int, logicConfiguration_, "maximum-slash", stringToInt, MaximumKnifeDamage);
-    CONFIG_ITEM(int, logicConfiguration_, "kick", stringToInt, InitialHorseDamage);
-    CONFIG_ITEM(int, logicConfiguration_, "maximum-kick", stringToInt, MaximumHorseDamage);
-    CONFIG_ITEM(int, logicConfiguration_, "maxhp", stringToInt, InitialMaxHp);
-    CONFIG_ITEM(int, logicConfiguration_, "maximum-maxhp", stringToInt, MaximumMaxHp);
-    CONFIG_ITEM(int, logicConfiguration_, "punish-hp-modifier", stringToInt, PunishHpModifier);
-    CONFIG_ITEM(QMdmmCore::LogicConfiguration::PunishHpRoundStrategy, logicConfiguration_, "punish-hp-round-strategy", stringToPunishHpRoundStrategy, PunishHpRoundStrategy);
-    CONFIG_ITEM(bool, logicConfiguration_, "zero-hp-as-dead", stringToBool, ZeroHpAsDead);
-    CONFIG_ITEM(bool, logicConfiguration_, "enable-let-move", stringToBool, EnableLetMove);
-    CONFIG_ITEM(bool, logicConfiguration_, "can-buy-only-in-initial-city", stringToBool, CanBuyOnlyInInitialCity);
+    CONFIG_ITEM(int, logicConfiguration_, "slash", stringToInt, InitialKnifeDamage, true);
+    CONFIG_ITEM(int, logicConfiguration_, "maximum-slash", stringToInt, MaximumKnifeDamage, true);
+    CONFIG_ITEM(int, logicConfiguration_, "kick", stringToInt, InitialHorseDamage, true);
+    CONFIG_ITEM(int, logicConfiguration_, "maximum-kick", stringToInt, MaximumHorseDamage, true);
+    CONFIG_ITEM(int, logicConfiguration_, "maxhp", stringToInt, InitialMaxHp, true);
+    CONFIG_ITEM(int, logicConfiguration_, "maximum-maxhp", stringToInt, MaximumMaxHp, true);
+    CONFIG_ITEM(int, logicConfiguration_, "punish-hp-modifier", stringToInt, PunishHpModifier, true);
+    CONFIG_ITEM(QMdmmCore::LogicConfiguration::PunishHpRoundStrategy, logicConfiguration_, "punish-hp-round-strategy", stringToPunishHpRoundStrategy, PunishHpRoundStrategy, true);
+    CONFIG_ITEM(bool, logicConfiguration_, "zero-hp-as-dead", stringToBool, ZeroHpAsDead, true);
+    CONFIG_ITEM(bool, logicConfiguration_, "enable-let-move", stringToBool, EnableLetMove, true);
+    CONFIG_ITEM(bool, logicConfiguration_, "can-buy-only-in-initial-city", stringToBool, CanBuyOnlyInInitialCity, true);
 
     setting->endGroup();
 
