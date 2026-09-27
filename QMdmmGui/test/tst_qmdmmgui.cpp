@@ -8,6 +8,7 @@
 #include <QMdmmAgent>
 #include <QMdmmData>
 #include <QMdmmPlayer>
+#include <QMdmmServer>
 
 #include "gameclient.h"
 
@@ -193,6 +194,15 @@ public slots:
         // see QMdmmAgentInventory above for what it checks and why it lives here rather than in
         // a build step.
         engine->rootContext()->setContextProperty(u"agentInventory"_s, m_agentInventory);
+
+        // The two names a local game's ends have to agree on, for the case in tst_gameclient.qml
+        // that compares them: the socket the bridge hands its own client and the bots it starts,
+        // and the socket the server it starts listens on -- which is the server configuration's
+        // own default, because the server is handed no name at all. Nothing in the build ties the
+        // two together, and a game played here only finds out that they parted by a room that
+        // never fills (see that case for why it is worth saying earlier).
+        engine->rootContext()->setContextProperty(u"bridgeSocketName"_s, QMdmmGameClient::serverSocketName());
+        engine->rootContext()->setContextProperty(u"serverDefaultSocketName"_s, QMdmmNetworking::ServerConfiguration::defaults().localSocketName());
     }
 
 private:

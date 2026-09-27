@@ -418,6 +418,22 @@ TestCase {
         verify(game.botProgram.endsWith("/QMdmmBot6"), game.botProgram);
     }
 
+    function test_theLocalGameRunsOnTheServerDefaultSocketName() {
+        // A local game is two ends that have to name the same socket, and neither end is told
+        // what the other one picked: the bridge starts a server without a name, so that server
+        // listens on its configuration default, and the bridge then names that same name to its
+        // own client and to every bot it starts. The two are written down in two places, and a
+        // game the two do not agree on does not come apart loudly: the server sits on one socket,
+        // the clients reach another, and the screen says it is waiting for players -- which is
+        // what it says while a game fills up anyway. So the two are compared here, where the
+        // reason can be said.
+        //
+        // Both readings are the C++ side's own (the context properties tst_qmdmmgui.cpp sets):
+        // one is what the bridge hands out, the other what the server's defaults carry, and this
+        // comparison is the only place the two meet.
+        compare(bridgeSocketName, serverDefaultSocketName, "the socket a local game runs on has to be the one its server listens on");
+    }
+
     function test_theManagedFlagIsDeclaredAndComesBack() {
         // The one piece of an agent's state the client sets rather than only reads. The
         // declaration is not taken as the final word: the server applies the flag and broadcasts

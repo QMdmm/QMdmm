@@ -21,9 +21,11 @@ using namespace Qt::StringLiterals;
 // synchronized Room model.
 
 namespace {
-// The local socket a local game's server listens on. It is the server's own default
-// (ServerConfiguration::defaults), and a name with no "://" in it is how the networking layer is
-// told to reach a local socket (SocketP::typeByConnectAddr).
+// The local socket a local game's server listens on, handed out by QMdmmGameClient::
+// serverSocketName. It is the server's own default (ServerConfiguration::defaults), and a name
+// with no "://" in it is how the networking layer is told to reach a local socket
+// (SocketP::typeByConnectAddr). The server below is never told which name to listen on, so this
+// is a second copy of the server's own name -- and the GUI test is what holds the two together.
 constexpr char LOCAL_SOCKET_NAME[] = "QMdmm";
 
 // How long a program a local game runs gets to appear and to go away again before the bridge
@@ -227,6 +229,11 @@ void QMdmmGameClient::setProgramPaths(const QString &serverProgram, const QStrin
     m_serverProgram = server;
     m_botProgram = bot;
     emit programPathsChanged();
+}
+
+QString QMdmmGameClient::serverSocketName()
+{
+    return QString::fromLatin1(LOCAL_SOCKET_NAME);
 }
 
 QString QMdmmGameClient::locateProgram(const QString &programName, const QString &explicitPath)
@@ -462,7 +469,7 @@ void QMdmmGameClient::addBot(const QString &name)
 
     QProcess *bot = new QProcess(this);
     bot->setProgram(m_botProgram);
-    bot->setArguments({u"--host"_s, QString::fromLatin1(LOCAL_SOCKET_NAME), u"--name"_s, name});
+    bot->setArguments({u"--host"_s, serverSocketName(), u"--name"_s, name});
     watchChildProcess(bot, tr("A bot stopped"));
     bot->start();
     if (!bot->waitForStarted(ProcessStartTimeoutMs)) {
@@ -509,7 +516,7 @@ void QMdmmGameClient::startLocalGame(const QString &playerName)
     wireClient(m_human);
     // A first connection that arrives before the server is listening is not a failure to act on:
     // the client retries on its own, so the clients may be pointed at the socket right away.
-    m_human->connectToHost(QString::fromLatin1(LOCAL_SOCKET_NAME), QMdmmCore::Data::StateOnline);
+    m_human->connectToHost(serverSocketName(), QMdmmCore::Data::StateOnline);
 
     emit localNameChanged();
     setGameState(GameState::Lobby);

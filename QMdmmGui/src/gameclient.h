@@ -65,6 +65,15 @@ public:
     [[nodiscard]] QString botProgram() const;
     Q_INVOKABLE void setProgramPaths(const QString &serverProgram, const QString &botProgram);
 
+    // The socket a local game runs on: the name the server of such a game listens on, and the
+    // name this side reaches it over -- the human's own client as well as every bot this side
+    // starts (see startLocalGame and addBot). Such a server is started with its own defaults and
+    // is never told a name, so the two ends meet only as long as this is the name those defaults
+    // carry (ServerConfiguration::defaults). The GUI test compares the two: apart, the two ends
+    // would sit on different sockets without a word from anybody, which on screen reads as a
+    // local game that never fills up.
+    [[nodiscard]] static QString serverSocketName();
+
     Q_INVOKABLE void startLocalGame(const QString &playerName);
     Q_INVOKABLE void connectOnline(const QString &host, const QString &playerName);
     Q_INVOKABLE void disconnectAll();
