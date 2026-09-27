@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <QDir>
+#include <QFile>
 #include <QProcess>
+#include <QProcessEnvironment>
+#include <QSettings>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 #include <QTest>
 
 // NOLINTBEGIN
@@ -21,18 +26,37 @@ struct RunResult
     QString standardError;
 };
 
+// The per-user configuration file, at the exact path doc/getting-started.md names.
+// The per-user configuration lives under $HOME, so the cases below can redirect
+// HOME to a directory of their own and watch this one file appear in it.
+QString perUserConfigurationFile(const QString &home)
+{
+    return QDir(home).absoluteFilePath(u".QMdmm/Fsu0413.me/QMdmm.ini"_s);
+}
+
+// A copy of the current environment with HOME pointed at @p home.
+QProcessEnvironment environmentWithHome(const QString &home)
+{
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(u"HOME"_s, home);
+    return environment;
+}
+
 // Runs the executable under test with @p arguments and collects what it printed.
+// @p environment replaces the process environment when a case has to steer where the
+// run reads and writes.
 //
 // The runs made here all finish on their own: --help and --show-current-configuration
-// print and exit, and everything the configuration code rejects -- a value out of
-// range, a value that cannot be parsed, an option pair that cannot both be meant --
-// goes through configError(), which writes the reason to stderr and exits 3. None of
-// them starts a server, so a run that outlives the timeout means the executable
-// stopped exiting where it is expected to -- abort rather than report a
-// half-collected result.
-RunResult runServer(const QStringList &arguments, int timeoutMs = 60000)
+// print and exit, -c and -C save and exit with the save's own status, and everything
+// the configuration code rejects -- a value out of range, a value that cannot be
+// parsed, an option pair that cannot both be meant -- goes through configError(),
+// which writes the reason to stderr and exits 3. None of them starts a server, so a
+// run that outlives the timeout means the executable stopped exiting where it is
+// expected to -- abort rather than report a half-collected result.
+RunResult runServer(const QStringList &arguments, int timeoutMs = 60000, const QProcessEnvironment &environment = QProcessEnvironment::systemEnvironment())
 {
     QProcess process;
+    process.setProcessEnvironment(environment);
     process.start(QString::fromLatin1(QMDMMSERVER_EXECUTABLE), arguments);
 
     if (!process.waitForStarted(timeoutMs))
@@ -61,6 +85,8 @@ class tst_QMdmmServer : public QObject
 private slots:
     void help_printsTheUsageAndExitsZero();
     void savingToBothInstances_isRejected();
+    void savingPerUserConfiguration_writesTheFileUnderHome();
+    void savingPerUserConfiguration_reportsASaveThatCannotReachItsHome();
     void v1Presets_reachThePrintedConfiguration();
     void outOfRangeValue_isRejected();
     void crossedPairs_areRejected_data();
@@ -98,6 +124,58 @@ void tst_QMdmmServer::savingToBothInstances_isRejected()
     QCOMPARE(result.exitCode, 3);
 
     QVERIFY(result.standardError.contains(u"save both per-user configuration and global configuration"_s));
+}
+
+// -c saves the resolved configuration to the per-user file and exits 0. The file
+// used to be a native-format store that ignored HOME; as an INI file it follows
+// HOME, which is what lets this case point HOME at a directory of its own and
+// assert on that one file -- the real per-user configuration of whoever runs the
+// tests is never touched.
+void tst_QMdmmServer::savingPerUserConfiguration_writesTheFileUnderHome()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+
+    const RunResult result = runServer({u"-c"_s}, 60000, environmentWithHome(home.path()));
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 0);
+
+    const QString configurationFile = perUserConfigurationFile(home.path());
+    QVERIFY2(QFile::exists(configurationFile), qPrintable(configurationFile));
+
+    QFile file(configurationFile);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QString contents = QString::fromUtf8(file.readAll());
+
+    // -c writes the resolved configuration, defaults included, so values that were
+    // never named on the command line are in the file as well.
+    QVERIFY(contents.contains(u"[server]"_s));
+    QVERIFY(contents.contains(u"tcp-port=6366"_s));
+    QVERIFY(contents.contains(u"[logic]"_s));
+    QVERIFY(contents.contains(u"slash=1"_s));
+}
+
+// The other half of what -c promises: the run exits with the save's own
+// QSettings::Status, so a save that cannot reach its destination is visible from
+// the outside instead of passing as a success. A regular file where the per-user
+// directory would go makes the write fail on any account, and the run then exits
+// with AccessError rather than 0.
+void tst_QMdmmServer::savingPerUserConfiguration_reportsASaveThatCannotReachItsHome()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+
+    QFile blocker(QDir(home.path()).absoluteFilePath(u".QMdmm"_s));
+    QVERIFY(blocker.open(QIODevice::WriteOnly));
+    blocker.close();
+
+    const RunResult result = runServer({u"-c"_s}, 60000, environmentWithHome(home.path()));
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, static_cast<int>(QSettings::AccessError));
+
+    QVERIFY(!QFile::exists(perUserConfigurationFile(home.path())));
 }
 
 // -1 selects the v1 presets. Their maximum-maxhp is 7, exactly the floor the
