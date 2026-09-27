@@ -121,12 +121,17 @@ jobs:
         run: |
           pip3 install gcovr
           mkdir -p build/coverage
-          gcovr --root . \
-            --filter 'QMdmm/QMdmmCore/src/' \
-            --filter 'QMdmm/QMdmmNetworking/src/' \
-            --filter 'QMdmm/QMdmmGui/src/' \
-            --filter 'QMdmm/QMdmmServer/src/' \
-            --filter 'QMdmm/QMdmmBot/src/' \
+          #
+          # One home for the module list: it is both the --filter set and the
+          # list the per-module check below asks for, so a module cannot be
+          # added to one of them and forgotten in the other.
+          modules=(QMdmmCore QMdmmNetworking QMdmmGui QMdmmServer QMdmmBot)
+          filters=()
+          for module in "${modules[@]}"; do
+            filters+=(--filter "QMdmm/${module}/src/")
+          done
+          gcovr --root . "${filters[@]}" \
+            --csv build/coverage.csv \
             --html-details build/coverage/index.html \
             --print-summary > build/coverage-summary.txt 2>&1
           cat build/coverage-summary.txt
@@ -140,6 +145,19 @@ jobs:
             echo "::error::the coverage filters matched nothing -- the report is empty"
             exit 1
           fi
+          #
+          # Losing a single module is not caught by the check above: the totals
+          # stay non-empty and plausible. Measured on 2026-09-27 by misspelling
+          # one filter -- the module disappeared, gcovr printed no warning at all
+          # and the reading went from "82.5% (3648 out of 4424)" to
+          # "83.1% (3431 out of 4131)", because the module that was lost was
+          # below average. Ask for every module by name, using the CSV above.
+          for module in "${modules[@]}"; do
+            if ! grep -q "QMdmm/${module}/src/" build/coverage.csv; then
+              echo "::error::the ${module} filter matched no files -- the report is missing a whole module"
+              exit 1
+            fi
+          done
           grep '^lines: ' build/coverage-summary.txt
           git config --global user.name "`git -C QMdmm log -1 "--pretty=format:%an"`"
           git config --global user.email "`git -C QMdmm log -1 "--pretty=format:%ae"`"
