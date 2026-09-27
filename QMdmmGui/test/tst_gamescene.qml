@@ -136,6 +136,27 @@ TestCase {
         compare(scene.agentStateOf("p2"), 0);
     }
 
+    function test_disconnectingWithTheCardsUpKeepsTheProcessUp() {
+        // The Disconnect button does nothing but call disconnectAll(), and RootItem keeps GameScene
+        // built and only flips its visible -- so in the product the cards are alive while the room
+        // is taken away, which is the sequence the case above has to tiptoe around. Nothing is torn
+        // down by hand here: if the bridge leaves the cards reading a room that is already gone, the
+        // process dies before it can say anything, and reaching the assertions at all is the point.
+        const scene = makeScene();
+
+        game.playerCount = 2;
+        game.startLocalGame("Tester");
+        tryVerify(function () {
+            return hasText(scene, "Online, Bot");
+        }, 15000);
+
+        game.disconnectAll();
+
+        compare(game.gameState, "start");
+        compare(game.players.length, 0);
+        verify(!hasText(scene, "Online, Bot"), "the cards have to go with the room");
+    }
+
     function test_eachCardTakesItsStateOffTheMap() {
         // The last step of the chain, and the one nothing else in the suite reaches: the scene
         // builds the cards out of the room mirror and hands each one its entry. A card wired to a
@@ -151,11 +172,12 @@ TestCase {
 
         verify(!hasText(scene, "Offline"), "no card may read offline while every entry is in the map");
 
-        // The cards have to be gone before the room is: each one holds a player the room owns, and
-        // a room that dies under them takes the process down with it. destroy() defers the
-        // deletion, so the wait is what actually lands it -- disconnecting before that is the
-        // crash. The framework then finds nothing left to destroy, which it handles: it skips
-        // objects that are already gone.
+        // The room goes last, with the scene on its way out: each card holds a player the room
+        // owns, and destroy() defers the deletion, so the wait is what lands it. The bridge no
+        // longer depends on that order -- it gives the room up before it takes the client away
+        // (see reset) -- which is what the Disconnect button relies on, guarded separately in
+        // test_disconnectingWithTheCardsUpKeepsTheProcessUp. The framework then finds nothing left
+        // to destroy, which it handles: it skips objects that are already gone.
         scene.destroy();
         wait(200);
         game.disconnectAll();

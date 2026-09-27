@@ -71,12 +71,18 @@ void QMdmmGameClient::reset()
 {
     stopBots();
 
+    // The room mirror is given up, and said to be gone, before the client that owns the room is
+    // taken away: the view holds the players the room owns, so a room that dies under a card
+    // leaves that card reading players that no longer exist -- which takes the process down. The
+    // player list cannot change once the mirror is gone, so this is the one announcement of it.
+    m_room = nullptr;
+    emit playersChanged();
+
     delete m_human;
     m_human = nullptr;
 
     stopLocalServer();
 
-    m_room = nullptr;
     m_localName.clear();
     m_localScreen.clear();
     m_screenNames.clear();
@@ -87,7 +93,6 @@ void QMdmmGameClient::reset()
     emit agentStatesChanged();
     emit chatLogChanged();
     emit logicConfigurationChanged();
-    emit playersChanged();
 }
 
 void QMdmmGameClient::stopBots()
