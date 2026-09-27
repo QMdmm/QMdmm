@@ -97,16 +97,46 @@ void QMdmmGameClient::reset()
 
 void QMdmmGameClient::stopBots()
 {
+    // Taking the bots down is this bridge's own doing, not a bot that went away on its own: the
+    // watch is told so for the length of it (see watchChildProcess), or every game that ends --
+    // and every game replaced by the next one -- would report its own bots as failures.
+    m_childrenAreStopping = true;
     const QList<QProcess *> bots = m_bots;
     m_bots.clear();
     for (QProcess *bot : bots)
         stopProcess(bot);
+    m_childrenAreStopping = false;
 }
 
 void QMdmmGameClient::stopLocalServer()
 {
+    // Same as the bots above, for the server: a game ending is not a server failing.
+    m_childrenAreStopping = true;
     stopProcess(m_serverProcess);
     m_serverProcess = nullptr;
+    m_childrenAreStopping = false;
+}
+
+void QMdmmGameClient::watchChildProcess(QProcess *process, const QString &failure)
+{
+    // A program a local game runs is wanted for as long as the game lasts: the server is what the
+    // game is played on and the bots are what fill its seats, so one that is gone has taken the
+    // floor out from under a game the view is still showing. Saying so is what the strip is for,
+    // and it is the same strip the two "not found" notices land on (see startLocalGame / addBot).
+    //
+    // A program that never started is not watched: whoever started it reports that itself (the
+    // waitForStarted right after each start()), and there is nothing left to watch. Everything
+    // else a program can do short of that ends in finished() -- a normal exit, a crash, a signal.
+    connect(process, &QProcess::errorOccurred, this, [this, failure](QProcess::ProcessError error) {
+        if (m_childrenAreStopping || error == QProcess::FailedToStart)
+            return;
+        setStatusMessage(failure);
+    });
+    connect(process, &QProcess::finished, this, [this, failure](int, QProcess::ExitStatus) {
+        if (m_childrenAreStopping)
+            return;
+        setStatusMessage(failure);
+    });
 }
 
 QVariantList QMdmmGameClient::players() const
@@ -433,6 +463,7 @@ void QMdmmGameClient::addBot(const QString &name)
     QProcess *bot = new QProcess(this);
     bot->setProgram(m_botProgram);
     bot->setArguments({u"--host"_s, QString::fromLatin1(LOCAL_SOCKET_NAME), u"--name"_s, name});
+    watchChildProcess(bot, tr("A bot stopped"));
     bot->start();
     if (!bot->waitForStarted(ProcessStartTimeoutMs)) {
         setStatusMessage(tr("Failed to start a bot"));
@@ -461,6 +492,7 @@ void QMdmmGameClient::startLocalGame(const QString &playerName)
     m_serverProcess = new QProcess(this);
     m_serverProcess->setProgram(m_serverProgram);
     m_serverProcess->setArguments({u"--players"_s, QString::number(m_playerCount)});
+    watchChildProcess(m_serverProcess, tr("The local server stopped"));
     m_serverProcess->start();
     if (!m_serverProcess->waitForStarted(ProcessStartTimeoutMs)) {
         setStatusMessage(tr("Failed to start the local server"));

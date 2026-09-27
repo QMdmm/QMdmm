@@ -33,6 +33,18 @@ TestCase {
         game.setProgramPaths("", "");
     }
 
+    // Whether the strip has been told something containing `what`. A status is announced as it is
+    // set and the strip keeps the last few, so a case that cares about one of them has to look at
+    // what was said rather than at what happens to be showing when it looks -- and the message
+    // itself is the bridge's own wording, so the case names the phrase it is about.
+    function reported(spy, what) {
+        for (var i = 0; i < spy.count; ++i) {
+            if (spy.signalArguments[i][0].indexOf(what) >= 0)
+                return true;
+        }
+        return false;
+    }
+
     function test_aBareNameIsHandedOverAsALocalSocketName() {
         // The address reaches the client exactly as it was typed: which transport a string names
         // is the networking layer's call (the scheme whitelist), and a string with no scheme names
@@ -55,6 +67,30 @@ TestCase {
 
         tryVerify(function () {
             return joiner.players.length >= 1;
+        }, 15000);
+    }
+
+    function test_aBotThatIsGoneIsReported() {
+        // The other half of the watch: the seats a local game fills are held by bot processes, and
+        // a seat whose bot is gone is never going to be taken. The bot program below is a real
+        // program that starts and then leaves again -- the server program, whose command line a
+        // bot's own "--host / --name" is not, so it exits on it. What is under test is the
+        // bridge's watch rather than the program, so a stand-in that does not stay is enough.
+        var said = createTemporaryObject(signalSpyComponent, testCase, {
+                                             target: game,
+                                             signalName: "statusMessageChanged"
+                                         });
+        game.setProgramPaths("", game.serverProgram);
+        game.playerCount = 2;
+        game.startLocalGame("Tester");
+
+        // The human's own arrival is what says the server was found and the game came up, so that
+        // the report below is about the bot rather than about a game that never started.
+        tryVerify(function () {
+            return game.players.length === 1;
+        }, 15000);
+        tryVerify(function () {
+            return reported(said, "bot stopped");
         }, 15000);
     }
 
@@ -151,6 +187,35 @@ TestCase {
 
         compare(game.gameState, "start");
         verify(game.statusMessage.length > 0, "the failure has to be reported");
+    }
+
+    function test_aServerThatIsGoneIsReported() {
+        // A local game runs on a server process of its own, and the bridge has to know when that
+        // process is gone: a game whose floor has walked out otherwise sits on screen looking like
+        // a game waiting for other players (see startLocalGame). Nothing is staged for this -- a
+        // local game's transports are fixed (ServerConfiguration::defaults), so the second game's
+        // server finds the ports and the local socket already taken and gives up rather than
+        // listen anywhere else, which is what a second local game on one machine really meets.
+        var host = createTemporaryObject(gameComponent, testCase, {
+                                             playerCount: 2
+                                         });
+        host.setProgramPaths("", "");
+        host.startLocalGame("Host");
+        tryCompare(host, "gameState", "playing", 15000);
+
+        var second = createTemporaryObject(gameComponent, testCase, {
+                                               playerCount: 2
+                                           });
+        var said = createTemporaryObject(signalSpyComponent, testCase, {
+                                             target: second,
+                                             signalName: "statusMessageChanged"
+                                         });
+        second.setProgramPaths("", "");
+        second.startLocalGame("Second");
+
+        tryVerify(function () {
+            return reported(said, "local server stopped");
+        }, 15000);
     }
 
     function test_agentStatesFollowTheRoom() {
@@ -251,6 +316,16 @@ TestCase {
 
     function test_localGameFillsRoomAndStarts() {
         // 1 human + 1 auto-replying bot -> room fills and the match starts.
+        //
+        // The take-down half is asserted here too: the programs a local game runs are stopped by
+        // the bridge itself when the game is left, and a program the bridge is taking down is not
+        // one that failed -- a game the user simply leaves must not put a "stopped" report on the
+        // strip (see watchChildProcess).
+        var said = createTemporaryObject(signalSpyComponent, testCase, {
+                                             target: game,
+                                             signalName: "statusMessageChanged"
+                                         });
+
         game.playerCount = 2;
         game.startLocalGame("Tester");
 
@@ -261,6 +336,7 @@ TestCase {
         game.disconnectAll();
         compare(game.gameState, "start");
         compare(game.players.length, 0);
+        compare(reported(said, "stopped"), false);
     }
 
     function test_logicConfigurationArrivesWithTheLocalGame() {

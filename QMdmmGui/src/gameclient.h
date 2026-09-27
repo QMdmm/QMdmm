@@ -132,6 +132,9 @@ private:
     void reset();
     void stopLocalServer();
     void stopBots();
+    // Watch a program a local game runs, so that one which goes away is said on the strip rather
+    // than leaving a game on screen that has nothing left to play on (see the definition).
+    void watchChildProcess(QProcess *process, const QString &failure);
     void setGameState(GameState s);
     void setStatusMessage(const QString &msg);
     void setLogicConfiguration(const QMdmmCore::LogicConfiguration &conf);
@@ -144,6 +147,10 @@ private:
     QProcess *m_serverProcess = nullptr;
     // One QMdmmBot process per seat this side fills, stopped with the game they belong to.
     QList<QProcess *> m_bots;
+    // Set for the length of taking those programs down: a process that goes away then is this
+    // bridge's own doing rather than a program that failed, and is not reported (see
+    // watchChildProcess).
+    bool m_childrenAreStopping = false;
     QMdmmCore::Room *m_room = nullptr;
 
     QString m_localName;
