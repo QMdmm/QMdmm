@@ -92,6 +92,12 @@ cmake --build . --parallel --
 
 Add `-DBUILD_TESTING=ON` to enable tests. Binaries land in `../build-QMdmm-Release/build/bin/`.
 
+On macOS, installing has two shapes: a plain `<prefix>/bin/` layout by default,
+and a self-contained `QMdmm6.app` bundle with `-DQMDMM_MACOS_APP_BUNDLE=ON` —
+the shape the disk image is packed from. Neither is signed with a Developer ID
+certificate or notarized. [Getting Started](doc/getting-started.md) covers both
+shapes and the image.
+
 ## Running
 
 Start the server first (TCP on port 6366 and WebSocket on port 6367 by
