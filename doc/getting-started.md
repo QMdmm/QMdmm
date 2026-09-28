@@ -212,6 +212,10 @@ not found, so the seat cannot be filled" at the seat left empty. Both lines name
 the program that was wanted, and the two options above are how to point at a
 different one.
 
+A program that was found and then goes away is reported the same way: "The
+local server stopped" and "A bot stopped". A game the player ends, or one that
+gives way to the next, takes its own programs down without a word.
+
 The server a local game runs is given the room size and otherwise its own
 defaults, so it listens on the default local socket name `QMdmm` (`-L,
 --local-name`); that is the name the client and the bots reach it by.
