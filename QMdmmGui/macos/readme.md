@@ -1,7 +1,7 @@
 # QMdmm for macOS
 
-Drag `QMdmm6.app` onto the `Applications` shortcut in this window to install
-it.
+Drag `QMdmm6.app` into `/Applications` to install it. The disk image carries
+a shortcut to that folder beside the app, to drag it onto.
 
 ## This build is not signed
 
