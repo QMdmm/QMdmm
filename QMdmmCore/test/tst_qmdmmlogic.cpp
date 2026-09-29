@@ -326,6 +326,9 @@ private slots:
             l->rpsReply(u"test2"_s, Data::Rock);
             l->rpsReply(u"test3"_s, Data::Scissors);
 
+            // Asserted because QMdmmBot's whole-match case matches this warning's text to
+            // catch illegal replies: a reword must fail loudly here rather than disarm it.
+            QTest::ignoreMessage(QtWarningMsg, QRegularExpression(u"Logic::actionOrderReply: player \"test1\" sent an invalid order list"_s));
             QVERIFY(!l->actionOrderReply(u"test1"_s, {3}));
             QCOMPARE(l->d->actionOrderYields.value(u"test1"_s), 1);
             QCOMPARE(l->state(), Logic::ActionOrder); // test2 still owes a pick
@@ -544,6 +547,9 @@ private slots:
 
         // test1 has no knife, so Slash is infeasible -> the reply is not accepted,
         // but DoNothing is applied instead and the round advances.
+        // Asserted because QMdmmBot's whole-match case matches this warning's text to
+        // catch illegal replies: a reword must fail loudly here rather than disarm it.
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression(u"Logic::actionReply: player \"test1\" sent infeasible action"_s));
         QVERIFY(!l->actionReply(u"test1"_s, Data::Slash, u"test2"_s, 0));
         QCOMPARE(res.length(), 1);
     }
@@ -722,6 +728,9 @@ private slots:
         // Over-allocate a single stat (2 knives requested, 1 remaining): the reply
         // is not accepted, but the logic builds a feasible default (knife first,
         // then horse).
+        // Asserted because QMdmmBot's whole-match case matches this warning's text to
+        // catch illegal replies: a reword must fail loudly here rather than disarm it.
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression(u"Logic::upgradeReply: player \"test1\" sent an infeasible upgrade list"_s));
         QVERIFY(!l->upgradeReply(u"test1"_s, {Data::UpgradeKnife, Data::UpgradeKnife}));
         QCOMPARE(up.length(), 1);
         QCOMPARE(p->knifeDamage(), l->d->room->logicConfiguration().maximumKnifeDamage());

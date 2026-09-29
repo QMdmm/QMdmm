@@ -1875,6 +1875,13 @@ void tst_QMdmmBot::fullGame_theTwoStylesPlayAWholeMatchToTheEnd()
     // with them failing the case. Whatever else the match warns about -- a long
     // Rock-Paper-Scissors tie streak, for one, which is a normal thing for this
     // game to hit -- is left alone.
+    //
+    // The three messages are matched here by their "Logic::<function>" prefix, which
+    // couples this guard to the wording and the log level of three qWarning() calls in
+    // qmdmmlogic.cpp: reword one of them, move it to another level, or route it to
+    // another sink, and this guard stops firing altogether -- the case would then pass
+    // with illegal replies in it. tst_qmdmmlogic.cpp asserts the same three texts, so a
+    // reword does turn up there; change this regex in the same batch as it.
     QTest::failOnWarning(QRegularExpression(u"Logic::(actionOrderReply|actionReply|upgradeReply)"_s));
 
     for (const std::unique_ptr<Seat> &seat : seats)

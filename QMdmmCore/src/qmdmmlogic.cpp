@@ -302,6 +302,9 @@ bool Logic::actionOrderReply(const QString &playerName, const QList<int> &desire
                 }
 
                 if (!accepted) {
+                    // QMdmmBot's whole-match case fails the run on an illegal reply by matching this
+                    // text, so its wording and its log level are an interface: tst_qmdmmlogic.cpp
+                    // asserts the same text, and is where a reword shows up.
                     qWarning() << "Logic::actionOrderReply: player" << playerName << "sent an invalid order list; yielding all" << selections << "selections";
                     chosenOrders.clear();
                     yields = selections;
@@ -339,6 +342,9 @@ bool Logic::actionReply(const QString &playerName, Data::Action action, const QS
         if (d->state == Action) {
             const bool accepted = d->actionFeasible(playerName, action, toPlayer, toPlace);
             if (!accepted) {
+                // QMdmmBot's whole-match case fails the run on an illegal reply by matching this
+                // text, so its wording and its log level are an interface: tst_qmdmmlogic.cpp
+                // asserts the same text, and is where a reword shows up.
                 qWarning() << "Logic::actionReply: player" << playerName << "sent infeasible action" << static_cast<int>(action) << "; falling back to DoNothing";
                 action = Data::DoNothing;
             }
@@ -374,6 +380,9 @@ bool Logic::upgradeReply(const QString &playerName, const QList<Data::UpgradeIte
                 if (accepted) {
                     d->upgrades.insert(playerName, items);
                 } else {
+                    // QMdmmBot's whole-match case fails the run on an illegal reply by matching this
+                    // text, so its wording and its log level are an interface: tst_qmdmmlogic.cpp
+                    // asserts the same text, and is where a reword shows up.
                     qWarning() << "Logic::upgradeReply: player" << playerName << "sent an infeasible upgrade list; falling back to a feasible default";
                     // The server has no access to a player's remaining upgrade counts, so it
                     // cannot build a feasible list. Build a feasible default here: spend every
