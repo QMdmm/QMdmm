@@ -146,6 +146,9 @@ Read these before touching code:
   if (x)              \
       v << u"" x ""_s;
   ```
+- The same namespace carries the byte-string UDL `"..."_ba` for `QByteArray`.
+  It takes a narrow `const char *`, so the literal has no `u` prefix --
+  `u"..."_ba` matches no `_ba` overload and does not compile.
 
 ### Qt names are always versioned
 
