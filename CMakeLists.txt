@@ -68,9 +68,15 @@ option(QMDMM_EXPORT_PRIVATE "Export private symbols, copy headers of private cla
 # programs it starts, and is what the disk image holds.  The other is the plain
 # prefix layout, the programs as siblings in bin/, with Qt provided by the
 # machine - the shape a distribution package or a Homebrew bottle is built out
-# of.  This switch is read on macOS and nowhere else; the other platforms have
-# the plain layout by construction.
+# of.  This switch is macOS's alone: the other platforms have the plain layout by
+# construction, so setting it there is an error rather than a no-op.
 option(QMDMM_MACOS_APP_BUNDLE "Install the GUI as a self-contained application bundle on macOS" false)
+
+if (QMDMM_MACOS_APP_BUNDLE AND NOT ( CMAKE_SYSTEM_NAME STREQUAL "Darwin" ) )
+    message(FATAL_ERROR
+        "QMDMM_MACOS_APP_BUNDLE is macOS only. It selects the self-contained application bundle the disk image is built from, and ${CMAKE_SYSTEM_NAME} installs in the plain prefix layout, which is the only shape it has. Remove -DQMDMM_MACOS_APP_BUNDLE=ON."
+    )
+endif()
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED true)
@@ -130,7 +136,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build/${CMAKE_INSTALL_LI
 # name is the Qt major version, as in the target names, so anything else
 # installed inside the bundle goes through this variable rather than spelling
 # the name out again.
-if (APPLE AND QMDMM_MACOS_APP_BUNDLE)
+if (QMDMM_MACOS_APP_BUNDLE)
     set(QMDMM6_INSTALL_BUNDLE_DIR "QMdmm6.app")
     set(QMDMM6_INSTALL_BUNDLE_DESTINATION ".")
     set(QMDMM6_INSTALL_RUNTIME_DIR "${QMDMM6_INSTALL_BUNDLE_DIR}/Contents/MacOS")
@@ -307,7 +313,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "[Ll]inux")
     # "CPACK_DEBIAN_PACKAGE_DEPENDS not set" note for dev-common - expected.
 endif()
 
-if (APPLE AND QMDMM_MACOS_APP_BUNDLE)
+if (QMDMM_MACOS_APP_BUNDLE)
     # A disk image is the macOS form of the runtime artefact, and it exists to
     # carry the bundle.  What the image holds, and the adjustment its staging
     # tree needs, are set per generator in cmake/CPackProjectConfig.cmake, so

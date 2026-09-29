@@ -24,7 +24,9 @@ Binaries land in `build/build/bin/`.
 
 Installing is `cmake --install`, and on macOS it comes in two shapes, selected
 by `QMDMM_MACOS_APP_BUNDLE` (off by default, so a plain `cmake --install` gives
-the plain shape below; the other platforms only have that one).
+the plain shape below). The switch is macOS-only on purpose: the other platforms
+have the plain shape by construction, and configuring them with it on is an
+error rather than an option that quietly does nothing.
 
 ### Plain prefix layout (default)
 

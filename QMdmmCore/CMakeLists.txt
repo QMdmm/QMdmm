@@ -45,7 +45,7 @@ set(QMDMMCORE_DOC_FILES ${QMDMMCORE_HEADERS} ${QMDMMCORE_SOURCES} PARENT_SCOPE)
 # QMdmmCore::Global turns each of them into a path at run time, against the machine the
 # programs actually run on rather than the one they were built on. Three shapes, and the
 # resolver in QMdmmCore knows all of them.
-if (APPLE AND QMDMM_MACOS_APP_BUNDLE)
+if (QMDMM_MACOS_APP_BUNDLE)
     # A bundle is not a GNU-format installation -- whole directories are copied into place
     # rather than a tree laid out under a prefix -- so there is no prefix to derive these
     # from at all. The identifier carries no Qt major version because these directories
@@ -96,6 +96,7 @@ target_compile_definitions(QMdmmCore
               "QT_DISABLE_DEPRECATED_BEFORE=0x70000"
               "QMDMM_VERSION=\"${QMdmm_VERSION}\""
 )
+
 # BUILD_INTERFACE / INSTALL_INTERFACE are correctness, not cosmetics: the
 # build-tree include root and the source-relative `src` are machine-local paths,
 # and install(EXPORT) either rejects the relative one outright or bakes this
