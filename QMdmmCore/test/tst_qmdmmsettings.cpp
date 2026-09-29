@@ -4,6 +4,7 @@
 
 #include <QMdmmCore/QMdmmSettings>
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -31,6 +32,7 @@ private slots:
 
     void perUserConfigurationIsAnIniFileUnderTheHomeDirectory();
     void globalConfigurationIsAnIniFileUnderSystemDirectory();
+    void configurationDirectoryIsResolvedAgainstTheProcessNotTheWorkingDirectory();
 
 private:
     QTemporaryDir home;
@@ -65,14 +67,14 @@ void tst_QMdmmSettings::perUserConfigurationIsAnIniFileUnderTheHomeDirectory()
     QCOMPARE(QSettings(iniFile, QSettings::IniFormat).value(u"logic/slash"_s).toInt(), 3);
 }
 
-// The other half of the pair: the global instance goes through the system scope, whose
-// directory the build fixes at configure time (the install prefix's sysconfdir) and no case
-// can redirect. So this one can only say something on a machine where that directory can be
-// created and written, and it skips -- rather than fails -- where it cannot: an installed
-// /usr prefix is the ordinary case and there is nothing to assert on it.
+// The other half of the pair: the global instance goes through the system scope. Which
+// directory that is depends on where the tree was installed -- Global::configurationDirectory()
+// documents the rule -- so this one can still only say something on a machine where that
+// directory can be created and written, and it skips rather than fails where it cannot: an
+// installation under /usr is the ordinary case of that, and there is nothing to assert on it.
 void tst_QMdmmSettings::globalConfigurationIsAnIniFileUnderSystemDirectory()
 {
-    QDir prefix(QString::fromLatin1(QMDMM_CONFIGURATION_PREFIX));
+    QDir prefix(Global::configurationDirectory());
 
     if (!prefix.mkpath(u"."_s))
         QSKIP("the system configuration directory cannot be created here");
@@ -124,6 +126,37 @@ void tst_QMdmmSettings::globalConfigurationIsAnIniFileUnderSystemDirectory()
     // instead -- and that it goes into the directory the build configured.
     QVERIFY(QFile::exists(iniFile));
     QCOMPARE(QSettings(iniFile, QSettings::IniFormat).value(u"logic/slash"_s).toInt(), 3);
+}
+
+// What the build configures is a recipe for a directory rather than a directory, and the two
+// shapes that are not absolute are resolved against the process' own directory (see
+// Global::configurationDirectory()). The rule is stated a second time here on purpose: the
+// cases above read the directory back through the same accessor that writes it, so they would
+// agree with a resolver that named the wrong place. This one cannot -- it derives the expected
+// path from the definition and the executable instead.
+void tst_QMdmmSettings::configurationDirectoryIsResolvedAgainstTheProcessNotTheWorkingDirectory()
+{
+    const QString configured = u"" QMDMM_CONFIGURATION_PREFIX ""_s;
+
+    QString expected;
+    if (configured.startsWith(u'/'))
+        expected = configured;
+    else if (configured.startsWith(u"~/"_s))
+        expected = QDir::home().absoluteFilePath(configured.mid(2));
+    else
+        expected = QDir::cleanPath(QCoreApplication::applicationDirPath() + u"/"_s + configured);
+
+    QVERIFY(QDir::isAbsolutePath(expected));
+    QCOMPARE(Global::configurationDirectory(), expected);
+
+    // A resolver anchored on the working directory passes wherever the two happen to coincide
+    // -- a build tree is one such place, because the tests run from within it -- and breaks the
+    // moment the program is started from elsewhere, which is the ordinary way to start an
+    // installed one. Moving the working directory has to change nothing.
+    const QString previous = QDir::currentPath();
+    const auto restore [[maybe_unused]] = qScopeGuard([previous] { QDir::setCurrent(previous); });
+    QVERIFY(QDir::setCurrent(QDir::rootPath()));
+    QCOMPARE(Global::configurationDirectory(), expected);
 }
 
 namespace {

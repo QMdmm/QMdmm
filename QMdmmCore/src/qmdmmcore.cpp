@@ -2,6 +2,10 @@
 
 #include "qmdmmcoreglobal.h"
 
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
+
 #include <map>
 
 using namespace Qt::StringLiterals;
@@ -300,6 +304,63 @@ QStringList Data::rockPaperScissorsWinners(const QHash<QString, Data::RockPaperS
 QVersionNumber Global::version()
 {
     return QVersionNumber::fromString(u"" QMDMM_VERSION ""_s);
+}
+
+namespace {
+// The two directories the configuration and the logs go into are baked in as compile
+// definitions, and what they hold is a recipe for a directory rather than a directory: see
+// Global::configurationDirectory() for the shapes one can take.
+[[nodiscard]] QString resolveConfiguredDirectory(const QString &configured)
+{
+    if (configured.startsWith(u'/'))
+        return configured;
+
+    if (configured.startsWith(u"~/"_s))
+        return QDir::home().absoluteFilePath(configured.mid(2));
+
+    // Relative to the directory the executable sits in, which is the one thing this process
+    // knows without being told what layout it was installed in. The value was computed from
+    // that layout when the project was configured, so this lands on the same place however
+    // far the installed tree has been moved since.
+    return QDir::cleanPath(QCoreApplication::applicationDirPath() + u"/"_s + configured);
+}
+} // namespace
+
+/**
+ * @brief Returns the directory the system-wide configuration file lives in
+ * @return the configuration directory
+ *
+ * What is configured is not necessarily a directory: an absolute path is used as it is (the
+ * @c /usr and @c / prefixes, where deriving one from the executable would land on the wrong
+ * side of the FHS), a path beginning with @c ~/ is taken under the home directory (the macOS
+ * application bundle, which is not installed under a prefix at all), and anything else is
+ * relative to the directory the executable was installed into. The last two are what let an
+ * installed tree be moved to another location without the configuration staying behind.
+ */
+QString Global::configurationDirectory()
+{
+    return resolveConfiguredDirectory(u"" QMDMM_CONFIGURATION_PREFIX ""_s);
+}
+
+/**
+ * @brief Returns the directory the runtime data -- the logs -- is written to
+ * @return the runtime data directory
+ *
+ * Resolved exactly like configurationDirectory(), with one addition: when the directory it
+ * names cannot be created or written to -- an installation under a prefix owned by someone
+ * else, most often -- the fallback is @c $HOME/.QMdmm/var instead of leaving the process
+ * without anywhere to log. The configured directory is created when that succeeds, so the
+ * caller may find it already in place.
+ */
+QString Global::runtimeDataDirectory()
+{
+    // Not const: it is returned below, and a const local would be copied rather than moved.
+    QString configured = resolveConfiguredDirectory(u"" QMDMM_RUNTIME_DATA_PREFIX ""_s);
+
+    if (QDir().mkpath(configured) && QFileInfo(configured).isWritable())
+        return configured;
+
+    return QDir::home().absoluteFilePath(u".QMdmm/var"_s);
 }
 
 /**

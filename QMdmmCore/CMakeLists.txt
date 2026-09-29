@@ -41,12 +41,35 @@ set(QMDMMCORE_PRIVATE_SOURCES
 
 set(QMDMMCORE_DOC_FILES ${QMDMMCORE_HEADERS} ${QMDMMCORE_SOURCES} PARENT_SCOPE)
 
-if (UNIX AND ( ( CMAKE_INSTALL_PREFIX STREQUAL "/usr" ) OR ( CMAKE_INSTALL_PREFIX STREQUAL "/" ) ) )
+# These two definitions hold a recipe for a directory rather than a directory:
+# QMdmmCore::Global turns each of them into a path at run time, against the machine the
+# programs actually run on rather than the one they were built on. Three shapes, and the
+# resolver in QMdmmCore knows all of them.
+if (APPLE AND QMDMM_MACOS_APP_BUNDLE)
+    # A bundle is not a GNU-format installation -- whole directories are copied into place
+    # rather than a tree laid out under a prefix -- so there is no prefix to derive these
+    # from at all. The identifier carries no Qt major version because these directories
+    # deliberately do not either: several Qt generations built from this tree share them.
+    set(QMDMM_CONFIGURATION_PREFIX "~/Library/Application Support/me.fsu0413.QMdmm/etc/${PROJECT_NAME}")
+    set(QMDMM_RUNTIME_DATA_PREFIX "~/Library/Application Support/me.fsu0413.QMdmm/var/${PROJECT_NAME}")
+elseif (UNIX AND ( ( CMAKE_INSTALL_PREFIX STREQUAL "/usr" ) OR ( CMAKE_INSTALL_PREFIX STREQUAL "/" ) ) )
+    # The executable sits in /usr/bin there while the directories are /etc and /var, so the
+    # relative shape would name /usr/etc and /usr/var: the two prefixes that have an FHS
+    # answer keep the absolute one.
     set(QMDMM_CONFIGURATION_PREFIX "/etc/${PROJECT_NAME}")
     set(QMDMM_RUNTIME_DATA_PREFIX "/var/${PROJECT_NAME}")
 else()
-    set(QMDMM_CONFIGURATION_PREFIX "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_SYSCONFDIR}/${PROJECT_NAME}")
-    set(QMDMM_RUNTIME_DATA_PREFIX "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LOCALSTATEDIR}/${PROJECT_NAME}")
+    # Relative to the directory the executable is installed into, computed from the install
+    # layout here rather than assumed at run time: the whole prefix can then be moved
+    # afterwards, and the paths follow it.
+    file(RELATIVE_PATH QMDMM_CONFIGURATION_PREFIX
+        "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}"
+        "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_SYSCONFDIR}/${PROJECT_NAME}"
+    )
+    file(RELATIVE_PATH QMDMM_RUNTIME_DATA_PREFIX
+        "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}"
+        "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LOCALSTATEDIR}/${PROJECT_NAME}"
+    )
 endif()
 
 add_library(QMdmmCore INTERFACE)

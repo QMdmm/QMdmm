@@ -19,7 +19,10 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationName(u"QMdmmServer"_s);
     QCoreApplication::setApplicationVersion(QMdmmCore::Global::version().toString());
 
-    QString logDirectory = u"" QMDMM_RUNTIME_DATA_PREFIX "/log"_s;
+    // Resolved rather than read from the definition: the directory may be relative to the
+    // tree this program was installed into, and may fall back to the home directory when
+    // that tree is not writable (see QMdmmCore::Global::runtimeDataDirectory()).
+    QString logDirectory = QMdmmCore::Global::runtimeDataDirectory() + u"/log"_s;
 
     if (QDir().mkpath(logDirectory)) {
         QString logFilePath = QDir(logDirectory).absoluteFilePath(u"QMdmmServer-"_s + QString::number(QDateTime::currentMSecsSinceEpoch()));

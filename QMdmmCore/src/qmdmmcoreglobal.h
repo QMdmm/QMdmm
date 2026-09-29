@@ -143,6 +143,8 @@ Q_FLAG_NS(AgentState)
 namespace Global {
 QMDMM_EXPORT_NAME(QMdmmGlobal)
 [[nodiscard]] QMDMMCORE_EXPORT QVersionNumber version();
+[[nodiscard]] QMDMMCORE_EXPORT QString configurationDirectory();
+[[nodiscard]] QMDMMCORE_EXPORT QString runtimeDataDirectory();
 } // namespace Global
 
 namespace Utilities {

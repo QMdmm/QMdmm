@@ -134,7 +134,11 @@ struct InitializeQSettings
         // paths set here are never used and the per-user configuration lands in the native
         // store instead (on macOS a plist under ~/Library/Preferences).
         QSettings::setDefaultFormat(QSettings::IniFormat);
-        QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, u"" QMDMM_CONFIGURATION_PREFIX ""_s);
+        // Through the accessor rather than the definition itself: what was configured is a
+        // recipe for the directory, resolved against the machine this runs on (see its
+        // documentation). The per-user path below needs none of that -- it is the home
+        // directory, taken from the environment.
+        QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, Global::configurationDirectory());
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, QDir::home().absoluteFilePath(u".QMdmm"_s));
     }
     ~InitializeQSettings() = default;
