@@ -113,6 +113,12 @@ protected slots: // NOLINT(readability-redundant-access-specifiers)
     // memory -- and then calls the matching onXxxNotified() hook a style
     // subclass overrides. A style tracks the match through the hook, so it can
     // neither skip nor replace the shared state by accident.
+    //
+    // What rules out replacing one is the connection rather than the compiler:
+    // the constructor hands connect() a pointer to this class's own member, and
+    // a call through such a pointer is bound to this class. A style that spells
+    // a member with the same name only hides this declaration, and hiding
+    // compiles: nothing here makes an attempt to replace one an error.
     void handleLogicConfigurationNotified();
     void handleRoundStartNotified();
     void handleActionNotified(const QString &playerName, QMdmmCore::Data::Action action, const QString &toPlayer, int toPlace);
