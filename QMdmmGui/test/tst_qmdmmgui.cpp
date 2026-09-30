@@ -210,6 +210,12 @@ private:
     QMdmmAgentInventory *m_agentInventory = nullptr;
 };
 
+// The setup object is a fixture, not a test. Qt looks up two hooks on it by name -- applicationAvailable() and
+// qmlEngineAvailable(QQmlEngine *) (the one above) -- and nothing else here runs: a case written into the setup
+// class's own private slots is never run at all, and it fails silently. The totals stay where they were and its
+// name never reaches the output, so such a run is indistinguishable from one that passed it. Cases live in the
+// .qml files, and the readings they assert on arrive from here as context properties. What tells a case that ran
+// from one that did not is its name in the output and the totals going up by one -- never the exit code.
 QUICK_TEST_MAIN_WITH_SETUP(qmdmmgui, QMdmmGuiTestSetup)
 
 #include "tst_qmdmmgui.moc"
