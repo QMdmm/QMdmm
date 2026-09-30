@@ -30,6 +30,9 @@ class QMdmmGameClient : public QObject
     Q_PROPERTY(int playerCount READ playerCount WRITE setPlayerCount NOTIFY playerCountChanged)
     Q_PROPERTY(QString serverProgram READ serverProgram NOTIFY programPathsChanged)
     Q_PROPERTY(QString botProgram READ botProgram NOTIFY programPathsChanged)
+    Q_PROPERTY(int stateMaskOnline READ stateMaskOnline CONSTANT)
+    Q_PROPERTY(int stateMaskBot READ stateMaskBot CONSTANT)
+    Q_PROPERTY(int stateMaskTrust READ stateMaskTrust CONSTANT)
 
 public:
     Q_DISABLE_COPY_MOVE(QMdmmGameClient)
@@ -64,6 +67,13 @@ public:
     [[nodiscard]] QString serverProgram() const;
     [[nodiscard]] QString botProgram() const;
     Q_INVOKABLE void setProgramPaths(const QString &serverProgram, const QString &botProgram);
+
+    // The bits an agent state is made of (Data::AgentState). The state itself reaches the view as
+    // a plain number, so the names of its bits are handed over here -- read from the core enum
+    // rather than spelled out a second time by the QML that reads the number (see PlayerCard).
+    [[nodiscard]] int stateMaskOnline() const;
+    [[nodiscard]] int stateMaskBot() const;
+    [[nodiscard]] int stateMaskTrust() const;
 
     // The socket a local game runs on: the name the server of such a game listens on, and the
     // name this side reaches it over -- the human's own client as well as every bot this side

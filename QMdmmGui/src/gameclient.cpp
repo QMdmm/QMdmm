@@ -236,6 +236,21 @@ QString QMdmmGameClient::serverSocketName()
     return QString::fromLatin1(LOCAL_SOCKET_NAME);
 }
 
+int QMdmmGameClient::stateMaskOnline() const
+{
+    return static_cast<int>(QMdmmCore::Data::StateMaskOnline);
+}
+
+int QMdmmGameClient::stateMaskBot() const
+{
+    return static_cast<int>(QMdmmCore::Data::StateMaskBot);
+}
+
+int QMdmmGameClient::stateMaskTrust() const
+{
+    return static_cast<int>(QMdmmCore::Data::StateMaskTrust);
+}
+
 QString QMdmmGameClient::locateProgram(const QString &programName, const QString &explicitPath)
 {
     // A path given on the command line is the one the user asked for, whether or not there is

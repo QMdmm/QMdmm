@@ -8,9 +8,10 @@ Item {
     id: card
 
     // The state the protocol carries for this player, as the broadcast hands it over: a mask
-    // (Data::AgentState) with online = 0x10, bot = 0x01, managed = 0x08. Only the number
-    // reaches the view, so spelling it out is the card's job -- the managed flag has nowhere
-    // else on screen to show up.
+    // (Data::AgentState) with one bit per fact. Only the number reaches the view, so the card
+    // names the bits it reads -- and it takes them from the bridge, which reads them off the
+    // core enum, rather than spelling their values out again here where they could drift from
+    // it unnoticed. The managed flag has nowhere else on screen to show up.
     property int agentState: 0
     // Only your own card carries the switch -- nobody hands another player over -- and only while
     // that player is online, since the declaration a click makes needs a connection to travel on.
@@ -20,9 +21,9 @@ Item {
     // read, and the switch beside the state line is where it is set. See game.setManaged.
     readonly property bool managed: (agentState & stateManaged) !== 0
     property var player
-    readonly property int stateBot: 0x01
-    readonly property int stateManaged: 0x08
-    readonly property int stateOnline: 0x10
+    readonly property int stateBot: game.stateMaskBot
+    readonly property int stateManaged: game.stateMaskTrust
+    readonly property int stateOnline: game.stateMaskOnline
     property bool you
 
     function stateText(state) {
