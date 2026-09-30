@@ -48,10 +48,11 @@ set(QMDMMCORE_DOC_FILES ${QMDMMCORE_HEADERS} ${QMDMMCORE_SOURCES} PARENT_SCOPE)
 if (QMDMM_MACOS_APP_BUNDLE)
     # A bundle is not a GNU-format installation -- whole directories are copied into place
     # rather than a tree laid out under a prefix -- so there is no prefix to derive these
-    # from at all. The identifier carries no Qt major version because these directories
+    # from at all. The directories are named after the top-level
+    # QMDMM_MACOS_BUNDLE_IDENTIFIER, which carries no Qt major version because they
     # deliberately do not either: several Qt generations built from this tree share them.
-    set(QMDMM_CONFIGURATION_PREFIX "~/Library/Application Support/me.fsu0413.QMdmm/etc/${PROJECT_NAME}")
-    set(QMDMM_RUNTIME_DATA_PREFIX "~/Library/Application Support/me.fsu0413.QMdmm/var/${PROJECT_NAME}")
+    set(QMDMM_CONFIGURATION_PREFIX "~/Library/Application Support/${QMDMM_MACOS_BUNDLE_IDENTIFIER}/etc/${PROJECT_NAME}")
+    set(QMDMM_RUNTIME_DATA_PREFIX "~/Library/Application Support/${QMDMM_MACOS_BUNDLE_IDENTIFIER}/var/${PROJECT_NAME}")
 elseif (UNIX AND ( ( CMAKE_INSTALL_PREFIX STREQUAL "/usr" ) OR ( CMAKE_INSTALL_PREFIX STREQUAL "/" ) ) )
     # The executable sits in /usr/bin there while the directories are /etc and /var, so the
     # relative shape would name /usr/etc and /usr/var: the two prefixes that have an FHS

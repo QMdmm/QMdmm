@@ -57,12 +57,12 @@ if (Qt6_FOUND)
         # executable is reached through a symlink.
         list(APPEND QMDMMGUI_TARGET_PROPERTIES
             # Without this the bundle is identified as com.yourcompany.QMdmm6,
-            # which is the placeholder CMake falls back to.  No Qt major version
-            # here, unlike in the target name: the identifier also names the
-            # configuration and data directories this shape uses (see
-            # QMdmmCore/CMakeLists.txt), and those are meant to be shared by
-            # several Qt generations built from this tree.
-            MACOSX_BUNDLE_GUI_IDENTIFIER "me.fsu0413.QMdmm"
+            # which is the placeholder CMake falls back to.  The value is the
+            # top-level QMDMM_MACOS_BUNDLE_IDENTIFIER, because QMdmmCore names
+            # the configuration and data directories of this shape after the
+            # same string; that top-level definition explains why it carries no
+            # Qt major version, unlike the target name.
+            MACOSX_BUNDLE_GUI_IDENTIFIER "${QMDMM_MACOS_BUNDLE_IDENTIFIER}"
             MACOSX_BUNDLE_BUNDLE_VERSION "${QMdmm_VERSION}"
             MACOSX_BUNDLE_SHORT_VERSION_STRING "${QMdmm_VERSION}"
         )

@@ -78,6 +78,14 @@ if (QMDMM_MACOS_APP_BUNDLE AND NOT ( CMAKE_SYSTEM_NAME STREQUAL "Darwin" ) )
     )
 endif()
 
+# The identifier the application bundle carries, which is also the name of the directory
+# tree that shape reads its configuration and data from (see QMdmmCore/CMakeLists.txt).
+# Defined once, here, because both QMdmmCore and QMdmmGui need it: a copy that drifted
+# apart from its twin would move those directories to another home, and the program would
+# quietly start over from default settings. The string carries no Qt major version on
+# purpose -- several Qt generations built from this tree share the same directories.
+set(QMDMM_MACOS_BUNDLE_IDENTIFIER "me.fsu0413.QMdmm")
+
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED true)
 set(CMAKE_CXX_STANDARD 20)
