@@ -21,6 +21,16 @@
 
 using namespace Qt::StringLiterals;
 
+// How many cases this file holds gets quoted from time to time, so say which
+// number is meant. Counting definitions --
+//   grep -c '^void tst_QMdmmBot::' QMdmmBot/test/tst_qmdmmbot.cpp
+// -- counts the _data provider of the data-driven case below, which is not a
+// case of its own. The test runner counts differently: it counts one case per
+// data row, and initTestCase and cleanupTestCase as cases too. Its "passed"
+// total is therefore higher, and by a margin that grows with every data row, so
+// neither number can be derived from the other. Recompute whichever one is
+// meant rather than carrying it over.
+
 // NOLINTBEGIN
 // Exempt from clang-tidy by policy; see AGENTS.md.
 
