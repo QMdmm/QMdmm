@@ -6,6 +6,10 @@
 #include <QDir>
 #include <QFileInfo>
 
+#ifdef QMDMM_MACOS_APP_BUNDLE
+#include <QStandardPaths>
+#endif
+
 #include <map>
 
 using namespace Qt::StringLiterals;
@@ -307,16 +311,16 @@ QVersionNumber Global::version()
 }
 
 namespace {
-// The two directories the configuration and the logs go into are baked in as compile
-// definitions, and what they hold is a recipe for a directory rather than a directory: see
-// Global::configurationDirectory() for the shapes one can take.
+#ifndef QMDMM_MACOS_APP_BUNDLE
+// Two of the three shapes the configuration and the logs take carry their directory as a
+// compile definition, and what such a definition holds is a recipe for a directory rather
+// than a directory: see Global::configurationDirectory() for all three. The application
+// bundle is the third, and it has no definition to resolve -- nothing reaches this function
+// in that shape, so it is not built there.
 [[nodiscard]] QString resolveConfiguredDirectory(const QString &configured)
 {
     if (configured.startsWith(u'/'))
         return configured;
-
-    if (configured.startsWith(u"~/"_s))
-        return QDir::home().absoluteFilePath(configured.mid(2));
 
     // Relative to the directory the executable sits in, which is the one thing this process
     // knows without being told what layout it was installed in. The value was computed from
@@ -324,43 +328,109 @@ namespace {
     // far the installed tree has been moved since.
     return QDir::cleanPath(QCoreApplication::applicationDirPath() + u"/"_s + configured);
 }
+#endif
+
+#ifdef QMDMM_MACOS_APP_BUNDLE
+// Where this platform keeps an application's own persistent data, under the name the
+// application is known by. That name is the bundle's identifier, the string the bundle itself
+// is identified by and the same one for all three programs -- which is what keeps them on one
+// directory rather than one each. QStandardPaths knows the platform's part; nothing here
+// spells out a path that belongs to one platform's conventions.
+[[nodiscard]] QString bundleApplicationDataDirectory()
+{
+    return QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + u"/"_s + u"" QMDMM_MACOS_BUNDLE_IDENTIFIER ""_s);
+}
+#endif
+
+struct ConfigurationDirectory final
+{
+    QString dir;
+
+    ConfigurationDirectory()
+        : dir(
+#ifdef QMDMM_MACOS_APP_BUNDLE
+              bundleApplicationDataDirectory() + u"/etc"_s
+#else
+              resolveConfiguredDirectory(u"" QMDMM_CONFIGURATION_PREFIX ""_s)
+#endif
+          )
+    {
+    }
+};
+
+struct RuntimeDataDirectory final
+{
+    QString dir;
+
+    RuntimeDataDirectory()
+    {
+#ifdef QMDMM_MACOS_APP_BUNDLE
+        const QString configured = bundleApplicationDataDirectory() + u"/var"_s;
+#else
+        const QString configured = resolveConfiguredDirectory(u"" QMDMM_RUNTIME_DATA_PREFIX ""_s);
+#endif
+
+        if (QDir().mkpath(configured) && QFileInfo(configured).isWritable()) {
+            dir = configured;
+            return;
+        }
+
+        // An installation under a prefix owned by someone else is the ordinary reason the
+        // directory above cannot be used, and the run would then have nowhere to report from.
+        // Its own directory under the home is the second attempt; a run that can write to
+        // neither is a run whose logs nobody will ever read.
+        dir = QDir::home().absoluteFilePath(u".QMdmm/var"_s);
+
+        if (QDir().mkpath(dir) && QFileInfo(dir).isWritable())
+            return;
+
+        qFatal("Runtime data can't be saved: neither %s nor %s can be created and written. Exiting.", qPrintable(configured), qPrintable(dir));
+        Q_UNREACHABLE();
+    }
+};
 } // namespace
 
 /**
  * @brief Returns the directory the system-wide configuration file lives in
  * @return the configuration directory
  *
- * What is configured is not necessarily a directory: an absolute path is used as it is (the
- * @c /usr and @c / prefixes, where deriving one from the executable would land on the wrong
- * side of the FHS), a path beginning with @c ~/ is taken under the home directory (the macOS
- * application bundle, which is not installed under a prefix at all), and anything else is
- * relative to the directory the executable was installed into. The last two are what let an
- * installed tree be moved to another location without the configuration staying behind.
+ * The directory comes from the build, from the platform or from the bundle, in three shapes.
+ * A definition that holds an absolute path is used as it is -- the @c /usr and @c / prefixes,
+ * where deriving one from the executable would land on the wrong side of the FHS. A
+ * definition that holds anything else is relative to the directory the executable was
+ * installed into, which is what lets an installed tree be moved afterwards without the
+ * configuration staying behind. The application bundle has no such definition at all: it is
+ * not installed under a prefix, so its directory is the platform's own place for an
+ * application's data, under the name the bundle is identified by -- one directory for all
+ * three programs, which is what makes it a system-wide configuration rather than three.
+ *
+ * It is looked up once, on the first call, and the same string is returned afterwards.
  */
-QString Global::configurationDirectory()
+const QString &Global::configurationDirectory()
 {
-    return resolveConfiguredDirectory(u"" QMDMM_CONFIGURATION_PREFIX ""_s);
+    static ConfigurationDirectory i;
+
+    return i.dir;
 }
 
 /**
  * @brief Returns the directory the runtime data -- the logs -- is written to
  * @return the runtime data directory
  *
- * Resolved exactly like configurationDirectory(), with one addition: when the directory it
- * names cannot be created or written to -- an installation under a prefix owned by someone
- * else, most often -- the fallback is @c $HOME/.QMdmm/var instead of leaving the process
- * without anywhere to log. The configured directory is created when that succeeds, so the
- * caller may find it already in place.
+ * Resolved the same way as @c configurationDirectory(), with @c var in place of @c etc, and
+ * with one addition: this directory has to be writable, or the run would have nowhere to
+ * report from. An installation under a prefix owned by someone else is the ordinary reason it
+ * is not, and the second attempt is then @c $HOME/.QMdmm/var. A run that can write to neither
+ * stops, rather than continuing as a process whose logs nobody will ever read. The directory
+ * that is used is created here, so the caller may find it already in place.
+ *
+ * Both are looked up once, on the first call -- that is where the stopping happens too.
  */
-QString Global::runtimeDataDirectory()
+const QString &Global::runtimeDataDirectory()
 {
-    // Not const: it is returned below, and a const local would be copied rather than moved.
-    QString configured = resolveConfiguredDirectory(u"" QMDMM_RUNTIME_DATA_PREFIX ""_s);
+    static RuntimeDataDirectory i;
 
-    if (QDir().mkpath(configured) && QFileInfo(configured).isWritable())
-        return configured;
-
-    return QDir::home().absoluteFilePath(u".QMdmm/var"_s);
+    return i.dir;
 }
 
 /**

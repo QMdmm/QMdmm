@@ -41,18 +41,16 @@ set(QMDMMCORE_PRIVATE_SOURCES
 
 set(QMDMMCORE_DOC_FILES ${QMDMMCORE_HEADERS} ${QMDMMCORE_SOURCES} PARENT_SCOPE)
 
-# These two definitions hold a recipe for a directory rather than a directory:
-# QMdmmCore::Global turns each of them into a path at run time, against the machine the
-# programs actually run on rather than the one they were built on. Three shapes, and the
-# resolver in QMdmmCore knows all of them.
+# Two of the three shapes carry the configuration and runtime data directories as definitions,
+# and what such a definition holds is a recipe for a directory rather than a directory:
+# QMdmmCore::Global turns it into a path at run time, against the machine the programs
+# actually run on rather than the one they were built on. The application bundle is the third
+# shape and carries neither: it is not installed under a prefix, so there is no recipe to
+# write. It asks the platform where an application's own directory goes and names it after the
+# bundle's identifier instead -- see Global::configurationDirectory().
 if (QMDMM_MACOS_APP_BUNDLE)
-    # A bundle is not a GNU-format installation -- whole directories are copied into place
-    # rather than a tree laid out under a prefix -- so there is no prefix to derive these
-    # from at all. The directories are named after the top-level
-    # QMDMM_MACOS_BUNDLE_IDENTIFIER, which carries no Qt major version because they
-    # deliberately do not either: several Qt generations built from this tree share them.
-    set(QMDMM_CONFIGURATION_PREFIX "~/Library/Application Support/${QMDMM_MACOS_BUNDLE_IDENTIFIER}/etc/${PROJECT_NAME}")
-    set(QMDMM_RUNTIME_DATA_PREFIX "~/Library/Application Support/${QMDMM_MACOS_BUNDLE_IDENTIFIER}/var/${PROJECT_NAME}")
+    # The two prefixes above are deliberately left unset: in this shape the directory is not
+    # derived from a prefix, and the identifier below is what names it.
 elseif (UNIX AND ( ( CMAKE_INSTALL_PREFIX STREQUAL "/usr" ) OR ( CMAKE_INSTALL_PREFIX STREQUAL "/" ) ) )
     # The executable sits in /usr/bin there while the directories are /etc and /var, so the
     # relative shape would name /usr/etc and /usr/var: the two prefixes that have an FHS
@@ -133,10 +131,21 @@ if (WIN32)
                   _UNICODE
     )
 endif()
-target_compile_definitions(QMdmmCore
-    INTERFACE QMDMM_CONFIGURATION_PREFIX="${QMDMM_CONFIGURATION_PREFIX}"
-              QMDMM_RUNTIME_DATA_PREFIX="${QMDMM_RUNTIME_DATA_PREFIX}"
-)
+if (NOT QMDMM_MACOS_APP_BUNDLE)
+    target_compile_definitions(QMdmmCore
+        INTERFACE QMDMM_CONFIGURATION_PREFIX="${QMDMM_CONFIGURATION_PREFIX}"
+                  QMDMM_RUNTIME_DATA_PREFIX="${QMDMM_RUNTIME_DATA_PREFIX}"
+    )
+else()
+    # The identifier is the same string the bundle is identified by, so the directory this
+    # shape puts the configuration and the logs in is named after the application itself --
+    # one directory for the GUI, the server and the bot, none of which has an identity of its
+    # own here.
+    target_compile_definitions(QMdmmCore
+        INTERFACE QMDMM_MACOS_APP_BUNDLE=1
+                  QMDMM_MACOS_BUNDLE_IDENTIFIER="${QMDMM_MACOS_BUNDLE_IDENTIFIER}"
+    )
+endif()
 if (QMDMM_EXPORT_PRIVATE)
     if (BUILD_SHARED_LIBS)
         target_compile_definitions(QMdmmCore

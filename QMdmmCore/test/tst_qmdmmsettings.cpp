@@ -13,6 +13,10 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#ifdef QMDMM_MACOS_APP_BUNDLE
+#include <QStandardPaths>
+#endif
+
 using namespace Qt::StringLiterals;
 
 // NOLINTBEGIN
@@ -72,6 +76,10 @@ void tst_QMdmmSettings::perUserConfigurationIsAnIniFileUnderTheHomeDirectory()
 // documents the rule -- so this one can still only say something on a machine where that
 // directory can be created and written, and it skips rather than fails where it cannot: an
 // installation under /usr is the ordinary case of that, and there is nothing to assert on it.
+//
+// In the bundle shape the directory is the platform's own, which on this platform means the
+// real home even when this process was given another one: the file below is put back, but the
+// directory tree it lives in is left behind, the same as a real run of the bundle would.
 void tst_QMdmmSettings::globalConfigurationIsAnIniFileUnderSystemDirectory()
 {
     QDir prefix(Global::configurationDirectory());
@@ -128,23 +136,23 @@ void tst_QMdmmSettings::globalConfigurationIsAnIniFileUnderSystemDirectory()
     QCOMPARE(QSettings(iniFile, QSettings::IniFormat).value(u"logic/slash"_s).toInt(), 3);
 }
 
-// What the build configures is a recipe for a directory rather than a directory, and the two
-// shapes that are not absolute are resolved against the process' own directory (see
-// Global::configurationDirectory()). The rule is stated a second time here on purpose: the
-// cases above read the directory back through the same accessor that writes it, so they would
-// agree with a resolver that named the wrong place. This one cannot -- it derives the expected
-// path from the definition and the executable instead.
+// Which directory that is comes from the build and the machine rather than being written
+// down, and the rule is stated a second time here on purpose: the cases above read the
+// directory back through the same accessor that writes it, so they would agree with a
+// resolver that named the wrong place. This one cannot -- it derives the expected path from
+// the definitions and the executable, or, in the bundle, from the platform's own application
+// directory the way the code does.
 void tst_QMdmmSettings::configurationDirectoryIsResolvedAgainstTheProcessNotTheWorkingDirectory()
 {
+#ifdef QMDMM_MACOS_APP_BUNDLE
+    const QString expected = QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + u"/"_s + u"" QMDMM_MACOS_BUNDLE_IDENTIFIER ""_s + u"/etc"_s);
+#else
     const QString configured = u"" QMDMM_CONFIGURATION_PREFIX ""_s;
 
-    QString expected;
-    if (configured.startsWith(u'/'))
-        expected = configured;
-    else if (configured.startsWith(u"~/"_s))
-        expected = QDir::home().absoluteFilePath(configured.mid(2));
-    else
-        expected = QDir::cleanPath(QCoreApplication::applicationDirPath() + u"/"_s + configured);
+    // No shape names a directory under the home directory any more: what is not absolute is
+    // relative to the executable.
+    const QString expected = configured.startsWith(u'/') ? configured : QDir::cleanPath(QCoreApplication::applicationDirPath() + u"/"_s + configured);
+#endif
 
     QVERIFY(QDir::isAbsolutePath(expected));
     QCOMPARE(Global::configurationDirectory(), expected);

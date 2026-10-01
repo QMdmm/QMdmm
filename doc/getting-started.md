@@ -127,9 +127,12 @@ they were built on. An install prefix of `/usr` or `/` keeps the system-wide
 among them -- gets `<install prefix>/etc/QMdmm` and `<install prefix>/var/QMdmm`,
 found relative to the executable, so the prefix can be moved after installation
 and the paths follow it. The logs go to `<runtime data prefix>/log`, and fall back
-to `$HOME/.QMdmm/var/log` when that directory cannot be created or written. The
-macOS application bundle is not installed under a prefix at all: it reads and
-writes `$HOME/Library/Application Support/me.fsu0413.QMdmm/{etc,var}/QMdmm`.
+to `$HOME/.QMdmm/var/log` when that directory cannot be created or written --
+and a run that can write to neither stops rather than continuing without logs.
+The macOS application bundle is not installed under a prefix at all: it reads
+and writes `$HOME/Library/Application Support/me.fsu0413.QMdmm/{etc,var}`, which
+is where this platform keeps an application's own data, named after the
+identifier the bundle carries.
 
 A value is looked up in three places, in order: the value given on the command
 line, then the per-user file, then the system-global file. The first place that
