@@ -166,6 +166,12 @@ last seat is taken. With no human in the room nothing waits on input, so the
 bots play the game out at once; the room then goes quiet, the server takes the
 next room, and each bot stays in its event loop.
 
+Neither program is a way to play the game yourself: a server hosts the rooms and
+hands out the requests, a bot answers them as they arrive, and neither reads
+anything from the terminal -- a room that fills up plays itself out. Playing the
+game yourself means the GUI, below; writing a player of your own means driving a
+`Client` through its request signals (`Drive a client yourself`).
+
 ### Addresses
 
 The bot's `-l, --host` takes an address, and what comes before `://` picks the
