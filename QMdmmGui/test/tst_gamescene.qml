@@ -19,6 +19,9 @@ import QtTest 1.2
 // broadcast map, the card that renders it is guarded in tst_playercard, and the
 // case that plays a local game through the scene is what pins the two together
 // -- the cards a live room builds have to read their state off that map.
+// The names the scene shows for two of the numbers it is handed are guarded
+// here as well: both numberings live in QMdmmCore, and the case that feeds the
+// core enum's own values in is the only place the two meet.
 //
 // Like tst_scene.qml, the scene is loaded from the source tree (the QMdmm.Gui
 // module resource lives in the QMdmm6 executable, which this test does not
@@ -294,6 +297,26 @@ TestCase {
 
         verify(hasText(scene, "max HP: 7 (up to 7) | knife damage: 1 (up to 3) | horse damage: 3 (up to 5)"));
         verify(hasText(scene, "slash self-punish: off | 0 HP is still alive | let-move not allowed | buy: starting city only"));
+    }
+
+    function test_theNamesTheSceneShowsAreTheCoreEnumsOwnValues() {
+        const scene = makeScene();
+
+        // The scene names two enums it is handed as plain numbers: the punish rounding the rules
+        // strip spells out, and the rock-paper-scissors pick the match log spells out. Both
+        // numberings live in QMdmmCore, and the scene writes them down a second time in its own
+        // branches -- so the names hold only while the two agree. The values below are the core
+        // enum's own, handed in by the fixture, which makes this case the one place the two meet:
+        // move a value in the enum and the scene is asked for a name it has no branch for. The
+        // cases above reach these branches through the broadcast map, but none of them can notice
+        // a renumbering -- the numbers they write down are the ones the branches write down too.
+        compare(scene.punishStrategyName(coreEnumValues.punishRoundDown), "rounded down");
+        compare(scene.punishStrategyName(coreEnumValues.punishRoundToNearest45), "rounded to nearest");
+        compare(scene.punishStrategyName(coreEnumValues.punishRoundUp), "rounded up");
+        compare(scene.punishStrategyName(coreEnumValues.punishPlusOne), "rounded down, plus one");
+        compare(scene.rpsName(coreEnumValues.rpsRock), "Rock");
+        compare(scene.rpsName(coreEnumValues.rpsScissors), "Scissors");
+        compare(scene.rpsName(coreEnumValues.rpsPaper), "Paper");
     }
 
     function test_upgradeResultIsLogged() {

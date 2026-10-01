@@ -3,6 +3,7 @@
 #include <QtQuickTest/quicktest.h>
 
 #include <QQmlContext>
+#include <QVariantMap>
 #include <QtQml>
 
 #include <QMdmmAgent>
@@ -203,6 +204,27 @@ public slots:
         // never fills (see that case for why it is worth saying earlier).
         engine->rootContext()->setContextProperty(u"bridgeSocketName"_s, QMdmmGameClient::serverSocketName());
         engine->rootContext()->setContextProperty(u"serverDefaultSocketName"_s, QMdmmNetworking::ServerConfiguration::defaults().localSocketName());
+
+        // The values behind the two enums the scene names in its own branches -- the punish
+        // rounding its rules strip spells out, and the rock-paper-scissors pick its match log
+        // spells out. It is handed both as plain numbers, so the branches only hold while their
+        // numbering agrees with the core enum's, and nothing in the build says a word if it stops
+        // doing so. The case in tst_gamescene.qml is the other end of this: it feeds these in and
+        // asks the scene for the name.
+        //
+        // Read here rather than written into the .qml file, because a value spelled out in QML is
+        // folded into the compiled unit and the disk cache that holds it is keyed on the QML
+        // source alone -- a renumbering underneath would go on being answered with the old number,
+        // and the case would pass on a scene that had stopped following the enum.
+        QVariantMap coreEnumValues;
+        coreEnumValues.insert(u"rpsRock"_s, static_cast<int>(QMdmmCore::Data::Rock));
+        coreEnumValues.insert(u"rpsScissors"_s, static_cast<int>(QMdmmCore::Data::Scissors));
+        coreEnumValues.insert(u"rpsPaper"_s, static_cast<int>(QMdmmCore::Data::Paper));
+        coreEnumValues.insert(u"punishRoundDown"_s, static_cast<int>(QMdmmCore::LogicConfiguration::RoundDown));
+        coreEnumValues.insert(u"punishRoundToNearest45"_s, static_cast<int>(QMdmmCore::LogicConfiguration::RoundToNearest45));
+        coreEnumValues.insert(u"punishRoundUp"_s, static_cast<int>(QMdmmCore::LogicConfiguration::RoundUp));
+        coreEnumValues.insert(u"punishPlusOne"_s, static_cast<int>(QMdmmCore::LogicConfiguration::PlusOne));
+        engine->rootContext()->setContextProperty(u"coreEnumValues"_s, coreEnumValues);
     }
 
 private:
