@@ -6,6 +6,10 @@
 #include <QDir>
 #include <QFileInfo>
 
+#ifdef QMDMM_MACOS_APP_BUNDLE
+#include <QStandardPaths>
+#endif
+
 #include <map>
 
 using namespace Qt::StringLiterals;
@@ -315,15 +319,53 @@ namespace {
     if (configured.startsWith(u'/'))
         return configured;
 
-    if (configured.startsWith(u"~/"_s))
-        return QDir::home().absoluteFilePath(configured.mid(2));
-
     // Relative to the directory the executable sits in, which is the one thing this process
     // knows without being told what layout it was installed in. The value was computed from
     // that layout when the project was configured, so this lands on the same place however
     // far the installed tree has been moved since.
     return QDir::cleanPath(QCoreApplication::applicationDirPath() + u"/"_s + configured);
 }
+
+struct ConfigurationDirectory final
+{
+    QString dir;
+
+    ConfigurationDirectory()
+        : dir(
+#ifdef QMDMM_MACOS_APP_BUNDLE
+              QDir::cleanPath(QStandardPaths::writableLocation(QStanndardPaths::AppDataLocation) + u"/etc"_s)
+#else
+              resolveConfiguredDirectory(u"" QMDMM_CONFIGURATION_PREFIX ""_s)
+#endif
+          )
+    {
+    }
+};
+
+struct RuntimeDataDirectory final
+{
+    QString dir;
+
+    RuntimeDataDirectory()
+    {
+#ifdef QMDMM_MACOS_APP_BUNDLE
+        dir = QDir::cleanPath(QStandardPaths::writableLocation(QStanndardPaths::AppDataLocation) + u"/var"_s);
+#else
+        dir = resolveConfiguredDirectory(u"" QMDMM_RUNTIME_DATA_PREFIX ""_s);
+#endif
+
+        if (QDir().mkpath(dir) && QFileInfo(dir).isWritable())
+            return;
+
+        dir = QDir::home().absoluteFilePath(u".QMdmm/var"_s);
+
+        if (QDir().mkpath(dir) && QFileInfo(dir).isWritable())
+            return;
+
+        qFatal("%s: both %s and %s are not created nor writable. Runtime data can't be saved. Exiting.", __func__, QMDMM_RUNTIME_DATA_PREFIX, qPrintable(dir));
+        Q_UNREACHABLE();
+    }
+};
 } // namespace
 
 /**
@@ -337,9 +379,11 @@ namespace {
  * relative to the directory the executable was installed into. The last two are what let an
  * installed tree be moved to another location without the configuration staying behind.
  */
-QString Global::configurationDirectory()
+const QString &Global::configurationDirectory()
 {
-    return resolveConfiguredDirectory(u"" QMDMM_CONFIGURATION_PREFIX ""_s);
+    static ConfigurationDirectory i;
+
+    return i.dir;
 }
 
 /**
@@ -352,15 +396,11 @@ QString Global::configurationDirectory()
  * without anywhere to log. The configured directory is created when that succeeds, so the
  * caller may find it already in place.
  */
-QString Global::runtimeDataDirectory()
+const QString &Global::runtimeDataDirectory()
 {
-    // Not const: it is returned below, and a const local would be copied rather than moved.
-    QString configured = resolveConfiguredDirectory(u"" QMDMM_RUNTIME_DATA_PREFIX ""_s);
+    static RuntimeDataDirectory i;
 
-    if (QDir().mkpath(configured) && QFileInfo(configured).isWritable())
-        return configured;
-
-    return QDir::home().absoluteFilePath(u".QMdmm/var"_s);
+    return i.dir;
 }
 
 /**
