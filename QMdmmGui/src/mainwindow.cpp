@@ -18,6 +18,13 @@ MainWindow::MainWindow(const QString &serverProgram, const QString &botProgram, 
 
     // Register the core data enums and the Player type so the QML layer can
     // read properties and use action / upgrade constants.
+    //
+    // Registered is not the same as safe to read, though: the QML compiler
+    // folds the value it finds into the compiled unit, and the on-disk cache is
+    // keyed by the QML source alone -- renumber the C++ enum and nothing
+    // recompiles, so the stale value stays in place and nothing fails. A
+    // constant that has to cross into QML belongs on a live object instead,
+    // read at run time, the way QMdmmGameClient hands out the state masks.
     qmlRegisterUncreatableMetaObject(QMdmmCore::Data::staticMetaObject, "QMdmm.Core", 1, 0, "Data", u"Access to enums only"_s);
     qmlRegisterUncreatableType<QMdmmCore::Player>("QMdmm.Core", 1, 0, "Player", u"Player is created by the engine"_s);
 
