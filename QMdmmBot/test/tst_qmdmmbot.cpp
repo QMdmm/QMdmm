@@ -10,6 +10,7 @@
 #include <QMdmmServer>
 
 #include <QEventLoop>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QTest>
 #include <QTimer>
@@ -375,6 +376,56 @@ constexpr int MATCH_TIMEOUT_MS = 30000;
 
 } // namespace
 
+namespace {
+
+// Everything a user sees after running the executable once. The command line is
+// parsed out of the process arguments (Config::Config() reads qApp->arguments()),
+// so it cannot be exercised from inside this process -- this test binary has
+// arguments of its own -- and it is driven as a child process instead.
+struct RunResult
+{
+    QProcess::ExitStatus exitStatus = QProcess::CrashExit;
+    int exitCode = -1;
+    QString standardOutput;
+    QString standardError;
+};
+
+// Runs the executable under test with @p arguments and collects what it printed.
+//
+// The runs made here all finish on their own, though not all of them cleanly:
+// --help and --version print and exit, and everything the configuration rejects --
+// a stray word, a missing host, a style nobody implements -- goes through
+// configError(), which writes the reason to stderr and exits 3. The style the
+// configuration accepts but no style implements is the third way out: it gets
+// past the configuration and then terminates on its way to signing in, so that
+// run ends without an exit code. Either way it ends on its own, so a run that
+// outlives the timeout means the executable stopped exiting where it is expected
+// to -- the helper kills it and fails rather than reporting a half-collected
+// result.
+RunResult runBot(const QStringList &arguments, int timeoutMs = 60000)
+{
+    QProcess process;
+    process.start(QString::fromLatin1(QMDMMBOT_EXECUTABLE), arguments);
+
+    if (!process.waitForStarted(timeoutMs))
+        qFatal("the executable under test did not start");
+
+    if (!process.waitForFinished(timeoutMs)) {
+        process.kill();
+        process.waitForFinished();
+        qFatal("the executable under test did not exit");
+    }
+
+    RunResult result;
+    result.exitStatus = process.exitStatus();
+    result.exitCode = process.exitCode();
+    result.standardOutput = QString::fromLocal8Bit(process.readAllStandardOutput());
+    result.standardError = QString::fromLocal8Bit(process.readAllStandardError());
+    return result;
+}
+
+} // namespace
+
 class tst_QMdmmBot : public QObject
 {
     Q_OBJECT
@@ -518,6 +569,25 @@ private slots:
     // match also covers the three ways a player can reach the server.
     void fullGame_theTwoStylesPlayAWholeMatchToTheEnd();
     void fullGame_theTwoStylesPlayAWholeMatchToTheEnd_data();
+
+    // The command line, driven as a child process: --help and --version are the
+    // two ways out that end on purpose, and the rejections are the ones a user
+    // meets by mistyping something.
+    void cli_helpPrintsTheUsageAndExitsZero();
+    void cli_versionPrintsSomethingAndExitsZero();
+    void cli_unknownArgumentIsRejected();
+    void cli_missingHostIsRejected();
+    void cli_unknownPlayingStyleIsRejected_data();
+    void cli_unknownPlayingStyleIsRejected();
+
+    // The style the configuration accepts and no style implements: recognized,
+    // and a hard failure rather than a seat that plays nothing.
+    void cli_unimplementedStyleTerminatesAtStartup();
+
+    // The whitelist those rejections are decided by, asked directly rather than
+    // through a run, so the answer is the list itself and not whichever error a
+    // run happened to reach.
+    void style_acceptsTheImplementedStylesAndTheReservedOne();
 };
 
 void tst_QMdmmBot::revenge_recordsHostileActionsOnly()
@@ -1922,6 +1992,112 @@ void tst_QMdmmBot::fullGame_theTwoStylesPlayAWholeMatchToTheEnd()
         QVERIFY(seat->tally.requests > 0);
         QCOMPARE(seat->tally.answers(), seat->tally.requests);
     }
+}
+
+// --help is the first option a user reaches for, and it is the only way out that
+// prints a page and leaves with a zero status without going through the error
+// path the rejected values below take.
+void tst_QMdmmBot::cli_helpPrintsTheUsageAndExitsZero()
+{
+    const RunResult result = runBot({u"--help"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 0);
+
+    QVERIFY(result.standardOutput.contains(u"Usage: QMdmmBot [options]"_s));
+    // The usage text is the point of the option, so check that it carries the
+    // options too rather than stopping after the first line.
+    QVERIFY(result.standardOutput.contains(u"--playing-style"_s));
+}
+
+// The version option is Qt's, added rather than written out, and it is the other
+// way to leave with a zero status. What it prints is the project version, so the
+// case asks that it printed something rather than pinning text that every
+// release changes.
+void tst_QMdmmBot::cli_versionPrintsSomethingAndExitsZero()
+{
+    const RunResult result = runBot({u"--version"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 0);
+    QVERIFY(!result.standardOutput.trimmed().isEmpty());
+}
+
+// A stray word is a usage error, and the word is named back so the user can see
+// which one it was. The status is the one every configuration error ends with --
+// 3 -- rather than something the caller has to guess from the text.
+void tst_QMdmmBot::cli_unknownArgumentIsRejected()
+{
+    const RunResult result = runBot({u"extra"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+    QVERIFY(result.standardError.contains(u"Unknown argument: extra"_s));
+}
+
+// The host is the one thing the program cannot decide for itself, so a run that
+// names none is rejected before anything is built rather than signing in
+// nowhere. The name is there to keep the case from passing for the wrong reason:
+// with neither of the two options set, a run that stopped on the name instead
+// would look the same.
+void tst_QMdmmBot::cli_missingHostIsRejected()
+{
+    const RunResult result = runBot({u"-n"_s, u"Botty"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+    QVERIFY(result.standardError.contains(u"Host is required."_s));
+}
+
+void tst_QMdmmBot::cli_unknownPlayingStyleIsRejected_data()
+{
+    QTest::addColumn<QString>("style");
+
+    QTest::newRow("a style nobody implements") << u"bogus"_s;
+    // The whitelist is compared as written rather than folded, so a style that
+    // differs only in case is as unknown as one that was made up.
+    QTest::newRow("a known style spelled differently") << u"KnifePreferred"_s;
+}
+
+void tst_QMdmmBot::cli_unknownPlayingStyleIsRejected()
+{
+    QFETCH(QString, style);
+
+    // The host comes first: the style is validated after it, so without one the
+    // run would stop at that error and never reach this one.
+    const RunResult result = runBot({u"-l"_s, u"somewhere"_s, u"-s"_s, style});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+    QVERIFY(result.standardError.contains(u"Specified playing style does not exist."_s));
+}
+
+// The style the parser accepts but no style implements is a hard failure rather
+// than a seat that plays nothing: the run gets past the configuration and then
+// terminates on its way to signing in. Nothing about it comes back as an exit
+// status, so that is the assertion -- and the help text is where the behaviour is
+// announced to the user (see cli_helpPrintsTheUsageAndExitsZero).
+void tst_QMdmmBot::cli_unimplementedStyleTerminatesAtStartup()
+{
+    const RunResult result = runBot({u"-l"_s, u"somewhere"_s, u"-s"_s, u"rl"_s});
+
+    QVERIFY(result.exitStatus == QProcess::CrashExit);
+}
+
+// The whitelist the configuration validates against, asked through the same
+// public static the executable's own runs go through instead of through a run, so
+// the answer is the list itself and not whichever error a run happened to reach.
+void tst_QMdmmBot::style_acceptsTheImplementedStylesAndTheReservedOne()
+{
+    QVERIFY(Bot::styleExist(u"knifePreferred"_s));
+    QVERIFY(Bot::styleExist(u"horsePreferred"_s));
+    // Recognized so that the configuration lets it through; constructing one is
+    // the hard failure the case above drives (see RlBot's constructor).
+    QVERIFY(Bot::styleExist(u"rl"_s));
+
+    QVERIFY(!Bot::styleExist(u"bogus"_s));
+    QVERIFY(!Bot::styleExist(QString()));
+    QVERIFY(!Bot::styleExist(u"KnifePreferred"_s));
 }
 
 namespace {
