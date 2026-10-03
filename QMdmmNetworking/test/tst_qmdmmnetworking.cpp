@@ -58,6 +58,8 @@ private slots:
     void client_infeasibleUpgradeReplyDoesNotStall();
     void client_disconnectDuringUpgradeStillAdvances();
     void socket_addressSchemeWhitelist();
+    void socket_accessorsReportTheTransportAndAnyError();
+    void client_speakReachesTheOtherPlayer();
 };
 
 // A room that is not full has not started a game yet: a dropped socket removes the player
@@ -227,6 +229,14 @@ void tst_QMdmmNetworking::addAgent_registersLocalAgent()
 
     QCOMPARE(runner.addAgent(local), local);
     QCOMPARE(runner.agent(u"p1"_s), local);
+
+    // The const overload is the one a caller holding only a const reference reaches, and ServerP
+    // looks agents up on a non-const runner -- so nothing exercises it unless it is asked here.
+    // Both overloads have to answer the same way, for a name that is there and for one that is not.
+    const LogicRunner &constRunner = runner;
+    QCOMPARE(constRunner.agent(u"p1"_s), local);
+    QVERIFY(constRunner.agent(u"nobody"_s) == nullptr);
+
     QVERIFY(local->state().testFlag(Data::StateMaskOnline));
     QVERIFY(!runner.full()); // playerNumPerRoom = 3, only one agent added
 }
@@ -1188,6 +1198,99 @@ void tst_QMdmmNetworking::socket_addressSchemeWhitelist()
     QVERIFY(!socket.connectToHost(u"QMDMMS://localhost:16378"_s));
     QVERIFY(!socket.connectToHost(u"http://localhost:16378"_s));
     QVERIFY(!socket.connectToHost(u"ftp://localhost:16378"_s));
+}
+
+// The Socket wrapper answers three questions about itself: which transport it drives, whether it
+// is in an error state, and what that error is. The accessors sit on top of the transport-specific
+// private implementations (one type() per transport), so they are pinned here rather than through a
+// live peer: the type follows the address the same way socket_addressSchemeWhitelist pins the
+// whitelist, a socket without a transport yet answers TypeUnknown, and setError is a no-op there --
+// the guard is the point of the last block, not a detail.
+void tst_QMdmmNetworking::socket_accessorsReportTheTransportAndAnyError()
+{
+    {
+        // Client side: the transport is created lazily by connectToHost(), so there is none yet.
+        Socket socket;
+        QCOMPARE(socket.type(), Socket::TypeUnknown);
+        QVERIFY(!socket.error().has_value());
+        QVERIFY(!socket.hasError());
+
+        // Nothing to disconnect and nothing to record: a client-side socket that never connected
+        // has no transport for the error to live on.
+        socket.setError({.code = Socket::ProtocolError, .errorString = u"ignored"_s});
+        QVERIFY(!socket.hasError());
+    }
+
+    {
+        // Server side: the socket wraps a transport that is already there, so the type is known
+        // before anything is connected.
+        auto *tcp = new QTcpSocket;
+        Socket socket(tcp);
+        QCOMPARE(socket.type(), Socket::TypeQTcpSocket);
+        QVERIFY(!socket.hasError());
+
+        socket.setError({.code = Socket::ProtocolError, .errorString = u"protocol violation"_s});
+        QVERIFY(socket.hasError());
+        QVERIFY(socket.error().has_value());
+        QCOMPARE(socket.error()->code, Socket::ProtocolError);
+        QCOMPARE(socket.error()->errorString, u"protocol violation"_s);
+    }
+
+    {
+        // One client-side socket, three schemes: every transport has to report itself.
+        Socket socket;
+        QVERIFY(socket.connectToHost(u"qmdmm://localhost:16380"_s));
+        QCOMPARE(socket.type(), Socket::TypeQTcpSocket);
+        QVERIFY(socket.connectToHost(u"QMdmmNetworkingTest"_s));
+        QCOMPARE(socket.type(), Socket::TypeQLocalSocket);
+        QVERIFY(socket.connectToHost(u"ws://localhost:16380"_s));
+        QCOMPARE(socket.type(), Socket::TypeQWebSocket);
+    }
+}
+
+// Speaking is a client-bound notify the server does not interpret: the client hands the text to
+// its own agent, the connection encodes it for the wire, the server passes it straight to the
+// agent, and the room broadcasts it to every agent in it -- which each receiving connection turns
+// back into a wire packet. The receiving client then decodes it. Driven end-to-end through the
+// public Server / Client API (the two-client shape the managed-state case uses); the room is left
+// not full so no game traffic rides along with the speak.
+void tst_QMdmmNetworking::client_speakReachesTheOtherPlayer()
+{
+    LogicConfiguration conf = LogicConfiguration::defaults();
+
+    ServerConfiguration serverConf = ServerConfiguration::defaults();
+    serverConf.setPlayerNumPerRoom(3);
+    serverConf.setTcpPort(16380);
+    serverConf.setLocalEnabled(false);
+    serverConf.setWebsocketEnabled(false);
+    serverConf.setRequestTimeout(60);
+
+    Server server(serverConf, conf);
+    QVERIFY(server.listen());
+
+    const QString host = u"qmdmm://localhost:16380"_s;
+
+    auto *p1 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p1->connectToHost(host, Data::StateOnline));
+    QTRY_VERIFY_WITH_TIMEOUT(p1->room() != nullptr && p1->room()->player(p1->objectName()) != nullptr, 5000);
+
+    auto *p2 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p2->connectToHost(host, Data::StateOnline));
+    QTRY_VERIFY_WITH_TIMEOUT(p2->room() != nullptr && p2->room()->player(p1->objectName()) != nullptr, 5000);
+
+    // p2 learns about the speaker before it can hear anything from them (the receiver drops a
+    // speak whose speaker it does not know), so the wait above is part of the case, not preamble.
+    QString heardFrom;
+    QString heardWhat;
+    connect(p2->agent(), &Agent::speakNotified, &server, [&heardFrom, &heardWhat](const QString &playerName, const QString &content) {
+        heardFrom = playerName;
+        heardWhat = content;
+    });
+
+    p1->agent()->speak(u"hello there"_s);
+
+    QTRY_COMPARE_WITH_TIMEOUT(heardFrom, p1->objectName(), 5000);
+    QCOMPARE(heardWhat, u"hello there"_s);
 }
 
 namespace {
