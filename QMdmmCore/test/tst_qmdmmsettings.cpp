@@ -37,6 +37,7 @@ private slots:
     void perUserConfigurationIsAnIniFileUnderTheHomeDirectory();
     void globalConfigurationIsAnIniFileUnderSystemDirectory();
     void configurationDirectoryIsResolvedAgainstTheProcessNotTheWorkingDirectory();
+    void valueAndContainsReadEveryInstance();
 
 private:
     QTemporaryDir home;
@@ -165,6 +166,51 @@ void tst_QMdmmSettings::configurationDirectoryIsResolvedAgainstTheProcessNotTheW
     const auto restore [[maybe_unused]] = qScopeGuard([previous] { QDir::setCurrent(previous); });
     QVERIFY(QDir::setCurrent(QDir::rootPath()));
     QCOMPARE(Global::configurationDirectory(), expected);
+}
+
+// The cases above pin where two of the three instances live; this one pins that they are
+// read at all. The lookup is a chain -- what the program set, then the user's file, then the
+// machine's -- and nothing else in the tree calls value() or contains(), so without this case
+// the whole reading half of this class would be exercised by nothing.
+void tst_QMdmmSettings::valueAndContainsReadEveryInstance()
+{
+    Settings settings;
+
+    // A key nothing has written: the caller's default is what comes back from every instance,
+    // and every instance reports that it does not have the key.
+    const QString absent = u"aKeyNobodySet"_s;
+    QCOMPARE(settings.value(absent, 11).toInt(), 11);
+    QCOMPARE(settings.value(Settings::Specified, absent, 11).toInt(), 11);
+    QCOMPARE(settings.value(Settings::PerUser, absent, 11).toInt(), 11);
+    QCOMPARE(settings.value(Settings::Global, absent, 11).toInt(), 11);
+    QVERIFY(!settings.contains(absent));
+    QVERIFY(!settings.contains(Settings::Specified, absent));
+    QVERIFY(!settings.contains(Settings::PerUser, absent));
+    QVERIFY(!settings.contains(Settings::Global, absent));
+
+    // setValue touches the specified instance alone, so the other two do not have the key
+    // until saveConfig puts it on disk -- and the specified instance has it from the start.
+    const QString key = u"aKeySetHereOnly"_s;
+    settings.setValue(key, 3);
+    QCOMPARE(settings.value(key).toInt(), 3);
+    QCOMPARE(settings.value(Settings::Specified, key).toInt(), 3);
+    QVERIFY(settings.contains(key));
+    QVERIFY(settings.contains(Settings::Specified, key));
+    QVERIFY(!settings.contains(Settings::PerUser, key));
+
+    QCOMPARE(static_cast<int>(settings.saveConfig(Settings::PerUser)), static_cast<int>(QSettings::NoError));
+    QCOMPARE(settings.value(Settings::PerUser, key).toInt(), 3);
+    QVERIFY(settings.contains(Settings::PerUser, key));
+
+    // The one step of the chain that can be moved from here: the per-user file now holds 3
+    // under this key, and setting 5 afterwards answers 5 from a plain lookup while the
+    // per-user instance still says 3. The global step is left where it is -- moving it means
+    // writing the machine's own file, which the case above already does for one key under a
+    // guard that puts it back.
+    settings.setValue(key, 5);
+    QCOMPARE(settings.value(Settings::Specified, key).toInt(), 5);
+    QCOMPARE(settings.value(Settings::PerUser, key).toInt(), 3);
+    QCOMPARE(settings.value(key).toInt(), 5);
 }
 
 namespace {
