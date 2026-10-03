@@ -2,11 +2,13 @@
 
 #include <QDir>
 #include <QFile>
+#include <QHostAddress>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QSettings>
 #include <QString>
 #include <QStringList>
+#include <QTcpServer>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -46,13 +48,17 @@ QProcessEnvironment environmentWithHome(const QString &home)
 // @p environment replaces the process environment when a case has to steer where the
 // run reads and writes.
 //
-// The runs made here all finish on their own: --help and --show-current-configuration
-// print and exit, -c and -C save and exit with the save's own status, and everything
-// the configuration code rejects -- a value out of range, a value that cannot be
-// parsed, an option pair that cannot both be meant -- goes through configError(),
-// which writes the reason to stderr and exits 3. None of them starts a server, so a
-// run that outlives the timeout means the executable stopped exiting where it is
-// expected to -- abort rather than report a half-collected result.
+// The runs made here all finish on their own, though not all of them cleanly:
+// --help and --show-current-configuration print and exit, -c and -C save and exit
+// with the save's own status, and everything the configuration code rejects -- a value
+// out of range, a value that cannot be parsed, an option pair that cannot both be
+// meant -- goes through configError(), which writes the reason to stderr and exits 3.
+// A run that does get past the configuration reaches the server itself, and a server
+// that cannot bind a transport it was asked for gives up through qFatal(): that run
+// ends by aborting rather than by returning an exit code. Either way it ends on its
+// own, so a run that outlives the timeout means the executable stopped exiting where
+// it is expected to -- the helper kills it and fails rather than reporting a
+// half-collected result.
 RunResult runServer(const QStringList &arguments, int timeoutMs = 60000, const QProcessEnvironment &environment = QProcessEnvironment::systemEnvironment())
 {
     QProcess process;
@@ -92,6 +98,18 @@ private slots:
     void crossedPairs_areRejected_data();
     void crossedPairs_areRejected();
     void unknownPunishHpRoundStrategy_isRejected();
+    void unknownArgument_isRejected();
+    void unparsableOptionValue_isRejected_data();
+    void unparsableOptionValue_isRejected();
+    void twoPlayerShorthands_areRejected_data();
+    void twoPlayerShorthands_areRejected();
+    void playerShorthandWithPlayersOption_isRejected();
+    void roomSizeBelowTwo_isRejected();
+    void timeoutBelowFloor_isRejected();
+    void punishHpModifierBelowFloor_isRejected();
+    void switchValues_reachThePrintedConfiguration_data();
+    void switchValues_reachThePrintedConfiguration();
+    void portThatIsAlreadyTaken_makesTheRunGiveUp();
 };
 
 // --help is the first option a user reaches for, and it is the only one that
@@ -253,6 +271,179 @@ void tst_QMdmmServer::unknownPunishHpRoundStrategy_isRejected()
 
     QVERIFY(result.standardError.contains(u"punish-hp-round-strategy"_s));
     QVERIFY(result.standardError.contains(u"can't be parsed"_s));
+}
+
+// A word that names no option is left over as a positional argument. The run then has
+// no way to tell whether the user meant something by it, so it refuses to start with
+// the defaults and say nothing -- the message quotes what it could not place.
+void tst_QMdmmServer::unknownArgument_isRejected()
+{
+    const RunResult result = runServer({u"extra"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+
+    QVERIFY(result.standardError.contains(u"Unknown argument: extra"_s));
+}
+
+// A value that cannot be read as the type its own option promises is a typo, not a
+// value to fall back on: keeping the default silently would leave the user with a
+// server configured differently from what they typed. The message names the item and
+// says where the value came from, so the same rejection is readable from the command
+// line and from a configuration file.
+//
+// Each row is a different way a value fails to parse: a word where a port number goes,
+// a number that does not fit the 16 bits a port is carried in, and a word outside the
+// family of spellings an on/off switch accepts.
+void tst_QMdmmServer::unparsableOptionValue_isRejected_data()
+{
+    QTest::addColumn<QStringList>("arguments");
+    QTest::addColumn<QString>("message");
+
+    QTest::newRow("tcp-port is not a number") << QStringList {u"-p"_s, u"notaport"_s} << u"tcp-port (from command line) can't be parsed"_s;
+    QTest::newRow("tcp-port does not fit a uint16") << QStringList {u"-p"_s, u"65536"_s} << u"tcp-port (from command line) can't be parsed"_s;
+    QTest::newRow("tcp is not an on/off word") << QStringList {u"-t"_s, u"maybe"_s} << u"tcp (from command line) can't be parsed"_s;
+}
+
+void tst_QMdmmServer::unparsableOptionValue_isRejected()
+{
+    QFETCH(QStringList, arguments);
+    QFETCH(QString, message);
+
+    const RunResult result = runServer(arguments);
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+
+    QVERIFY(result.standardError.contains(message));
+}
+
+// Two player-count shorthands name two different sizes for one run, and there is no
+// order that makes either of them right -- taking one would fill a room the user did
+// not ask for. The message names both so the clash is visible.
+//
+// The rows are written in both command-line orders: the shorthands are read off the
+// parser rather than off the argument list, so -5 -2 is the same run as -2 -5.
+void tst_QMdmmServer::twoPlayerShorthands_areRejected_data()
+{
+    QTest::addColumn<QStringList>("arguments");
+    QTest::addColumn<QString>("message");
+
+    QTest::newRow("2 then 3") << QStringList {u"-2"_s, u"-3"_s} << u"-3 can't be specified along with -2"_s;
+    QTest::newRow("5 then 2") << QStringList {u"-5"_s, u"-2"_s} << u"-5 can't be specified along with -2"_s;
+}
+
+void tst_QMdmmServer::twoPlayerShorthands_areRejected()
+{
+    QFETCH(QStringList, arguments);
+    QFETCH(QString, message);
+
+    const RunResult result = runServer(arguments);
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+
+    QVERIFY(result.standardError.contains(message));
+}
+
+// A shorthand and --players are one item written two ways, so a run that gives both
+// has to be told that only one of them can count.
+void tst_QMdmmServer::playerShorthandWithPlayersOption_isRejected()
+{
+    const RunResult result = runServer({u"-3"_s, u"-n"_s, u"4"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+
+    QVERIFY(result.standardError.contains(u"-3 can't be specified along with -n / --players"_s));
+}
+
+// A room of one has no opponent, so action-order resolution -- a rock-paper-scissors
+// round between the players -- cannot be run at all. The floor is 2 and the room size
+// is settled before anything else is resolved, so a run that asks for less is turned
+// away here rather than starting a room that can never finish.
+void tst_QMdmmServer::roomSizeBelowTwo_isRejected()
+{
+    const RunResult result = runServer({u"-n"_s, u"1"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+
+    QVERIFY(result.standardError.contains(u"players must be at least 2 (got 1)"_s));
+}
+
+// The operation timeout is either off (0) or long enough to be usable; a value under
+// the floor would cut players off in the middle of a round, so it is rejected rather
+// than raised to the floor behind the user's back.
+void tst_QMdmmServer::timeoutBelowFloor_isRejected()
+{
+    const RunResult result = runServer({u"-o"_s, u"5"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+
+    QVERIFY(result.standardError.contains(u"timeout must be 0 or at least 15 (got 5)"_s));
+}
+
+// The punish-HP modifier is either off (0) or at least 2; 1 is a value that rounds
+// every punishment away to nothing, so it is a typo rather than a setting.
+void tst_QMdmmServer::punishHpModifierBelowFloor_isRejected()
+{
+    const RunResult result = runServer({u"-r"_s, u"1"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+
+    QVERIFY(result.standardError.contains(u"punish-hp-modifier must be 0 or at least 2 (got 1)"_s));
+}
+
+// An on/off switch takes a family of spellings, and --show-current-configuration prints
+// the resolved configuration without saving anything, which is what lets the effect be
+// read off from the outside. Both directions are here because a switch whose reading is
+// inverted would still print a well-formed configuration, just the wrong one.
+void tst_QMdmmServer::switchValues_reachThePrintedConfiguration_data()
+{
+    QTest::addColumn<QString>("value");
+    QTest::addColumn<QString>("printed");
+
+    QTest::newRow("off") << u"off"_s << u"\"tcpEnabled\": false"_s;
+    QTest::newRow("on") << u"on"_s << u"\"tcpEnabled\": true"_s;
+}
+
+void tst_QMdmmServer::switchValues_reachThePrintedConfiguration()
+{
+    QFETCH(QString, value);
+    QFETCH(QString, printed);
+
+    const RunResult result = runServer({u"-t"_s, value, u"-d"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 0);
+
+    QVERIFY(result.standardOutput.contains(printed));
+}
+
+// A run that gets past the configuration reaches the server itself, and a server that
+// cannot bind a transport it was asked for gives up through qFatal() rather than
+// staying up unreachable. The port cannot be picked by the child alone -- it may
+// already be held by another process, which is exactly the case worth pinning -- so
+// this case holds a port of its own and hands that port to the child.
+//
+// The run ends by aborting, not by returning an exit code, which is what tells it
+// apart from a run that hangs: the timeout guard in runServer() fails this case if the
+// child never exits. The messages on this path are not asserted here because they do
+// not reach stderr: QMdmmServer installs a message handler that writes to its log file
+// before it builds the server, so the transport error and the fatal notice land in
+// that file. What a user observes from this side is the run giving up.
+void tst_QMdmmServer::portThatIsAlreadyTaken_makesTheRunGiveUp()
+{
+    QTcpServer occupant;
+    QVERIFY(occupant.listen(QHostAddress::Any, 0));
+    const quint16 port = occupant.serverPort();
+
+    const RunResult result = runServer({u"-t"_s, u"on"_s, u"-p"_s, QString::number(port), u"-l"_s, u"off"_s, u"-w"_s, u"off"_s});
+
+    QVERIFY(result.exitStatus == QProcess::CrashExit);
 }
 
 QTEST_GUILESS_MAIN(tst_QMdmmServer)

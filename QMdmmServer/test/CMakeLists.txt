@@ -24,8 +24,11 @@ add_dependencies(QMdmmServer_Test tst_qmdmmserver6)
 # built before this target is run -- and its sources are not linked into it.
 add_dependencies(tst_qmdmmserver6 QMdmmServer6)
 
+# Qt6::Network is here for the case that has to hand the run a port it cannot
+# bind: it holds one of its own and passes that port on the command line.
 target_link_libraries(tst_qmdmmserver6
     PUBLIC Qt6::Core
+           Qt6::Network
 )
 if (BUILD_TESTING)
     target_link_libraries(tst_qmdmmserver6 PUBLIC Qt6::Test)
