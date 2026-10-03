@@ -53,6 +53,8 @@ private slots:
     void server_disconnectsOnOversizedActionOrderReply();
     void server_disconnectsOnOversizedUpgradeReply();
     void client_disconnectsOnAbnormalPacket();
+    void client_dropsOnAnUnparseablePacket_data();
+    void client_dropsOnAnUnparseablePacket();
     void server_doesNotDropServerBoundNotify();
     void client_disconnectFromHostStopsAutoReconnect();
     void client_disconnectsOnProtocolVersionMismatch();
@@ -1317,6 +1319,99 @@ void tst_QMdmmNetworking::socketError_isRegisteredAsAMetatype()
     const Socket::Error back = carried.value<Socket::Error>();
     QCOMPARE(back.code, Socket::ProtocolError);
     QCOMPARE(back.errorString, u"keep me whole"_s);
+}
+
+// A packet the client knows the kind of but cannot make sense of is a protocol error, and every
+// inbound kind says so for itself: each request and each notify has one parser, and a parser that
+// walks away from a payload still has to report it -- the guard each of them arms at entry marks
+// the socket errored and drops the connection (see ONERRPRINTJSON). The table below has one row
+// per parsable kind, each fed a value of the wrong shape, so what answers in every row is that
+// guard rather than any of the field checks behind it.
+//
+// The value is written straight onto a raw TCP server's accepted socket: the public Client API has
+// no "send arbitrary packet" entry point, and only a peer that skips the protocol layer can put a
+// wrong-shaped value on the wire. Each row gets its own connection, because the drop ends the one
+// it happens on. The tables are the source of the kinds: every entry in ClientP's request and
+// notify callback tables appears here except the three payload-less notifies (game start / round
+// start / round over -- they take no value, so they have no guard to answer with) and the one
+// whose operation side is still unimplemented.
+void tst_QMdmmNetworking::client_dropsOnAnUnparseablePacket_data()
+{
+    QTest::addColumn<int>("type");
+    QTest::addColumn<int>("id");
+    QTest::addColumn<bool>("reported");
+    QTest::addColumn<QString>("what");
+
+    // The four requests the server sends to the client. Each is dropped by its own parser's guard,
+    // so the client's "connection lost" notice is what a listener sees.
+    QTest::newRow("request-rock-paper-scissors") << int(Protocol::TypeRequest) << int(Protocol::RequestRockPaperScissors) << true << u"rock-paper-scissors request"_s;
+    QTest::newRow("request-action-order") << int(Protocol::TypeRequest) << int(Protocol::RequestActionOrder) << true << u"action-order request"_s;
+    QTest::newRow("request-action") << int(Protocol::TypeRequest) << int(Protocol::RequestAction) << true << u"action request"_s;
+    QTest::newRow("request-upgrade") << int(Protocol::TypeRequest) << int(Protocol::RequestUpgrade) << true << u"upgrade request"_s;
+
+    // The notifies a server or an agent sends to the client.
+    QTest::newRow("notify-pong") << int(Protocol::TypeNotify) << int(Protocol::NotifyPongServer) << true << u"pong"_s;
+    QTest::newRow("notify-version") << int(Protocol::TypeNotify) << int(Protocol::NotifyVersion) << true << u"version"_s;
+    QTest::newRow("notify-logic-configuration") << int(Protocol::TypeNotify) << int(Protocol::NotifyLogicConfiguration) << true << u"logic configuration"_s;
+    QTest::newRow("notify-agent-state-changed") << int(Protocol::TypeNotify) << int(Protocol::NotifyAgentStateChanged) << true << u"agent state change"_s;
+    QTest::newRow("notify-player-added") << int(Protocol::TypeNotify) << int(Protocol::NotifyPlayerAdded) << true << u"player added"_s;
+    QTest::newRow("notify-player-removed") << int(Protocol::TypeNotify) << int(Protocol::NotifyPlayerRemoved) << true << u"player removed"_s;
+    QTest::newRow("notify-rock-paper-scissors") << int(Protocol::TypeNotify) << int(Protocol::NotifyRockPaperScissors) << true << u"rock-paper-scissors result"_s;
+    QTest::newRow("notify-action-order") << int(Protocol::TypeNotify) << int(Protocol::NotifyActionOrder) << true << u"action-order result"_s;
+    QTest::newRow("notify-action") << int(Protocol::TypeNotify) << int(Protocol::NotifyAction) << true << u"action result"_s;
+    QTest::newRow("notify-upgrade") << int(Protocol::TypeNotify) << int(Protocol::NotifyUpgrade) << true << u"upgrade result"_s;
+    QTest::newRow("notify-spoken") << int(Protocol::TypeNotify) << int(Protocol::NotifySpoken) << true << u"spoken text"_s;
+    // The odd one out: notifyGameOver tears the connection down itself before it looks at the
+    // payload, and it does not put the client on the reconnect path, so no "connection lost" is
+    // announced -- the end state is a client that is simply no longer connected.
+    QTest::newRow("notify-game-over") << int(Protocol::TypeNotify) << int(Protocol::NotifyGameOver) << false << u"game over"_s;
+}
+
+void tst_QMdmmNetworking::client_dropsOnAnUnparseablePacket()
+{
+    QFETCH(int, type);
+    QFETCH(int, id);
+    QFETCH(bool, reported);
+    QFETCH(QString, what);
+
+    // A string is the wrong shape whichever parser reads it: the request parsers want a number or
+    // an object, the notify parsers want an object or an array.
+    const QJsonValue payload(u"not what this kind carries"_s);
+    const Packet packet = type == int(Protocol::TypeRequest) ? Packet(static_cast<Protocol::PacketType>(type), static_cast<Protocol::RequestId>(id), payload)
+                                                             : Packet(static_cast<Protocol::NotifyId>(id), payload);
+
+    QTcpServer rawServer;
+    QVERIFY(rawServer.listen(QHostAddress::LocalHost, 0));
+
+    bool sent = false;
+    QObject::connect(&rawServer, &QTcpServer::newConnection, &rawServer, [&rawServer, &sent, &packet]() {
+        QTcpSocket *sock = rawServer.nextPendingConnection();
+        // One packet per connection: the first one is the end of it.
+        if (sent)
+            return;
+        sent = true;
+        sock->write(packet.serialize().append('\n'));
+        sock->flush();
+    });
+
+    const QString host = u"qmdmm://127.0.0.1:%1"_s.arg(rawServer.serverPort());
+
+    auto *client = new Client(ClientConfiguration(), &rawServer);
+    bool connectionLost = false;
+    connect(client, &Client::socketConnectionLost, &rawServer, [&connectionLost](const QString &) { connectionLost = true; });
+
+    QVERIFY(client->connectToHost(host, Data::StateOnline));
+
+    if (reported) {
+        QVERIFY2(QTest::qWaitFor([&connectionLost]() { return connectionLost; }, 5000), qPrintable(u"the client kept the connection after a %1 it cannot parse"_s.arg(what)));
+    } else {
+        QVERIFY2(QTest::qWaitFor([client]() { return !client->isConnected(); }, 5000), qPrintable(u"the client kept the connection after a %1 it cannot parse"_s.arg(what)));
+        // The odd one out tears its connection down before it even looks at the payload, and it
+        // detaches the socket's signals on the way, so its drop is never announced as a connection
+        // loss. Had the packet been turned away by the client's unknown-kind fallback instead, the
+        // listener above would have heard it -- this is what tells the two apart.
+        QVERIFY(!connectionLost);
+    }
 }
 
 namespace {
