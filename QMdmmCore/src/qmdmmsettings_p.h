@@ -36,12 +36,20 @@ struct QMDMMCORE_PRIVATE_EXPORT SettingsWrapperP_QSettings : public SettingsWrap
 
     QSettings settings;
 
+    // The five overloads below mirror the QSettings constructor surface. Nothing in this tree
+    // names them -- SettingsP builds its two QSettings-backed instances through the four-argument
+    // form left outside this block -- and tests cannot reach them either (the private symbols of
+    // this header are not exported unless the build asks for it). They are kept as text so the
+    // mirror stays visible, but they are not compiled.
+    // NOLINTNEXTLINE(readability-avoid-unconditional-preprocessor-if): deliberate, see above
+#if 0
     explicit SettingsWrapperP_QSettings(const QString &organization, const QString &application = {});
     SettingsWrapperP_QSettings(QSettings::Scope scope, const QString &organization, const QString &application = {});
-    SettingsWrapperP_QSettings(QSettings::Format format, QSettings::Scope scope, const QString &organization, const QString &application = {});
     SettingsWrapperP_QSettings(const QString &fileName, QSettings::Format format);
     SettingsWrapperP_QSettings();
     explicit SettingsWrapperP_QSettings(QSettings::Scope scope);
+#endif
+    SettingsWrapperP_QSettings(QSettings::Format format, QSettings::Scope scope, const QString &organization, const QString &application = {});
     ~SettingsWrapperP_QSettings() override;
 
     void setValue(const QString &key, const QVariant &value) override;

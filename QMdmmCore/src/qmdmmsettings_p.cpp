@@ -23,6 +23,9 @@ namespace p {
 
 SettingsWrapperP::~SettingsWrapperP() = default;
 
+// Definitions behind the constructors the header keeps behind `#if 0` (see its comment).
+// NOLINTNEXTLINE(readability-avoid-unconditional-preprocessor-if): deliberate, see the header
+#if 0
 SettingsWrapperP_QSettings::SettingsWrapperP_QSettings(const QString &organization, const QString &application)
     : settings(organization, application)
 {
@@ -32,12 +35,16 @@ SettingsWrapperP_QSettings::SettingsWrapperP_QSettings(QSettings::Scope scope, c
     : settings(scope, organization, application)
 {
 }
+#endif
 
 SettingsWrapperP_QSettings::SettingsWrapperP_QSettings(QSettings::Format format, QSettings::Scope scope, const QString &organization, const QString &application)
     : settings(format, scope, organization, application)
 {
 }
 
+// Same as above: the remaining three of the five.
+// NOLINTNEXTLINE(readability-avoid-unconditional-preprocessor-if): deliberate, see the header
+#if 0
 SettingsWrapperP_QSettings::SettingsWrapperP_QSettings(const QString &fileName, QSettings::Format format)
     : settings(fileName, format)
 {
@@ -49,6 +56,7 @@ SettingsWrapperP_QSettings::SettingsWrapperP_QSettings(QSettings::Scope scope)
     : settings(scope)
 {
 }
+#endif
 
 SettingsWrapperP_QSettings::~SettingsWrapperP_QSettings() = default;
 
