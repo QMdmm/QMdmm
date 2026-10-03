@@ -1,9 +1,13 @@
 #include "qmdmmcoreglobal.h"
+#include "qmdmmlogic.h"
+#include "qmdmmroom.h"
+#include "qmdmmsettings.h"
 #include "test.h"
 
 #include <QMdmmCore/QMdmmCoreGlobal>
 
 #include <QHash>
+#include <QMetaEnum>
 #include <QString>
 #include <QTest>
 
@@ -180,6 +184,60 @@ private slots:
 
         QStringList r = Utilities::variantList2StringList(l);
         QCOMPARE(r, s);
+    }
+
+    // Every enum this library declares is meant to be readable through QMetaEnum under the name
+    // it is declared with: that is how the Data namespace is reached from QML (the GUI hands QML
+    // its staticMetaObject), how the debug stream spells a value, and how a name is turned back
+    // into one. Losing the registration does not slip through -- fromType() stops compiling, the
+    // static assert names the macro -- so what is left to guard is the content. The reflection is
+    // generated from the declaration, so a member inserted or reordered is reflected just as
+    // faithfully as before while every reader that indexes by value quietly answers differently.
+    // The counts below are that reading, together with the numbers the wire already depends on.
+    void QMdmmCoreenumsReflectTheirDeclarations()
+    {
+        const QMetaEnum place = QMetaEnum::fromType<Data::Place>();
+        QVERIFY(place.isValid());
+        QCOMPARE(place.keyCount(), 1);
+
+        const QMetaEnum damageReason = QMetaEnum::fromType<Data::DamageReason>();
+        QVERIFY(damageReason.isValid());
+        QCOMPARE(damageReason.keyCount(), 4);
+
+        const QMetaEnum rockPaperScissors = QMetaEnum::fromType<Data::RockPaperScissors>();
+        QVERIFY(rockPaperScissors.isValid());
+        QCOMPARE(rockPaperScissors.keyCount(), 3);
+        // The wire carries the value, so the numbers are the contract -- see the enum's own note
+        // about the historical encoding.
+        QCOMPARE(rockPaperScissors.keyToValue("Rock"), 0);
+        QCOMPARE(rockPaperScissors.keyToValue("Scissors"), 1);
+        QCOMPARE(rockPaperScissors.keyToValue("Paper"), 2);
+
+        const QMetaEnum action = QMetaEnum::fromType<Data::Action>();
+        QVERIFY(action.isValid());
+        QCOMPARE(action.keyCount(), 7);
+
+        const QMetaEnum upgradeItem = QMetaEnum::fromType<Data::UpgradeItem>();
+        QVERIFY(upgradeItem.isValid());
+        QCOMPARE(upgradeItem.keyCount(), 3);
+
+        const QMetaEnum agentState = QMetaEnum::fromType<Data::AgentState>();
+        QVERIFY(agentState.isValid());
+        QVERIFY(agentState.isFlag());
+        QCOMPARE(agentState.keyCount(), 8);
+        QCOMPARE(agentState.keyToValue("StateOnlineBot"), static_cast<int>(Data::StateOnlineBot));
+
+        const QMetaEnum logicState = QMetaEnum::fromType<Logic::State>();
+        QVERIFY(logicState.isValid());
+        QCOMPARE(logicState.keyCount(), 6);
+
+        const QMetaEnum instance = QMetaEnum::fromType<Settings::Instance>();
+        QVERIFY(instance.isValid());
+        QCOMPARE(instance.keyCount(), 3);
+
+        const QMetaEnum punishHpRoundStrategy = QMetaEnum::fromType<LogicConfiguration::PunishHpRoundStrategy>();
+        QVERIFY(punishHpRoundStrategy.isValid());
+        QCOMPARE(punishHpRoundStrategy.keyCount(), 4);
     }
 };
 

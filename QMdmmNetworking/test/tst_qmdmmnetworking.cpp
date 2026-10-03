@@ -14,10 +14,12 @@
 #include <QMdmmSocket>
 
 #include <QJsonArray>
+#include <QMetaType>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTest>
 #include <QTimer>
+#include <QVariant>
 
 // NOLINTBEGIN
 // Exempt from clang-tidy by policy; see AGENTS.md.
@@ -60,6 +62,7 @@ private slots:
     void socket_addressSchemeWhitelist();
     void socket_accessorsReportTheTransportAndAnyError();
     void client_speakReachesTheOtherPlayer();
+    void socketError_isRegisteredAsAMetatype();
 };
 
 // A room that is not full has not started a game yet: a dropped socket removes the player
@@ -1291,6 +1294,29 @@ void tst_QMdmmNetworking::client_speakReachesTheOtherPlayer()
 
     QTRY_COMPARE_WITH_TIMEOUT(heardFrom, p1->objectName(), 5000);
     QCOMPARE(heardWhat, u"hello there"_s);
+}
+
+// A socket error travels as a signal argument, and a listener is free to ask for that call to be
+// queued rather than delivered in place -- which a queued connection can only do when the type is
+// known to the meta type system. The Q_DECLARE_METATYPE at the bottom of qmdmmsocket.h is what
+// declares it so, and that declaration is what puts a QMetaTypeId<Socket::Error> there to ask:
+// take it away and the line below stops compiling, which is the guard this case really rests on.
+// What it adds at run time is the trip a queued connection would put the value through, and the
+// id being a real one. Nothing else in the tree ever asks, so the reading is this case's alone.
+void tst_QMdmmNetworking::socketError_isRegisteredAsAMetatype()
+{
+    const int id = QMetaTypeId<Socket::Error>::qt_metatype_id();
+    QVERIFY(id != QMetaType::UnknownType);
+
+    // Asking for the id is what registers the type; the value then has to survive the trip a
+    // queued connection puts it through.
+    const Socket::Error error {.code = Socket::ProtocolError, .errorString = u"keep me whole"_s};
+    const QVariant carried = QVariant::fromValue(error);
+    QCOMPARE(carried.metaType().id(), id);
+
+    const Socket::Error back = carried.value<Socket::Error>();
+    QCOMPARE(back.code, Socket::ProtocolError);
+    QCOMPARE(back.errorString, u"keep me whole"_s);
 }
 
 namespace {

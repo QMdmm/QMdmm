@@ -2,7 +2,9 @@
 
 #include <QtQuickTest/quicktest.h>
 
+#include <QMetaEnum>
 #include <QQmlContext>
+#include <QStringList>
 #include <QVariantMap>
 #include <QtQml>
 
@@ -225,6 +227,17 @@ public slots:
         coreEnumValues.insert(u"punishRoundUp"_s, static_cast<int>(QMdmmCore::LogicConfiguration::RoundUp));
         coreEnumValues.insert(u"punishPlusOne"_s, static_cast<int>(QMdmmCore::LogicConfiguration::PlusOne));
         engine->rootContext()->setContextProperty(u"coreEnumValues"_s, coreEnumValues);
+
+        // The names of the bridge's own state enum, read off its meta object here for the case in
+        // tst_gameclient.qml. The enum is reachable at all because gameclient.h registers it
+        // (Q_ENUM), and that registration is what QML would go through to name one of its states;
+        // nothing else reads it, so a registration that went away would take no other reading with
+        // it. Read here rather than spelled out in the .qml file for the reason right above.
+        QStringList gameStateNames;
+        const QMetaEnum gameState = QMetaEnum::fromType<QMdmmGameClient::GameState>();
+        for (int i = 0; i < gameState.keyCount(); ++i)
+            gameStateNames.append(QString::fromLatin1(gameState.key(i)));
+        engine->rootContext()->setContextProperty(u"gameStateNames"_s, gameStateNames);
     }
 
 private:
