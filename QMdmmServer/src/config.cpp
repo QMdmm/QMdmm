@@ -71,8 +71,8 @@ Logic:
                                      Enable "let move" (default: true).
   -i, --can-buy-only-in-initial-city <true/false>
                                      Only allow buying in the initial city (default: false).
-  -1, --use-v1-presets               Use the v1 presets instead of the defaults
-                                     (explicit options still override):
+  -1, --use-v1-presets               Use the v1 presets instead of the defaults and a
+                                     stored logic section (explicit options still override):
                                        slash                           1
                                        maximum-slash                   3
                                        kick                            3

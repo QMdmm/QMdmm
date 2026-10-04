@@ -94,6 +94,8 @@ private slots:
     void savingPerUserConfiguration_writesTheFileUnderHome();
     void savingPerUserConfiguration_reportsASaveThatCannotReachItsHome();
     void v1Presets_reachThePrintedConfiguration();
+    void v1Presets_outrankAStoredLogicSection_data();
+    void v1Presets_outrankAStoredLogicSection();
     void outOfRangeValue_isRejected();
     void crossedPairs_areRejected_data();
     void crossedPairs_areRejected();
@@ -201,9 +203,16 @@ void tst_QMdmmServer::savingPerUserConfiguration_reportsASaveThatCannotReachItsH
 // moment it is selected -- which is how it once broke. --show-current-configuration
 // prints the resolved values without saving anything, so it shows the preset
 // surviving the range checks and reaching the configuration.
+//
+// HOME points at a directory of its own so that what is printed comes from the
+// preset alone, whatever per-user configuration the machine running the tests
+// happens to hold.
 void tst_QMdmmServer::v1Presets_reachThePrintedConfiguration()
 {
-    const RunResult result = runServer({u"-1"_s, u"-d"_s});
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+
+    const RunResult result = runServer({u"-1"_s, u"-d"_s}, 60000, environmentWithHome(home.path()));
 
     QVERIFY(result.exitStatus == QProcess::NormalExit);
     QCOMPARE(result.exitCode, 0);
@@ -213,13 +222,62 @@ void tst_QMdmmServer::v1Presets_reachThePrintedConfiguration()
     QVERIFY(result.standardOutput.contains(u"\"zeroHpAsDead\": false"_s));
 }
 
+// -1 outranks a stored configuration, not only the built-in defaults: while the
+// preset is selected a logic value in the per-user file is not read at all. The
+// stored server values keep being read, so what the option hides is the stored
+// logic section, not the file.
+//
+// Both rows read a file with the same content and differ only in whether the
+// preset is selected, which is what pins the order the logic values resolve in:
+// command line, then the preset, then the file, then the defaults. maximum-maxhp
+// is stored as 10, neither the default 20 nor the preset's 7, so the printed
+// value says which source won; tcp-port is stored as 7777 to show the file
+// itself is still read in both rows.
+void tst_QMdmmServer::v1Presets_outrankAStoredLogicSection_data()
+{
+    QTest::addColumn<QStringList>("arguments");
+    QTest::addColumn<QString>("printed");
+
+    QTest::newRow("with -1 the stored logic is not read") << QStringList {u"-1"_s, u"-d"_s} << u"\"maximumMaxHp\": 7"_s;
+    QTest::newRow("without -1 the stored logic wins over the default") << QStringList {u"-d"_s} << u"\"maximumMaxHp\": 10"_s;
+}
+
+void tst_QMdmmServer::v1Presets_outrankAStoredLogicSection()
+{
+    QFETCH(QStringList, arguments);
+    QFETCH(QString, printed);
+
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    QVERIFY(QDir(home.path()).mkpath(u".QMdmm/Fsu0413.me"_s));
+
+    QFile file(perUserConfigurationFile(home.path()));
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QVERIFY(file.write("[server]\ntcp-port=7777\n\n[logic]\nmaximum-maxhp=10\n") > 0);
+    file.close();
+
+    const RunResult result = runServer(arguments, 60000, environmentWithHome(home.path()));
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 0);
+
+    QVERIFY(result.standardOutput.contains(u"\"tcpPort\": 7777"_s));
+    QVERIFY(result.standardOutput.contains(printed));
+}
+
 // Each value the usage text promises a floor for is judged on its own, after the
 // command line and the config file have been merged. 6 is under the floor the
 // usage text promises for maximum-maxhp, and the value reaches the check through
 // the short form -- both halves of that combination are what this pins down.
+//
+// HOME is a directory of its own for the same reason as the case above: this is
+// a case about a value the command line carries, so nothing else may contribute.
 void tst_QMdmmServer::outOfRangeValue_isRejected()
 {
-    const RunResult result = runServer({u"-1"_s, u"-M"_s, u"6"_s});
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+
+    const RunResult result = runServer({u"-1"_s, u"-M"_s, u"6"_s}, 60000, environmentWithHome(home.path()));
 
     QVERIFY(result.exitStatus == QProcess::NormalExit);
     QCOMPARE(result.exitCode, 3);
