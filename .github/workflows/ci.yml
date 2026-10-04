@@ -39,6 +39,18 @@ jobs:
       matrix:
         os: [ubuntu-26.04, ubuntu-26.04-arm, macos-latest, macos-26-intel]
         build_type: [Debug, Release, MinSizeRel]
+        #
+        # The cell that carries the coverage report is named here, in the
+        # matrix, rather than in the condition on the step that generates it.
+        # The condition used to spell out both literals, and a step that does
+        # not run is a skip: renaming or retiring that runner would have
+        # stopped the report publishing without anything going red. With the
+        # cell named here, the same edit that moves the cell also moves the
+        # coverage report.
+        include:
+          - os: ubuntu-26.04
+            build_type: Debug
+            coverage: true
 
     steps:
       - name: Checkout
@@ -113,7 +125,7 @@ jobs:
           fi
 
       - name: generate coverage
-        if: ${{ github.event_name != 'pull_request' && matrix.build_type == 'Debug' && matrix.os == 'ubuntu-26.04' }}
+        if: ${{ github.event_name != 'pull_request' && matrix.coverage }}
         env:
           COVERAGE_TOKEN: ${{ secrets.QMDMM_DOCS_TOKEN }}
         run: |
