@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QScopeGuard>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -37,6 +38,7 @@ private slots:
     void perUserConfigurationIsAnIniFileUnderTheHomeDirectory();
     void globalConfigurationIsAnIniFileUnderSystemDirectory();
     void configurationDirectoryIsResolvedAgainstTheProcessNotTheWorkingDirectory();
+    void runtimeDataDirectoryIsResolvedAlongsideTheConfigurationDirectory();
     void valueAndContainsReadEveryInstance();
 
 private:
@@ -176,6 +178,47 @@ void tst_QMdmmSettings::configurationDirectoryIsResolvedAgainstTheProcessNotTheW
         QVERIFY2(Global::configurationDirectory() != againstTheWorkingDirectory, "the working directory is the executable's own, so this case cannot tell the two anchors apart");
     }
 #endif
+}
+
+// The runtime data directory is the configuration one's rule with var written for etc -- the
+// same prefix, the same bundle -- and it carries one step the other has not got: where that
+// directory cannot be created and written, the run falls back to $HOME/.QMdmm/var rather than
+// having nowhere to report from. That fallback is the half worth a case of its own, because a
+// run whose logs move elsewhere, or stop being written at all, says nothing about it by itself.
+// Both the path and the fallback below are derived from the definitions and the executable
+// rather than read back through the accessor, which would agree with a resolver that named the
+// wrong place just as readily.
+//
+// Which of the two this case ends on is a property of where the tree is installed, not of the
+// code: an ordinary build answers with the directory the definitions name, an installation
+// under a prefix this process cannot write to answers with the fallback. Both answers are
+// pinned here; only one of them is reachable on a machine whose build tree belongs to it.
+void tst_QMdmmSettings::runtimeDataDirectoryIsResolvedAlongsideTheConfigurationDirectory()
+{
+#ifdef QMDMM_MACOS_APP_BUNDLE
+    const QString expected = QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + u"/"_s + u"" QMDMM_MACOS_BUNDLE_IDENTIFIER ""_s + u"/var"_s);
+#else
+    const QString configured = u"" QMDMM_RUNTIME_DATA_PREFIX ""_s;
+
+    const QString expected = configured.startsWith(u'/') ? configured : QDir::cleanPath(QCoreApplication::applicationDirPath() + u"/"_s + configured);
+#endif
+
+    QVERIFY(QDir::isAbsolutePath(expected));
+
+    // One rule, two names: the configuration directory with its etc segment written var. The
+    // segment is matched rather than the string "/etc/", because the bundle shape ends right
+    // after that segment while the prefix shape has one more segment behind it.
+    const QString alongsideTheConfiguration = QString(Global::configurationDirectory()).replace(QRegularExpression(u"/etc(?=/|$)"_s), u"/var"_s);
+
+    if (QDir().mkpath(expected) && QFileInfo(expected).isWritable()) {
+        QCOMPARE(Global::runtimeDataDirectory(), expected);
+        QCOMPARE(Global::runtimeDataDirectory(), alongsideTheConfiguration);
+        return;
+    }
+
+    // An installation under a prefix this process cannot write to -- /usr is the ordinary shape
+    // of that -- takes the second attempt instead, and the same directory the resolver picks.
+    QCOMPARE(Global::runtimeDataDirectory(), QDir::home().absoluteFilePath(u".QMdmm/var"_s));
 }
 
 // The cases above pin where two of the three instances live; this one pins that they are
