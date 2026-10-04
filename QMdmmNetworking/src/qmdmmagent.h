@@ -53,6 +53,12 @@ public:
     // set here the moment the operation side declares it, and set from the wire again when the
     // server's own state arrives (see setManaged) -- so it cannot be described by a plain change
     // signal.
+    //
+    // Its readers are spread out and not all through this accessor: the client that gives up on its
+    // player's requests reads the flag here, while the card that draws it tests the state mask it
+    // was handed instead. What the flag means is settled by all of them together, so a change to it
+    // has to be checked against every reader -- the one added later is exactly what reading this
+    // declaration will not turn up.
     [[nodiscard]] bool managed() const;
     void setManaged(bool managed);
 
