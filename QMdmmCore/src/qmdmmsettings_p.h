@@ -13,6 +13,13 @@ namespace QMdmmCore {
 
 namespace p {
 
+// the SettingsWrapperP class is meant to be exporting a unified interface for the QMdmmCore::Settings
+// but it is proven to be slightly over designed since some interfaces are actually not used
+// the interfaces which are not used are temporarily removed since the unit test can't cover them.
+// they are marked inside #if 0 so that the original design can be seen without checking VCS
+
+// NOLINTBEGIN(readability-avoid-unconditional-preprocessor-if)
+
 struct QMDMMCORE_PRIVATE_EXPORT SettingsWrapperP
 {
     Q_DISABLE_COPY_MOVE(SettingsWrapperP);
@@ -20,12 +27,16 @@ struct QMDMMCORE_PRIVATE_EXPORT SettingsWrapperP
     SettingsWrapperP() = default;
     virtual ~SettingsWrapperP();
 
+#if 0
     virtual void setValue(const QString &key, const QVariant &value) = 0;
+#endif
     [[nodiscard]] virtual QVariant value(const QString &key, const QVariant &defaultValue = {}) const = 0;
 
     virtual void beginGroup(const QString &prefix) = 0;
     virtual void endGroup() = 0;
+#if 0
     [[nodiscard]] virtual QString group() const = 0;
+#endif
 
     [[nodiscard]] virtual bool contains(const QString &key) const = 0;
 };
@@ -36,12 +47,6 @@ struct QMDMMCORE_PRIVATE_EXPORT SettingsWrapperP_QSettings : public SettingsWrap
 
     QSettings settings;
 
-    // The five overloads below mirror the QSettings constructor surface. Nothing in this tree
-    // names them -- SettingsP builds its two QSettings-backed instances through the four-argument
-    // form left outside this block -- and tests cannot reach them either (the private symbols of
-    // this header are not exported unless the build asks for it). They are kept as text so the
-    // mirror stays visible, but they are not compiled.
-    // NOLINTNEXTLINE(readability-avoid-unconditional-preprocessor-if): deliberate, see above
 #if 0
     explicit SettingsWrapperP_QSettings(const QString &organization, const QString &application = {});
     SettingsWrapperP_QSettings(QSettings::Scope scope, const QString &organization, const QString &application = {});
@@ -51,12 +56,15 @@ struct QMDMMCORE_PRIVATE_EXPORT SettingsWrapperP_QSettings : public SettingsWrap
 #endif
     SettingsWrapperP_QSettings(QSettings::Format format, QSettings::Scope scope, const QString &organization, const QString &application = {});
     ~SettingsWrapperP_QSettings() override;
-
+#if 0
     void setValue(const QString &key, const QVariant &value) override;
+#endif
     [[nodiscard]] QVariant value(const QString &key, const QVariant &defaultValue) const override;
     void beginGroup(const QString &prefix) override;
     void endGroup() override;
+#if 0
     [[nodiscard]] QString group() const override;
+#endif
     [[nodiscard]] bool contains(const QString &key) const override;
 };
 
@@ -70,15 +78,23 @@ struct QMDMMCORE_PRIVATE_EXPORT SettingsWrapperP_QVariantMap : public SettingsWr
     SettingsWrapperP_QVariantMap() = default;
     ~SettingsWrapperP_QVariantMap() override;
 
+#if 0
     void setValue(const QString &key, const QVariant &value) override;
+#else
+    void setValue(const QString &key, const QVariant &value);
+#endif
     [[nodiscard]] QVariant value(const QString &key, const QVariant &defaultValue) const override;
     void beginGroup(const QString &prefix) override;
     void endGroup() override;
+#if 0
     [[nodiscard]] QString group() const override;
+#endif
     [[nodiscard]] bool contains(const QString &key) const override;
 
     [[nodiscard]] QString keyWithGroup(const QString &key) const;
 };
+
+// NOLINTEND(readability-avoid-unconditional-preprocessor-if)
 
 struct QMDMMCORE_PRIVATE_EXPORT SettingsP
 {

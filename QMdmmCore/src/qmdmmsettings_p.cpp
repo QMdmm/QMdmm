@@ -60,10 +60,14 @@ SettingsWrapperP_QSettings::SettingsWrapperP_QSettings(QSettings::Scope scope)
 
 SettingsWrapperP_QSettings::~SettingsWrapperP_QSettings() = default;
 
+// Definition behind the interface member the header keeps behind `#if 0`.
+// NOLINTNEXTLINE(readability-avoid-unconditional-preprocessor-if): deliberate, see the header
+#if 0
 void SettingsWrapperP_QSettings::setValue(const QString &key, const QVariant &value)
 {
     settings.setValue(key, value);
 }
+#endif
 
 QVariant SettingsWrapperP_QSettings::value(const QString &key, const QVariant &defaultValue) const
 {
@@ -80,10 +84,14 @@ void SettingsWrapperP_QSettings::endGroup()
     settings.endGroup();
 }
 
+// Definition behind the interface member the header keeps behind `#if 0`.
+// NOLINTNEXTLINE(readability-avoid-unconditional-preprocessor-if): deliberate, see the header
+#if 0
 QString SettingsWrapperP_QSettings::group() const
 {
     return settings.group();
 }
+#endif
 
 bool SettingsWrapperP_QSettings::contains(const QString &key) const
 {
@@ -113,10 +121,14 @@ void SettingsWrapperP_QVariantMap::endGroup()
     currentGroup.removeLast();
 }
 
+// Definition behind the interface member the header keeps behind `#if 0`.
+// NOLINTNEXTLINE(readability-avoid-unconditional-preprocessor-if): deliberate, see the header
+#if 0
 QString SettingsWrapperP_QVariantMap::group() const
 {
     return currentGroup.join(u"/"_s);
 }
+#endif
 
 bool SettingsWrapperP_QVariantMap::contains(const QString &key) const
 {
