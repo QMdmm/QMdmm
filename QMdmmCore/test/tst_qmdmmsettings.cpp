@@ -143,6 +143,14 @@ void tst_QMdmmSettings::globalConfigurationIsAnIniFileUnderSystemDirectory()
 // resolver that named the wrong place. This one cannot -- it derives the expected path from
 // the definitions and the executable, or, in the bundle, from the platform's own application
 // directory the way the code does.
+//
+// The lookup is made once per process, and the cases above have made it long before this one
+// runs, so moving the working directory here and asking again would only compare the stored
+// answer with itself. What pins which of the two the definition was resolved against is
+// therefore a comparison with an independently derived path, and not a before-and-after --
+// and it tells the two apart only while the executable does not sit in the working directory,
+// which is why the last check below is about this case being able to say anything at all,
+// rather than about the code.
 void tst_QMdmmSettings::configurationDirectoryIsResolvedAgainstTheProcessNotTheWorkingDirectory()
 {
 #ifdef QMDMM_MACOS_APP_BUNDLE
@@ -158,14 +166,16 @@ void tst_QMdmmSettings::configurationDirectoryIsResolvedAgainstTheProcessNotTheW
     QVERIFY(QDir::isAbsolutePath(expected));
     QCOMPARE(Global::configurationDirectory(), expected);
 
-    // A resolver anchored on the working directory passes wherever the two happen to coincide
-    // -- a build tree is one such place, because the tests run from within it -- and breaks the
-    // moment the program is started from elsewhere, which is the ordinary way to start an
-    // installed one. Moving the working directory has to change nothing.
-    const QString previous = QDir::currentPath();
-    const auto restore [[maybe_unused]] = qScopeGuard([previous] { QDir::setCurrent(previous); });
-    QVERIFY(QDir::setCurrent(QDir::rootPath()));
-    QCOMPARE(Global::configurationDirectory(), expected);
+#ifndef QMDMM_MACOS_APP_BUNDLE
+    // An absolute definition is the directory itself and has no anchor to tell apart. For the
+    // relative ones the same definition counted from the working directory would name another
+    // place, unless the executable sits there -- which is the one case where the comparison
+    // above holds whichever of the two the resolver was anchored on.
+    if (!configured.startsWith(u'/')) {
+        const QString againstTheWorkingDirectory = QDir::cleanPath(QDir::currentPath() + u"/"_s + configured);
+        QVERIFY2(Global::configurationDirectory() != againstTheWorkingDirectory, "the working directory is the executable's own, so this case cannot tell the two anchors apart");
+    }
+#endif
 }
 
 // The cases above pin where two of the three instances live; this one pins that they are
