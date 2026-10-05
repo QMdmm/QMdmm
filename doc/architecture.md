@@ -118,6 +118,3 @@ socket, and replays the round events the client missed so its mirror converges
   `knifePreferred` / `horsePreferred` / `rl`) instead of a human.
   `knifePreferred` and `horsePreferred` play real strategies; `rl` is still a
   placeholder and refuses to start.
-- **`smoke`** — a headless end-to-end test: an in-process `Server` plus N
-  auto-driven `Client`s (one human + bots) play a full game over loopback TCP,
-  including a mid-game disconnect/reconnect.

@@ -242,7 +242,7 @@ The smoke test spins up an in-process server plus two auto-driven clients and
 plays a full game to completion, including a mid-game disconnect/reconnect:
 
 ```sh
-ctest --test-dir build -R qmdmm_smoke --output-on-failure
+ctest --test-dir build -R 'QMdmmNetworking - Smoke' --output-on-failure
 ```
 
 ## Run the full test suite
@@ -263,6 +263,6 @@ connect to its request signals and answer through its reply slots:
 | `requestAction` | `replyAction` |
 | `requestUpgrade` | `replyUpgrade` |
 
-`smoke/main.cpp` contains a complete, competent auto-player (buy a knife, slash
-a co-located enemy, otherwise walk toward one, and spend every upgrade point)
-you can copy from.
+`QMdmmNetworking/test/tst_smoke_main.cpp` contains a complete, competent
+auto-player (buy a knife, slash a co-located enemy, otherwise walk toward one,
+and spend every upgrade point) you can copy from.

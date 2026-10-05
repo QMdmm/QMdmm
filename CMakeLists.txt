@@ -180,12 +180,11 @@ add_subdirectory(3rdparty)
 add_subdirectory(QMdmmCore)
 add_subdirectory(QMdmmNetworking)
 add_subdirectory(QMdmmServer)
+add_subdirectory(QMdmmBot)
 # QMdmmGui comes after every directory whose programs are installed inside its
 # bundle: the deploy step signs the bundle once it is in place, and a file
 # added afterwards leaves the signature sealing a bundle it does not describe.
-add_subdirectory(QMdmmBot)
 add_subdirectory(QMdmmGui)
-add_subdirectory(smoke) # Networked local-game playability regression test
 add_subdirectory(doc) # MAKE SURE this is the last one in the add_subdirectory list
 
 # ---------------------------------------------------------------------------

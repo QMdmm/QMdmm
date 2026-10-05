@@ -156,7 +156,6 @@ QMdmmNetworking/ Network layer (server / client / protocol transport)
 QMdmmServer/     Standalone server program
 QMdmmGui/        Graphical client (QML)
 QMdmmBot/        Scripted client that plays automatically (bot strategies)
-smoke/           Headless networked-gameplay regression test
 doc/             Documentation: Doxygen config + guides (architecture, getting started)
 3rdparty/        Third-party dependencies
 cmake/           CMake helper modules

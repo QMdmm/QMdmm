@@ -72,7 +72,7 @@ Read these before touching code:
        cannot be spelled out.
   - `auto foo(auto b) { return bar(b); }` template is not allowed even after C++20. use
     `template<typename T> typename decltype(bar(std::declval<T>())) foo(T b) { return bar(b); }`
-- In test code (i.e. `test/` / `smoke/`)
+- In test code (i.e. `test/`)
   - Use whatever convenient for testing: `auto` is fine there, including
     `auto *x = new ...` where the concrete type is plain to write out.
 
@@ -117,8 +117,8 @@ Read these before touching code:
 
 ### `clang-tidy`
 
-- Test and smoke code (`test/` / `smoke/`) is not linted. The policy is written
-  into the files themselves: each test / smoke translation unit carries a
+- Test code (`test/`) is not linted. The policy is written
+  into the files themselves: each test translation unit carries a
   file-level `// NOLINTBEGIN` / `// NOLINTEND` pair, so the whole tree can be
   scanned without the caller having to remember to filter paths. The `test.h`
   helpers are headers rather than translation units, so they carry no pair.
@@ -129,7 +129,7 @@ Read these before touching code:
   - Only namespaces whose name ends with `[Ll]iterals` -- e.g.
     `Qt::StringLiterals` -- are allowed for UDL usage in `.cpp` file scope.
   - Other `using namespace` can only appear inside a code block.
-- In test code (i.e. `test/` / `smoke/`)
+- In test code (i.e. `test/`)
   - Use whatever convenient for testing.
 
 ### `QStringLiteral`
