@@ -19,7 +19,7 @@ if (MSVC AND ( CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.43.34808 ) )
 endif()
 
 project(QMdmm
-    VERSION 0.0.2
+    VERSION 0.1.0
     LANGUAGES CXX
     DESCRIPTION "A game which is played in primary / high school"
 )
