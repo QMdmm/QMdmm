@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    # 0.0.z is the release-testing line and is deliberately left out: its
+    # builds are exercised by the packaging CI's release workflow instead.
     branches: [master, main]
   pull_request:
   workflow_dispatch:
