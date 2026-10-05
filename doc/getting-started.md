@@ -132,7 +132,11 @@ and a run that can write to neither stops rather than continuing without logs.
 The macOS application bundle is not installed under a prefix at all: it reads
 and writes `$HOME/Library/Application Support/me.fsu0413.QMdmm/{etc,var}`, which
 is where this platform keeps an application's own data, named after the
-identifier the bundle carries.
+identifier the bundle carries. It is also the one shape that leaves
+`QMDMM_CONFIGURATION_PREFIX` and `QMDMM_RUNTIME_DATA_PREFIX` unset: with no
+prefix there is nothing for them to hold, so both paths are worked out at run
+time by `QMdmmCore`'s `Global::configurationDirectory()` and
+`Global::runtimeDataDirectory()` instead.
 
 A value is looked up in three places, in order: the value given on the command
 line, then the per-user file, then the system-global file. The first place that
