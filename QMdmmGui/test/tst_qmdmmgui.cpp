@@ -21,7 +21,7 @@ using namespace Qt::StringLiterals;
 // Exempt from clang-tidy by policy; see AGENTS.md.
 
 // Every request and every notification the agent can raise has to end up on the screen -- that
-// is what the 0.0.2 version is accepted on -- and nothing in the build enforces it. A new
+// is what the 0.1.0 version is accepted on -- and nothing in the build enforces it. A new
 // notification on QMdmmNetworking::Agent compiles, keeps every other test green, and simply
 // never shows up in the GUI; and which signals were *meant* to be left out was written down
 // nowhere -- the one exemption this table carries lived in a review note.

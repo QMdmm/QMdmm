@@ -3,7 +3,7 @@
 import QtQuick 2.15
 import QtTest 1.2
 
-// Guards the acceptance criterion of the 0.0.2 version -- every request and every notification
+// Guards the acceptance criterion of the 0.1.0 version -- every request and every notification
 // the agent can raise has to reach the screen. The reading itself is the `agentInventory`
 // context property, whose table and reasoning live in tst_qmdmmgui.cpp next to the signals it
 // holds the class to; this case is only the reading.

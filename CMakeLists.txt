@@ -287,7 +287,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "[Ll]inux")
     # dev component's Depends that variable already holds the dev package's own
     # name, so the runtime component came out as "qmdmm-6-dev-6" and the dev
     # package was uninstallable. Naming it here keeps the emitted
-    # "Depends: qmdmm-6 (= 0.0.2)" correct.
+    # "Depends: qmdmm-6 (= 0.1.0)" correct.
     set(CPACK_DEBIAN_6_PACKAGE_NAME "qmdmm-6")
     set(CPACK_DEBIAN_DEV6_PACKAGE_NAME "qmdmm-6-dev")
     set(CPACK_DEBIAN_DEV-COMMON_PACKAGE_NAME "qmdmm-common-dev")
