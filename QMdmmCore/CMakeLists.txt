@@ -50,7 +50,10 @@ set(QMDMMCORE_DOC_FILES ${QMDMMCORE_HEADERS} ${QMDMMCORE_SOURCES} PARENT_SCOPE)
 # bundle's identifier instead -- see Global::configurationDirectory().
 if (QMDMM_MACOS_APP_BUNDLE)
     # The two prefixes above are deliberately left unset: in this shape the directory is not
-    # derived from a prefix, and the identifier below is what names it.
+    # derived from a prefix, and the identifier below is what names it. Nothing in this
+    # repository's CI configures this shape -- its configure step never passes
+    # QMDMM_MACOS_APP_BUNDLE -- so a change made in this branch is not covered by a build
+    # there; the shape is exercised by the packaging CI's dmg line instead.
 elseif (UNIX AND ( ( CMAKE_INSTALL_PREFIX STREQUAL "/usr" ) OR ( CMAKE_INSTALL_PREFIX STREQUAL "/" ) ) )
     # The executable sits in /usr/bin there while the directories are /etc and /var, so the
     # relative shape would name /usr/etc and /usr/var: the two prefixes that have an FHS
