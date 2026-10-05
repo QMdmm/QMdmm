@@ -1,19 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-# This file has different logic of original .sh or .vbs files.
-# It can produce output file list as well as final output files.
+# Scans header files for the QMDMM_EXPORT_NAME(...) marker: every marker found
+# names a forwarding header that includes the file the marker lives in.
 
 # When included in project mode, it registers functions for generating output file list.
 # When being run, it generates files.
 
-set(RMESSENTIALS_HEADER_GENERATION_REGEX "QMDMM_EXPORT_NAME\\(([A-Za-z_][A-Za-z_0-9]*)\\)")
+set(HEADER_GENERATION_REGEX "QMDMM_EXPORT_NAME\\(([A-Za-z_][A-Za-z_0-9]*)\\)")
 set(AUTO_GENERATE_HEADER_CMAKE_FILE "${CMAKE_CURRENT_LIST_FILE}")
 
 function(auto_generate_header_file_list original_header_file_path output_var)
-    file(STRINGS "${original_header_file_path}" ORIGINAL_HEADER_STRINGS REGEX "${RMESSENTIALS_HEADER_GENERATION_REGEX}")
+    file(STRINGS "${original_header_file_path}" ORIGINAL_HEADER_STRINGS REGEX "${HEADER_GENERATION_REGEX}")
     set(output)
     foreach (ORIGINAL_HEADER_STRING IN LISTS ORIGINAL_HEADER_STRINGS)
-        if (ORIGINAL_HEADER_STRING MATCHES "${RMESSENTIALS_HEADER_GENERATION_REGEX}")
+        if (ORIGINAL_HEADER_STRING MATCHES "${HEADER_GENERATION_REGEX}")
             list(APPEND output "${CMAKE_MATCH_1}")
         else()
             message(FATAL_ERROR "Error when reading file ${original_header_file_path}")
