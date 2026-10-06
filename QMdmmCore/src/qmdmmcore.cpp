@@ -54,6 +54,7 @@ namespace v0 {
 
 /**
  * @enum Data::Place
+ * @ingroup QMdmmCore
  * @brief Enumeration values for places
  *
  * The original @c Place enum was removed for overdesign: the number of places should
@@ -72,6 +73,7 @@ namespace v0 {
 
 /**
  * @enum Data::DamageReason
+ * @ingroup QMdmmCore
  * @brief The reason for a damage.
  */
 
@@ -102,6 +104,7 @@ namespace v0 {
 
 /**
  * @enum Data::RockPaperScissors
+ * @ingroup QMdmmCore
  * @brief Rock-Paper-Scissors variables.
  */
 
@@ -122,6 +125,7 @@ namespace v0 {
 
 /**
  * @enum Data::Action
+ * @ingroup QMdmmCore
  * @brief Action taken each time a player is acting.
  */
 
@@ -162,6 +166,7 @@ namespace v0 {
 
 /**
  * @enum Data::UpgradeItem
+ * @ingroup QMdmmCore
  * @brief Upgradeable items when a player wins a game.
  */
 
@@ -182,6 +187,7 @@ namespace v0 {
 
 /**
  * @enum Data::AgentStateEnum
+ * @ingroup QMdmmCore
  * @brief State used for Agents.
  */
 
@@ -441,6 +447,7 @@ const QString &Global::runtimeDataDirectory()
 
 /**
  * @class QMdmmCore::Utilities::DependentFalse
+ * @ingroup QMdmmCore
  * @brief a workaround helper class for CWG2518
  *
  * Before CWG2518, `static_assert(false, "")` is ill-formed even if in a template which will never instantiate.

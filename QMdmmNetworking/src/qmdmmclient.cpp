@@ -25,6 +25,7 @@ namespace v0 {
 
 /**
  * @class ClientConfiguration
+ * @ingroup QMdmmNetworking
  * @brief Contains configurations of client
  *
  * The configuration is a @c QVariantMap with well-known keys. Because the class inherits
@@ -113,6 +114,7 @@ inline QString generateRandomString()
 
 /**
  * @class Client
+ * @ingroup QMdmmNetworking
  * @brief The client that connects to a server and plays the game.
  *
  * A Client maintains the connection to a server (through a @c Socket) and the local

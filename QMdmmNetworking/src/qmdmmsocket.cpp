@@ -19,6 +19,7 @@ namespace v0 {
 
 /**
  * @class Socket
+ * @ingroup QMdmmNetworking
  * @brief A wrapper around a concrete socket that serializes / deserializes packets.
  *
  * Socket abstracts over TCP socket, local socket and WebSocket transports. It exposes
@@ -28,6 +29,7 @@ namespace v0 {
 
 /**
  * @enum Socket::Type
+ * @ingroup QMdmmNetworking
  * @brief The type of the underlying transport.
  */
 
@@ -47,6 +49,7 @@ namespace v0 {
 
 /**
  * @enum Socket::ErrorCode
+ * @ingroup QMdmmNetworking
  * @brief The kind of error a Socket can be in. Kept as a stable, transport-agnostic code rather than
  * a mapping of each transport's native error enums, so it does not change across Qt versions.
  */
@@ -64,6 +67,7 @@ namespace v0 {
 
 /**
  * @struct Socket::Error
+ * @ingroup QMdmmNetworking
  * @brief A value type describing a socket error: a stable code plus a human-readable description.
  */
 

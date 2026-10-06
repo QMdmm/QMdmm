@@ -25,6 +25,7 @@ namespace v0 {
 
 /**
  * @class Logic
+ * @ingroup QMdmmCore
  * @brief The MDMM Game logic.
  *
  * This is the place where logic is run.
@@ -114,6 +115,7 @@ namespace v0 {
 
 /**
  * @enum Logic::State
+ * @ingroup QMdmmCore
  * @brief The state of the current game
  *
  * @sa @c QMdmmLogic

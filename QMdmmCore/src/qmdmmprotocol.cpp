@@ -29,6 +29,7 @@ namespace v0 {
 
 /**
  * @enum Protocol::RequestId
+ * @ingroup QMdmmCore
  * @brief The IDs for requests and replies
  *
  * No requests come from the server; all requests originate from the Logic.
@@ -90,6 +91,7 @@ namespace v0 {
 
 /**
  * @enum Protocol::NotifyId
+ * @ingroup QMdmmCore
  * @brief The IDs for notifies
  */
 
@@ -309,6 +311,7 @@ namespace v0 {
 
 /**
  * @enum Protocol::PacketType
+ * @ingroup QMdmmCore
  * @brief The type of a packet
  */
 
@@ -382,6 +385,7 @@ namespace v0 {
 
 /**
  * @class Packet
+ * @ingroup QMdmmCore
  * @brief A packet for QMdmm protocol
  *
  * A packet of QMdmm Protocol is a JSON object, encoded in a single line.

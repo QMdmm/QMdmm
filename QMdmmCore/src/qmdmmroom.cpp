@@ -27,6 +27,7 @@ namespace v0 {
 
 /**
  * @class LogicConfiguration
+ * @ingroup QMdmmCore
  * @brief Contains configurations of logic
  *
  * A set of game-rule parameters (knife / horse damage, maximum HP, punish HP and a few behavior toggles)
@@ -38,6 +39,7 @@ namespace v0 {
 
 /**
  * @enum LogicConfiguration::PunishHpRoundStrategy
+ * @ingroup QMdmmCore
  * @brief The round strategy of punishing HP
  *
  * Punish HP is taking place when a player slashes others in city. By default a half of maximum HP is lost. <br />
@@ -458,6 +460,7 @@ bool LogicConfiguration::deserialize(const QJsonValue &value) // NOLINT(readabil
 
 /**
  * @class Room
+ * @ingroup QMdmmCore
  * @brief The room which MDMM game is played in.
  *
  * It maintains all the players as well as global data.

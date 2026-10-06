@@ -18,6 +18,7 @@ namespace v0 {
 
 /**
  * @class Player
+ * @ingroup QMdmmCore
  * @brief The player playing MDMM Game
  *
  * This is the place where the data of each player is saved, and is the object where the data changed signal is emitted.

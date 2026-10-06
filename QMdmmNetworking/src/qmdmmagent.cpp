@@ -15,6 +15,7 @@ namespace v0 {
 
 /**
  * @class Agent
+ * @ingroup QMdmmNetworking
  * @brief The controller for one player, bridging the logic side and the operation side.
  *
  * An Agent is the unified player abstraction with two ports:

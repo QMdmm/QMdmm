@@ -30,6 +30,7 @@ Q_GLOBAL_STATIC(p::SettingsP, d)
 
 /**
  * @class Settings
+ * @ingroup QMdmmCore
  * @brief The configuration files maintained by MDMM game or system
  *
  * This setting class maintains 3 configuration instance, in where one for global default (@c Settings::Global),
@@ -44,6 +45,7 @@ Q_GLOBAL_STATIC(p::SettingsP, d)
 
 /**
  * @enum Settings::Instance
+ * @ingroup QMdmmCore
  * @brief The identifier of the 3 instances
  */
 

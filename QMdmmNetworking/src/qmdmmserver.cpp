@@ -27,6 +27,7 @@ namespace v0 {
 
 /**
  * @class ServerConfiguration
+ * @ingroup QMdmmNetworking
  * @brief Contains configurations of server
  *
  * The configuration is a @c QJsonObject with well-known keys. Because the class inherits
@@ -371,6 +372,7 @@ bool ServerConfiguration::deserialize(const QJsonValue &value) // NOLINT(readabi
 
 /**
  * @class Server
+ * @ingroup QMdmmNetworking
  * @brief The server that accepts connections and runs games.
  *
  * The server listens on the configured transports (TCP / local socket / WebSocket) and,

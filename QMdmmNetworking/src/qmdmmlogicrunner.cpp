@@ -21,6 +21,7 @@ namespace v0 {
 
 /**
  * @class LogicRunner
+ * @ingroup QMdmmNetworking
  * @brief The server-side object that runs a single complete game.
  *
  * A LogicRunner owns the agents (server-side representations of connected clients) and
