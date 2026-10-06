@@ -47,6 +47,7 @@ if (DOXYGEN_FOUND)
         QMdmmNetworking/group.cpp
         ../README.md
         architecture.md
+        concepts.md
         getting-started.md
         ALL
         USE_STAMP_FILE

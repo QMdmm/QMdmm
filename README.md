@@ -65,6 +65,8 @@ a running `QMdmmServer` over TCP or WebSocket.
 
 - [Architecture](doc/architecture.md) — how the modules fit together, and how
   a round actually runs.
+- [Concepts](doc/concepts.md) — what each library is for, how the two meet, and
+  where the programs sit on top of them.
 - [Getting Started](doc/getting-started.md) — build, run, and play a headless
   game end-to-end.
 - [API reference](https://nemn9852.github.io/qmdmm-docs/) — Doxygen for the
