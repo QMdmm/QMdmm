@@ -69,6 +69,8 @@ a running `QMdmmServer` over TCP or WebSocket.
   where the programs sit on top of them.
 - [Getting Started](doc/getting-started.md) — build, run, and play a headless
   game end-to-end.
+- [Command-line programs](doc/command-line.md) — every option `QMdmmBot`
+  accepts.
 - [API reference](https://nemn9852.github.io/qmdmm-docs/) — Doxygen for the
   `QMdmmCore` and `QMdmmNetworking` public classes.
 
