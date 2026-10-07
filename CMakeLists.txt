@@ -51,6 +51,22 @@ if (QMDMM_BINARY_DIR_ABSOLUTE_CASEFOLD_PREFIX STREQUAL QMDMM_SOURCE_DIR_ABSOLUTE
     message(AUTHOR_WARNING "It is a bad idea to place the build directory inside the source directory since grep-ing for the source code can accidently match build results. Consider move it out.")
 endif()
 
+# This is a bit tricky.
+# It is true that Termux is running on Android and uses Android bionic so that CMake detects Android environment
+# But Qt enables every Android specific logic (APK generation, etc.) if ANDROID is defined.
+#
+# But the actual use case for Termux is same as traditional Linux, i.e., creating command line utils, X11-based GUI frontends, etc.
+# Moreover, the Qt package itself lies on the X11 package source of Termux.
+# So unsetting ANDROID variable provided by CMake so that Qt does not enable Qt for Android behavior.
+#
+# To do an APK build on Termux, with Android SDK and a cross-built Qt for Android installed, user should set QMDMM_FORCE_ANDROID_BUILD_TERMUX to true.
+if (DEFINED ENV{TERMUX_VERSION})
+    option(QMDMM_FORCE_ANDROID_BUILD_TERMUX "Force an Android build on Termux. This is a rare case, only makes sense when you're providing your full set of Qt for Android." false)
+    if (NOT QMDMM_FORCE_ANDROID_BUILD_TERMUX)
+        unset(ANDROID)
+    endif()
+endif()
+
 include(.FsEnv.cmake OPTIONAL)
 
 option(BUILD_SHARED_LIBS "Build shared libraries" true)
