@@ -142,6 +142,11 @@ A value is looked up in three places, in order: the value given on the command
 line, then the per-user file, then the system-global file. The first place that
 holds the key wins, so a per-user value overrides a system-global one.
 
+There is one exception to that order: while `-1, --use-v1-presets` is selected,
+the whole `logic` group skips both files, and its values then come from the
+preset and the command line alone. The `server` group is unaffected, and its
+stored values keep being read.
+
 `-c, --save-configuration` writes the per-user file and `-C,
 --save-global-configuration` the system-global one; the run then exits with the
 `QSettings::Status` of the save as its exit code, so 0 means it went through.
