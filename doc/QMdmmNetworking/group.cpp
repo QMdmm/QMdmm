@@ -1,8 +1,8 @@
 /**
- * \defgroup QMdmmNetworking QMdmm Networking library
+ * @defgroup QMdmmNetworking QMdmm Networking library
  *
  * The network layer. It knows how players connect and exchange JSON packets,
- * but delegates every rule decision to \ref QMdmmCore.
+ * but delegates every rule decision to @ref QMdmmCore.
  *
  * @c Server accepts connections and manages the rooms: each sign-in joins the
  * recruiting room, and once that room is full it is handed to a

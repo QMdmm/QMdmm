@@ -167,3 +167,11 @@ Read these before touching code:
   project has to let several Qt versions coexist in a single build pass, which
   versionless names make impossible -- a versionless alias belongs to whichever
   Qt version's `find_package` ran, so only one can win per pass.
+
+### Doxygen commands use `@`
+
+- Spell every doxygen command with `@` -- `@defgroup`, `@ref`, `@ingroup`,
+  `@c` -- and never with a backslash.
+- The two prefixes are the same command to doxygen. The reason to pick one is
+  that mixing them inside a single comment block reads as if the difference
+  meant something, and `@` is what this tree uses.

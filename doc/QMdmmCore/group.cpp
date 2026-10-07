@@ -1,8 +1,8 @@
 /**
- * \defgroup QMdmmCore QMdmm Core library
+ * @defgroup QMdmmCore QMdmm Core library
  *
  * The game rules engine. Pure logic: it knows how a game of QMdmm is played,
- * but not how players connect -- \ref QMdmmNetworking delegates every rule
+ * but not how players connect -- @ref QMdmmNetworking delegates every rule
  * decision to what lives here.
  *
  * @c Logic is the round state machine; drive it through its reply slots and it
@@ -16,5 +16,5 @@
  * Nothing here is tied to a network, a user interface or a particular
  * executable: @c Logic only emits signals and accepts slot calls, so a game can
  * be driven with no connection at all. The transports live in
- * \ref QMdmmNetworking.
+ * @ref QMdmmNetworking.
  */
