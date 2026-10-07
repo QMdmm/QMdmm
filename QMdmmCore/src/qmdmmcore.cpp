@@ -362,6 +362,8 @@ struct ConfigurationDirectory final
           )
     {
     }
+
+    Q_DISABLE_COPY_MOVE(ConfigurationDirectory);
 };
 
 struct RuntimeDataDirectory final
@@ -393,6 +395,8 @@ struct RuntimeDataDirectory final
         qFatal("Runtime data can't be saved: neither %s nor %s can be created and written. Exiting.", qPrintable(configured), qPrintable(dir));
         Q_UNREACHABLE();
     }
+
+    Q_DISABLE_COPY_MOVE(RuntimeDataDirectory);
 };
 } // namespace
 
