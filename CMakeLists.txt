@@ -55,22 +55,40 @@ endif()
 # It is true that Termux is running on Android and uses Android bionic so that CMake detects Android environment
 # But Qt enables every Android specific logic (APK generation, etc.) if ANDROID is defined.
 #
-# But the actual use case for Termux is same as traditional Linux, i.e., creating command line utils, X11-based GUI frontends, etc.
+# The actual use case for Termux is same as traditional Linux, i.e., creating command line utils, X11-based GUI frontends, etc.
 # Moreover, the Qt package itself lies on the X11 package source of Termux.
 # So unsetting ANDROID variable provided by CMake so that Qt does not enable Qt for Android behavior.
 #
 # To do an APK build on Termux, with Android SDK and a cross-built Qt for Android installed, user should set QMDMM_FORCE_ANDROID_BUILD_TERMUX to true.
+option(QMDMM_FORCE_ANDROID_BUILD_TERMUX "Force an Android build on Termux. This is a rare case, only makes sense when you're providing your full set of Qt for Android." false)
+
 if (DEFINED ENV{TERMUX_VERSION})
-    option(QMDMM_FORCE_ANDROID_BUILD_TERMUX "Force an Android build on Termux. This is a rare case, only makes sense when you're providing your full set of Qt for Android." false)
     if (NOT QMDMM_FORCE_ANDROID_BUILD_TERMUX)
         unset(ANDROID)
+    endif()
+else()
+    if (QMDMM_FORCE_ANDROID_BUILD_TERMUX)
+        message(FATAL_ERROR "QMDMM_FORCE_ANDROID_BUILD_TERMUX is only valid on Termux. Please unset it.")
     endif()
 endif()
 
 include(.FsEnv.cmake OPTIONAL)
 
-option(BUILD_SHARED_LIBS "Build shared libraries" true)
+get_property(QMDMM_SUPPORT_SHARED_LIBS GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)
+
+if (IOS OR EMSCRIPTEN)
+    # It is known that Qt never supports shared libraries on iOS
+    # On wasm, Qt since 6.6 supports shared libraries as TP. It is not compatible with threading and nested event loop (asyncify)
+    # Threading is mandatory for QMdmmNetworking, so we have to disable shared libraries on wasm as well.
+    set(QMDMM_SUPPORT_SHARED_LIBS false)
+endif()
+
+option(BUILD_SHARED_LIBS "Build shared libraries" "${QMDMM_SUPPORT_SHARED_LIBS}")
 if (BUILD_SHARED_LIBS)
+    if (NOT QMDMM_SUPPORT_SHARED_LIBS)
+        message(FATAL_ERROR "Shared libraries are not supported on this platform. Please set BUILD_SHARED_LIBS=OFF.")
+    endif()
+
     set(CMAKE_POSITION_INDEPENDENT_CODE true)
 endif()
 
