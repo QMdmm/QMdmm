@@ -234,24 +234,20 @@ if (Qt6_FOUND)
                Qt6::Core
     )
 
+    # ARCHIVE takes a component of its own instead of the "6" above: it is the
+    # linker-facing artifact -- the static library, or the import library of a
+    # Windows DLL -- and belongs beside the namelink in dev6. It is named in
+    # this call rather than in a second one because install(EXPORT) refuses a
+    # target that appears in the same export set twice; a shared library on
+    # Linux/macOS has no archive at all, so the kind adds nothing there.
     install(TARGETS QMdmmCore6
         EXPORT QMdmm6Targets
         COMPONENT "6"
         RUNTIME
         LIBRARY
         NAMELINK_COMPONENT "dev6"
+        ARCHIVE COMPONENT "dev6"
     )
-
-    # On Linux/macOS with BUILD_SHARED_LIBS=ON, the ARCHIVE rule would install
-    # the real .so plus all version symlinks into dev6, duplicating the "6"
-    # component. Keep ARCHIVE for Windows DLL import libraries and static libs.
-    if (WIN32 OR NOT BUILD_SHARED_LIBS)
-        install(TARGETS QMdmmCore6
-            EXPORT QMdmm6Targets
-            COMPONENT "dev6"
-            ARCHIVE
-        )
-    endif()
 
     if (QMDMM_EXPORT_PRIVATE)
         add_library(QMdmmCorePrivate6 INTERFACE)
