@@ -255,6 +255,15 @@ void tst_QMdmmNetworking::client_exposesSelfAgent()
     Client client(ClientConfiguration {});
     QVERIFY(client.agent() != nullptr);
     QCOMPARE(client.agent()->objectName(), client.objectName());
+
+    // The const overload is the one a caller holding only a const reference reaches. Both callers
+    // reach the client through a non-const handle -- Bot::client() has a const overload but the
+    // style handlers run on a non-const Bot, and the GUI bridge holds Client * -- so nothing
+    // exercises it unless it is asked here. Both overloads read the same stable handle and have to
+    // answer with the same pointer.
+    const Client &constClient = client;
+    QVERIFY(constClient.agent() != nullptr);
+    QCOMPARE(constClient.agent(), client.agent());
 }
 
 // A local (socket-less) agent plays through the async reply contract: its operation side (here
