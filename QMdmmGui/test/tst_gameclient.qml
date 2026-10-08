@@ -189,6 +189,48 @@ TestCase {
         verify(game.statusMessage.length > 0, "the failure has to be reported");
     }
 
+    function test_aPlayerLeavingARoomThatIsNotFullIsDroppedFromIt() {
+        // A player who leaves has to come off the room mirror. Which way the server reads a
+        // drop depends on the room: a seat in a full room is kept for a reconnect, and a room
+        // with seats to spare drops the player. This is the second kind -- a local game asked
+        // for more seats than one bridge fills, with its bot program not there, so the seats it
+        // would have filled stay empty -- and the joiner below is a bridge of its own reaching
+        // the same local socket. The seat count is what says the player is gone; the
+        // announcement and the state map are what say it was taken off the mirror rather than
+        // only recomputed.
+        var host = createTemporaryObject(gameComponent, testCase, {
+                                             playerCount: 3
+                                         });
+        host.setProgramPaths("", "/nowhere/QMdmmBot6");
+        host.startLocalGame("Host");
+        tryVerify(function () {
+            return host.players.length === 1;
+        }, 15000);
+
+        var removed = createTemporaryObject(signalSpyComponent, testCase, {
+                                                target: host,
+                                                signalName: "playerRemoved"
+                                            });
+
+        var joiner = createTemporaryObject(gameComponent, testCase, {});
+        joiner.connectOnline("QMdmm", "Joiner");
+        tryVerify(function () {
+            return host.players.length === 2;
+        }, 15000);
+
+        // Read before the joiner is taken down: what it was called is not known to it any more
+        // once its own bridge has been reset.
+        var joinerName = joiner.localName;
+        joiner.disconnectAll();
+
+        tryVerify(function () {
+            return host.players.length === 1;
+        }, 15000);
+        compare(removed.count, 1);
+        compare(removed.signalArguments[0][0], joinerName);
+        verify(host.agentStates[joinerName] === undefined, "the state of a player who left has to go with it");
+    }
+
     function test_aServerThatIsGoneIsReported() {
         // A local game runs on a server process of its own, and the bridge has to know when that
         // process is gone: a game whose floor has walked out otherwise sits on screen looking like
@@ -216,6 +258,42 @@ TestCase {
         tryVerify(function () {
             return reported(said, "local server stopped");
         }, 15000);
+    }
+
+    function test_aSpokenLineComesBackOnTheChatLog() {
+        // Speaking goes to the room and comes back to everybody, this bridge included: the log
+        // is built out of what the server says rather than out of what was typed here, which is
+        // what makes this the round trip and not an echo of the local call. The line is
+        // asserted by its content and by the name it was signed in under, so an entry built
+        // from the wrong end of the call is caught as well.
+        var said = createTemporaryObject(signalSpyComponent, testCase, {
+                                             target: game,
+                                             signalName: "chatLogChanged"
+                                         });
+        game.playerCount = 2;
+        game.startLocalGame("Tester");
+        tryCompare(game, "gameState", "playing", 15000);
+
+        var before = game.chatLog.length;
+        game.speak("good luck");
+        tryVerify(function () {
+            return game.chatLog.length > before;
+        }, 15000);
+
+        verify(said.count > 0, "the arriving line has to be announced");
+        var line = game.chatLog[game.chatLog.length - 1];
+        compare(line.content, "good luck");
+        compare(line.name, game.localName);
+        compare(line.screen, "Tester");
+
+        // Nothing to say is not a line: the bridge drops an empty one rather than putting it on
+        // the room, which is what keeps the log free of blank entries. The wait is what makes
+        // this an observation -- a line that was coming would have landed well inside it, one
+        // round trip being what the case above has just measured.
+        var lines = game.chatLog.length;
+        game.speak("");
+        wait(1000);
+        compare(game.chatLog.length, lines);
     }
 
     function test_agentStatesFollowTheRoom() {
@@ -403,6 +481,151 @@ TestCase {
         }, 15000);
     }
 
+    function test_theActionOrdersOfferedAreAnswered() {
+        // The action orders are contested when the throw leaves more than one player with the
+        // right to act, and the negotiation then asks each of them which order it wants -- this
+        // bridge being one of the askers. Both ways of answering are exercised, because they
+        // are told apart by what goes on the wire (a named order, and a zero per selection that
+        // gives the whole negotiation up) and each has to leave the negotiation resolved for
+        // the round to go on.
+        //
+        // A room of three is what makes the negotiation contested at all: with two the throw
+        // always leaves one winner, who takes every order without being asked. Which rounds
+        // leave two winners is up to the throw -- about a third of them -- so the match is
+        // played on until this side has been asked twice rather than the first round being
+        // taken for granted.
+        var orderAsked = createTemporaryObject(signalSpyComponent, testCase, {
+                                                   target: game,
+                                                   signalName: "requestActionOrder"
+                                               });
+        var resolved = createTemporaryObject(signalSpyComponent, testCase, {
+                                                 target: game,
+                                                 signalName: "actionOrderResult"
+                                             });
+        var actionAsked = createTemporaryObject(signalSpyComponent, testCase, {
+                                                    target: game,
+                                                    signalName: "requestAction"
+                                                });
+        var throwAsked = createTemporaryObject(signalSpyComponent, testCase, {
+                                                   target: game,
+                                                   signalName: "requestRockPaperScissors"
+                                               });
+
+        game.playerCount = 3;
+        game.startLocalGame("Tester");
+        tryCompare(game, "gameState", "playing", 15000);
+
+        var answeredThrows = 0;
+        var answeredActions = 0;
+        var seen = 0;
+        var answeredUpTo = 0;
+        var waiting = 0;
+        var resolvedBefore = 0;
+        for (var i = 0; i < 500 && answeredUpTo < 2; ++i) {
+            if (throwAsked.count > answeredThrows) {
+                answeredThrows = throwAsked.count;
+                game.replyRps(0);
+            }
+            if (actionAsked.count > answeredActions) {
+                answeredActions = actionAsked.count;
+                game.replyAction(0, "", -1);
+            }
+            if (seen < 2 && orderAsked.count > seen) {
+                ++seen;
+                var offer = orderAsked.signalArguments[seen - 1];
+                verify(offer[0].length >= 1, "there has to be an order to pick from: " + JSON.stringify(offer));
+                verify(offer[1] >= 1, "the range the orders come from has to be told: " + JSON.stringify(offer));
+                verify(offer[2] >= 1, "at least one selection is asked of this player: " + JSON.stringify(offer));
+
+                resolvedBefore = resolved.count;
+                waiting = seen;
+                // The first ask is answered by naming an order, the second by giving the whole
+                // negotiation up: the two are the replies the view can send.
+                if (seen === 1)
+                    game.replyActionOrder([offer[0][0]]);
+                else
+                    game.yieldActionOrder(offer[2]);
+            }
+            if (waiting > 0 && resolved.count > resolvedBefore) {
+                answeredUpTo = waiting;
+                waiting = 0;
+            }
+            wait(100);
+        }
+        compare(answeredUpTo, 2, "both answers have to leave the orders confirmed");
+    }
+
+    function test_theActionsOfferedAreBuiltFromTheLiveRoom() {
+        // The action list is not a constant: it is what this room offers this player right now,
+        // so an action it may not take is not on it -- the room's own answers are what the list
+        // is made of. What it holds therefore depends on where this player stands and what it
+        // carries when the match asks it (a room-mate can have moved it), so the case pins the
+        // shape of every entry and the reply that carries one back rather than a list written
+        // down here. Reading it at the first action of the match is what keeps the reply below
+        // the only thing that can have produced the broadcast waited for: a player who says
+        // nothing rests, and resting is not what the pick is.
+        var asked = createTemporaryObject(signalSpyComponent, testCase, {
+                                              target: game,
+                                              signalName: "requestAction"
+                                          });
+        var throwAsked = createTemporaryObject(signalSpyComponent, testCase, {
+                                                   target: game,
+                                                   signalName: "requestRockPaperScissors"
+                                               });
+        game.playerCount = 2;
+        game.startLocalGame("Tester");
+        tryCompare(game, "gameState", "playing", 15000);
+        // The match waits for this side's throw before anybody is asked to act, and a round of
+        // throws that comes out level is thrown again -- so every throw asked of this side is
+        // answered, not only the first, until the match asks for the action itself.
+        var answered = 0;
+        for (var i = 0; i < 150 && asked.count === 0; ++i) {
+            if (throwAsked.count > answered) {
+                answered = throwAsked.count;
+                game.replyRps(0);
+            }
+            wait(100);
+        }
+        verify(asked.count >= 1, "the match has to ask this side to act");
+
+        var options = game.getActionOptions();
+        verify(options.length >= 2, "the room has to offer more than one thing to do: " + JSON.stringify(options));
+
+        // Every entry describes an action completely: the kind, the label the view shows, and
+        // what the reply has to carry back for it. All of them are checked, the list being what
+        // the view renders.
+        for (var i = 0; i < options.length; ++i) {
+            verify(options[i].label.length > 0, JSON.stringify(options[i]));
+            verify(typeof options[i].target === "string", JSON.stringify(options[i]));
+            verify(typeof options[i].place === "number", JSON.stringify(options[i]));
+        }
+
+        // Resting is one of them while this player is alive, and it is the entry whose
+        // description is fixed: the kind that takes no target, and the place sentinel that says
+        // so. It comes first, which is what leaves the pick below an action of another kind.
+        compare(options[0].action, 0);
+        compare(options[0].label, "Do nothing / rest");
+        compare(options[0].target, "");
+        compare(options[0].place, -1);
+
+        var pick = options[options.length - 1];
+        verify(pick.action !== 0, "the last entry is an action other than resting: " + JSON.stringify(options));
+
+        var performed = createTemporaryObject(signalSpyComponent, testCase, {
+                                                  target: game,
+                                                  signalName: "actionResult"
+                                              });
+        game.replyAction(pick.action, pick.target, pick.place);
+
+        tryVerify(function () {
+            for (var i = 0; i < performed.count; ++i) {
+                if (performed.signalArguments[i][0] === game.localName && performed.signalArguments[i][1] === pick.action)
+                    return true;
+            }
+            return false;
+        }, 15000);
+    }
+
     function test_theBridgesOwnStateEnumIsRegistered() {
         // The bridge's state enum is only reachable by name because gameclient.h registers it
         // (Q_ENUM) -- and that registration is what a reader of the meta object gets, whether the
@@ -472,6 +695,55 @@ TestCase {
         }, 15000);
 
         game.disconnectAll();
+    }
+
+    function test_theNoticeThatTheRetriesRanOutReachesTheBridge() {
+        // A connection that cannot be made is not given up on at once: the client retries on a
+        // backoff (half a second, then doubling, five attempts) and only then says that it has
+        // stopped. That last word is what the user waits for when the first one is not enough
+        // to act on, and it travels the bridge's give-up channel rather than the transport's --
+        // without it the strip keeps saying "Connecting to server..." for good. The port below
+        // has nothing behind it, and the whole chain takes fifteen-odd seconds, which is what
+        // the window is for. The reason that arrives first is asserted apart from the notice,
+        // the two being different channels: a looser reading would be satisfied by either.
+        var errors = createTemporaryObject(signalSpyComponent, testCase, {
+                                               target: game,
+                                               signalName: "errorOccurred"
+                                           });
+        game.connectOnline("qmdmm://127.0.0.1:1", "Tester");
+
+        tryVerify(function () {
+            return errors.count > 0;
+        }, 10000);
+        verify(errors.signalArguments[0][0] !== "Reconnect failed", "the transport's own reason comes first");
+
+        tryVerify(function () {
+            return game.statusMessage === "Reconnect failed";
+        }, 30000);
+        compare(errors.signalArguments[errors.count - 1][0], "Reconnect failed");
+    }
+
+    function test_theUpgradesOfferedAreBuiltFromTheLiveRoom() {
+        // The upgrade list, like the action list, is what this room offers this player right
+        // now: the three tracks are offered while there is room left on them, and the room says
+        // how much room there is (the damage starts below its maximum and the maximum HP above
+        // its own). Nothing has to have been earned for the list to be built -- the point to
+        // spend is a separate question, asked when the offer arrives.
+        game.playerCount = 2;
+        game.startLocalGame("Tester");
+        tryCompare(game, "gameState", "playing", 15000);
+
+        var options = game.getUpgradeOptions();
+        var labels = options.map(function (o) {
+            return o.label;
+        });
+        compare(options.length, 3);
+        compare(labels[0], "Upgrade knife damage");
+        compare(labels[1], "Upgrade horse damage");
+        compare(labels[2], "Upgrade max HP");
+        compare(options[0].item, 0);
+        compare(options[1].item, 1);
+        compare(options[2].item, 2);
     }
 
     name: "GameClient"
