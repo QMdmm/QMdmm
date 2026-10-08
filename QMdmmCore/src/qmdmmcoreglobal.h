@@ -18,15 +18,12 @@
 #include <type_traits>
 
 #ifndef DOXYGEN
-#ifndef QMDMM_STATIC
-#ifdef QMDMMCORE_LIBRARY
-#define QMDMMCORE_EXPORT Q_DECL_EXPORT
-#else
-#define QMDMMCORE_EXPORT Q_DECL_IMPORT
-#endif
-#else
-#define QMDMMCORE_EXPORT
-#endif
+// QMDMMCORE_EXPORT comes from a generated header rather than from this one; see the export
+// header generation in this module's CMakeLists.txt. Doxygen must not read it: the macro would
+// reach the published headers expanded, and the declarations carrying it would then name the
+// macro where they should read as plain declarations. The DOXYGEN branch below is what the
+// macro is documented from, so its two definitions stay spelled out.
+#include <QMdmmCore/qmdmmcore_export.h>
 #ifdef QMDMM_NEED_EXPORT_PRIVATE
 #define QMDMMCORE_PRIVATE_EXPORT QMDMMCORE_EXPORT
 #else

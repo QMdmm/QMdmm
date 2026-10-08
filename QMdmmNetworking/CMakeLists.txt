@@ -87,11 +87,17 @@ if (Qt6_FOUND)
         PRIVATE ${QMDMMNETWORKING_PCH}
     )
 
-    if (BUILD_SHARED_LIBS)
-        target_compile_definitions(QMdmmNetworking6
-            PRIVATE QMDMMNETWORKING_LIBRARY
-        )
-    endif()
+    # See QMdmmCore for why the export macro is generated, why the header lands in the
+    # forwarding headers' directory, and why STATIC_DEFINE is pinned to QMDMM_STATIC.
+    generate_export_header(QMdmmNetworking6
+        BASE_NAME "QMdmmNetworking"
+        EXPORT_FILE_NAME "${CMAKE_BINARY_DIR}/build/include/QMdmmNetworking/qmdmmnetworking_export.h"
+        STATIC_DEFINE "QMDMM_STATIC"
+    )
+    install(FILES "${CMAKE_BINARY_DIR}/build/include/QMdmmNetworking/qmdmmnetworking_export.h"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/QMdmmNetworking"
+        COMPONENT "dev-common"
+    )
 
     target_include_directories(QMdmmNetworking6
         INTERFACE "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/build/include/QMdmmNetworking>"

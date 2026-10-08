@@ -198,11 +198,31 @@ if (Qt6_FOUND)
         PRIVATE ${QMDMMCORE_PCH}
     )
 
-    if (BUILD_SHARED_LIBS)
-        target_compile_definitions(QMdmmCore6
-            PRIVATE QMDMMCORE_LIBRARY
-        )
-    endif()
+    # The export macro is generated instead of hand-written. The generator tells the two sides
+    # of the build apart by the definition CMake gives the library's own compilation, so the
+    # private define this used to keep in step with the header is gone with it.
+    #
+    # Two things about the call are not defaults. The header goes into the directory the
+    # forwarding headers are written to, which is already on the include path in the build tree
+    # and in the installed package; the generator's default location is this module's binary
+    # directory, which is on neither, and a header nothing can find breaks the precompiled
+    # header built from this file. STATIC_DEFINE is pinned to QMDMM_STATIC so that the static
+    # shape keeps the single definition the INTERFACE library below hands out.
+    #
+    # BASE_NAME is the module name rather than the target name: it is what spells the macro
+    # (QMDMMCORE_EXPORT) and the file (qmdmmcore_export.h), and the target name carries the Qt
+    # major version, which is not part of either.
+    generate_export_header(QMdmmCore6
+        BASE_NAME "QMdmmCore"
+        EXPORT_FILE_NAME "${CMAKE_BINARY_DIR}/build/include/QMdmmCore/qmdmmcore_export.h"
+        STATIC_DEFINE "QMDMM_STATIC"
+    )
+    # It is a header consumers compile against: qmdmmcoreglobal.h includes it, so it ships with
+    # the rest of this module's headers.
+    install(FILES "${CMAKE_BINARY_DIR}/build/include/QMdmmCore/qmdmmcore_export.h"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/QMdmmCore"
+        COMPONENT "dev-common"
+    )
 
     target_include_directories(QMdmmCore6
         INTERFACE "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/build/include/QMdmmCore>"

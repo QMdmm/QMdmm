@@ -116,6 +116,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
 include(GNUInstallDirs)
 include(AutoGenerateHeader)
+include(GenerateExportHeader)
 
 set(QT6_EXTRA_COMPONENTS_NEEDED)
 
