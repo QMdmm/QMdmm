@@ -74,8 +74,21 @@ endif()
 
 include(.FsEnv.cmake OPTIONAL)
 
-option(BUILD_SHARED_LIBS "Build shared libraries" true)
+get_property(QMDMM_SUPPORT_SHARED_LIBS GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)
+
+if (IOS OR EMSCRIPTEN)
+    # It is known that Qt never supports shared libraries on iOS
+    # On wasm, Qt since 6.6 supports shared libraries as TP. It is not compatible with threading and nested event loop (asyncify)
+    # Threading is mandatory for QMdmmNetworking, so we have to disable shared libraries on wasm as well.
+    set(QMDMM_SUPPORT_SHARED_LIBS false)
+endif()
+
+option(BUILD_SHARED_LIBS "Build shared libraries" "${QMDMM_SUPPORT_SHARED_LIBS}")
 if (BUILD_SHARED_LIBS)
+    if (NOT QMDMM_SUPPORT_SHARED_LIBS)
+        message(FATAL_ERROR "Shared libraries are not supported on this platform. Please set BUILD_SHARED_LIBS=OFF.")
+    endif()
+
     set(CMAKE_POSITION_INDEPENDENT_CODE true)
 endif()
 
