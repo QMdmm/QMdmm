@@ -81,6 +81,11 @@ the run rather than letting it go on without one.
   given, and none of them together with `--players`.
 - `-o`, `--timeout <0,15~>` -- the seconds a player has to answer a request
   before the request is given up on; 0 turns the timeout off. Defaults to 20.
+  A non-zero value is only the share the player is given: on top of it the
+  server grants a 60 second grace period for the client to draw the request
+  and for the network, so an answer later than `--timeout + 60` seconds is
+  treated as silence and the connection is dropped. At 0 there is no deadline
+  at all -- a silent player is waited on as long as the connection holds.
 
 ### Game rules
 

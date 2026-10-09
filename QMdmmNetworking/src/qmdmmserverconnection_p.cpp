@@ -47,7 +47,9 @@ const QHash<QMdmmCore::Protocol::RequestId, void (ServerConnectionP::*)()> &Serv
 // Extra tolerance in seconds added on top of ServerConfiguration::requestTimeout for the
 // request timer. The timer only backstops abnormal cases (D-020): a healthy client replies
 // or gives up on its own; if it does neither within requestTimeout + grace, the server
-// treats the timeout as a disconnect (see ServerConnectionP::requestTimeout).
+// treats the timeout as a disconnect (see ServerConnectionP::requestTimeout). A
+// requestTimeout of 0 means "no timeout" and leaves the timer unarmed entirely, so this
+// grace only applies to non-zero values (feedback 86).
 int ServerConnectionP::requestTimeoutGracePeriod = 60;
 
 ServerConnectionP::ServerConnectionP(Agent *agent, const QMdmmCore::LogicConfiguration &logicConfiguration, int requestTimeout, QObject *parent)
@@ -55,8 +57,11 @@ ServerConnectionP::ServerConnectionP(Agent *agent, const QMdmmCore::LogicConfigu
     , agent(agent)
     , conf(logicConfiguration)
     , currentRequest(QMdmmCore::Protocol::RequestInvalid)
+    , requestTimeoutEnabled(requestTimeout > 0)
     , requestTimer(new QTimer(this))
 {
+    // The interval only matters when the timer is armed at all: at 0 it is never started, so the
+    // value set here goes unused.
     requestTimer->setInterval((requestTimeout + requestTimeoutGracePeriod) * 1000);
     requestTimer->setSingleShot(true);
     connect(requestTimer, &QTimer::timeout, this, &ServerConnectionP::requestTimeout);
@@ -136,7 +141,10 @@ void ServerConnectionP::addRequest(QMdmmCore::Protocol::RequestId requestId, con
 
     if (socket != nullptr) {
         emit sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::TypeRequest, requestId, value));
-        requestTimer->start();
+        // With no timeout configured the request stays open until the client answers; the logic
+        // keeps waiting rather than treating silence as a disconnect (feedback 86).
+        if (requestTimeoutEnabled)
+            requestTimer->start();
     } else {
         // No socket: the request cannot go over the wire, so the connection answers it itself
         // with the default reply. This reply must be *asynchronous*, never synchronous -- the

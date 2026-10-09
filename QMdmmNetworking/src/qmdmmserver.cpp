@@ -83,7 +83,9 @@ namespace v0 {
  * The server's request timer only backstops abnormal cases now: a healthy
  * client replies or explicitly gives up on its own, so the timer fires only when the
  * client is gone or stuck. The value is in seconds; it is converted to milliseconds
- * when the request timer is armed.
+ * when the request timer is armed, and a non-zero value is extended by a grace period
+ * before the connection is treated as gone. A value of 0 turns the timer off: the
+ * server then never gives up on a silent client.
  */
 
 /**
@@ -275,7 +277,7 @@ IMPLEMENTATION_CONFIGURATION(int, requestTimeout, RequestTimeout, CONVERTTOTYPEI
  * fields must be booleans and string fields must be strings; every numeric field must be a whole number
  * (fractions, NaN and negatives are rejected). Ports must be in [1, 65535] (port 0 is reserved);
  * @c playerNumPerRoom must be at least 2 (a game needs an opponent for rock-paper-scissors action-order
- * resolution); @c requestTimeout is either 0 (no explicit timeout, grace only) or at least 15 seconds.
+ * resolution); @c requestTimeout is either 0 (no timeout) or at least 15 seconds.
  * Unknown keys are ignored.
  */
 bool ServerConfiguration::deserialize(const QJsonValue &value) // NOLINT(readability-function-cognitive-complexity)
@@ -354,7 +356,7 @@ bool ServerConfiguration::deserialize(const QJsonValue &value) // NOLINT(readabi
         }
     }
 
-    // requestTimeout: 0 (no explicit timeout, grace only) or >= 15 seconds.
+    // requestTimeout: 0 (no timeout) or >= 15 seconds.
     {
         int parsed = 0;
         if (ob.contains(u"requestTimeout"_s)) {

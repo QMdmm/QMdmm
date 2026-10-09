@@ -66,6 +66,7 @@ private slots:
     void client_speakReachesTheOtherPlayer();
     void socketError_isRegisteredAsAMetatype();
     void server_requestTimeoutDisconnectsASilentClient();
+    void server_zeroRequestTimeoutNeverArmsTheTimer();
 };
 
 // A room that is not full has not started a game yet: a dropped socket removes the player
@@ -1431,12 +1432,15 @@ void tst_QMdmmNetworking::client_dropsOnAnUnparseablePacket()
 // clients join, the first RPS request goes out, both stay silent, and the connection loss each
 // client reports is the proof it happened.
 //
-// The timer is fired early rather than waited on: requestTimeout + grace is 60 s at the least
-// (grace is 60 s and requestTimeout is either 0 or >= 15), and the grace period is a private
-// static of ServerConnectionP -- a *P type this test cannot link against under
-// QMDMM_EXPORT_PRIVATE=NO. The object tree is the way in, since the live connection objects hang
-// off the Server. Only the wait is shortened; timer -> requestTimeout -> the socket error the
-// client sees is the real path.
+// The timer is fired early rather than waited on: with a non-zero requestTimeout the deadline is
+// requestTimeout + grace, which is 75 s at the least (grace is 60 s and the smallest non-zero
+// requestTimeout is 15), and the grace period is a private static of ServerConnectionP -- a *P
+// type this test cannot link against under QMDMM_EXPORT_PRIVATE=NO. The object tree is the way
+// in, since the live connection objects hang off the Server. Only the wait is shortened;
+// timer -> requestTimeout -> the socket error the client sees is the real path.
+//
+// The sibling case server_zeroRequestTimeoutNeverArmsTheTimer covers the other half: at 0 the
+// timer is never armed, so no amount of silence ends the wait.
 void tst_QMdmmNetworking::server_requestTimeoutDisconnectsASilentClient()
 {
     LogicConfiguration conf = LogicConfiguration::defaults();
@@ -1446,7 +1450,7 @@ void tst_QMdmmNetworking::server_requestTimeoutDisconnectsASilentClient()
     serverConf.setTcpPort(16369);
     serverConf.setLocalEnabled(false);
     serverConf.setWebsocketEnabled(false);
-    serverConf.setRequestTimeout(0); // no explicit timeout: the grace period alone
+    serverConf.setRequestTimeout(15); // a non-zero timeout: the request timer is armed
 
     Server server(serverConf, conf);
     QVERIFY(server.listen());
@@ -1490,6 +1494,67 @@ void tst_QMdmmNetworking::server_requestTimeoutDisconnectsASilentClient()
 
     QTRY_VERIFY_WITH_TIMEOUT(p1Lost >= 1, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(p2Lost >= 1, 5000);
+}
+
+// A requestTimeout of 0 means "no timeout": the server must not give up on a player that stays
+// silent, however long the silence lasts (feedback 86). The observable is the request timer
+// itself -- at 0 it is left unarmed, so no silent client can ever be dropped by it. Driven the
+// same way as the sibling case above, through the public Server / Client API with both clients
+// staying silent; the request going out proves the connection walked the normal request path.
+void tst_QMdmmNetworking::server_zeroRequestTimeoutNeverArmsTheTimer()
+{
+    LogicConfiguration conf = LogicConfiguration::defaults();
+
+    ServerConfiguration serverConf = ServerConfiguration::defaults();
+    serverConf.setPlayerNumPerRoom(2);
+    serverConf.setTcpPort(16381);
+    serverConf.setLocalEnabled(false);
+    serverConf.setWebsocketEnabled(false);
+    serverConf.setRequestTimeout(0); // no timeout at all: the request timer stays unarmed
+
+    Server server(serverConf, conf);
+    QVERIFY(server.listen());
+
+    const QString host = u"qmdmm://localhost:16381"_s;
+
+    auto *p1 = new Client(ClientConfiguration(), &server);
+    auto *p2 = new Client(ClientConfiguration(), &server);
+
+    // Neither client answers; p1 hearing the RPS request is how the test knows the request went
+    // over the wire.
+    int requestsSeen = 0;
+    connect(p1->agent(), &Agent::rockPaperScissorsRequested, &server, [&requestsSeen]() { ++requestsSeen; });
+
+    int p1Lost = 0;
+    connect(p1, &Client::socketConnectionLost, &server, [&p1Lost](const QString &) { ++p1Lost; });
+    int p2Lost = 0;
+    connect(p2, &Client::socketConnectionLost, &server, [&p2Lost](const QString &) { ++p2Lost; });
+
+    QVERIFY(p1->connectToHost(host, Data::StateOnlineBot));
+    QVERIFY(p2->connectToHost(host, Data::StateOnline));
+
+    // p2 fills the room, the game starts, and the first RPS request goes out to both.
+    QTRY_VERIFY_WITH_TIMEOUT(requestsSeen >= 1, 5000);
+
+    // Every live connection owns exactly one request timer; with the timeout off none of them may
+    // be running. The class name is spelled out because the type itself is private to the library.
+    int connections = 0;
+    const QList<QObject *> children = server.findChildren<QObject *>();
+    for (QObject *child : children) {
+        if (!QString::fromLatin1(child->metaObject()->className()).endsWith(u"ServerConnectionP"_s))
+            continue;
+        const QList<QTimer *> timers = child->findChildren<QTimer *>();
+        QCOMPARE(timers.size(), 1);
+        ++connections;
+        QVERIFY(!timers.first()->isActive());
+    }
+    QCOMPARE(connections, 2);
+
+    // Nothing else ends the wait either: the clients stay silent and the server keeps their
+    // connections open.
+    QTest::qWait(500);
+    QCOMPARE(p1Lost, 0);
+    QCOMPARE(p2Lost, 0);
 }
 
 namespace {

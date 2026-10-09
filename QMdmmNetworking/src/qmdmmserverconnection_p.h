@@ -46,6 +46,11 @@ public:
 
     QMdmmCore::Protocol::RequestId currentRequest;
     QJsonValue currentRequestValue;
+
+    // Whether the request timer is armed at all. A configured requestTimeout of 0 means "no
+    // timeout": the server never gives up on a client that stays silent, so the timer is left
+    // unarmed. Any non-zero value is backstopped at requestTimeout + the grace period.
+    bool requestTimeoutEnabled;
     QTimer *requestTimer;
 
     // Round-event log: every round-event packet this connection has broadcast (rps / action-order

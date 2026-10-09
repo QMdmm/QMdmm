@@ -141,7 +141,7 @@ private slots:
             ob.insert(u"requestTimeout"_s, std::numeric_limits<double>::quiet_NaN());
             QTest::newRow("nanTimeout") << QJsonValue(ob) << false;
         }
-        // requestTimeout = 0 (no explicit timeout, grace only) is valid.
+        // requestTimeout = 0 (no timeout) is valid.
         {
             QJsonObject ob = validOb;
             ob.insert(u"requestTimeout"_s, 0);
