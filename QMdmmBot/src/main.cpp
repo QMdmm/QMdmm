@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
         qCritical("Unable to create log directory %s .", qPrintable(logDirectory));
     }
 
-    Config config;
+    Config config(QCoreApplication::arguments());
 
     QMdmmNetworking::ClientConfiguration conf;
     conf.setScreenName(config.name());

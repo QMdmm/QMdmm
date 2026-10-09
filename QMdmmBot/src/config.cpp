@@ -75,7 +75,7 @@ template<typename... Args>
 
 } // namespace
 
-Config::Config()
+Config::Config(const QStringList &arguments)
 {
     QCommandLineParser parser;
     parser.setSingleDashWordOptionMode(QCommandLineParser::ParseAsCompactedShortOptions);
@@ -88,7 +88,7 @@ Config::Config()
 
     parser.addOption(QCommandLineOption(QStringList {u"s"_s, u"playing-style"_s}, {}, u"playing style"_s));
 
-    parser.process(*qApp);
+    parser.process(arguments);
 
     if (!parser.positionalArguments().isEmpty())
         configError(u"Unknown argument: %1"_s, parser.positionalArguments().join(u", "_s));

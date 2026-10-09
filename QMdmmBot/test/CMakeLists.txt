@@ -6,12 +6,16 @@
 # QMdmmGui smoke test takes for QMdmmGameClient. The style subclasses come along
 # because Bot::createBot() references them.
 #
-# The command line is the exception. Config::Config() parses qApp->arguments(),
-# so linking config.cpp in here would only ever see the test binary's own
-# arguments; those cases drive the built executable as a child process instead
-# and assert on the exit status and the two streams, the way the QMdmmServer
-# command-line test does. Its sources are therefore not linked in, and the
-# executable is a build dependency.
+# The command line splits the difference. A run that is rejected, or that asks
+# for the help text or the version, ends in std::exit() and prints to the two
+# streams -- nothing below a process can observe that, so those cases drive the
+# built executable as a child process and assert on the exit status and the two
+# streams, the way the QMdmmServer command-line test does. What the
+# configuration *resolved* is readable in this process, on the other hand:
+# Config is handed the command line as an argument, so its source comes along
+# and the cases give it one of their own. The runs that would resolve those
+# values never leave the bot's own event loop, which is what puts that half out
+# of reach of the outside.
 
 add_custom_target(QMdmmBot_Test)
 if (BUILD_TESTING)
@@ -22,6 +26,8 @@ add_executable(tst_qmdmmbot6 EXCLUDE_FROM_ALL
     tst_qmdmmbot.cpp
     test.cpp
     test.h
+    ../src/config.h
+    ../src/config.cpp
     ../src/bot.h
     ../src/bot.cpp
     ../src/knifepreferredbot.cpp
@@ -31,7 +37,7 @@ add_executable(tst_qmdmmbot6 EXCLUDE_FROM_ALL
 add_dependencies(QMdmmBot_Test tst_qmdmmbot6)
 
 # The executable under test is the subject of the command-line cases, so it has
-# to be built before this target is run -- and its sources are not linked into it.
+# to be built before this target is run.
 add_dependencies(tst_qmdmmbot6 QMdmmBot6)
 
 target_link_libraries(tst_qmdmmbot6

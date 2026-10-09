@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "bot.h"
+#include "config.h"
 
 using namespace Qt::StringLiterals;
 
@@ -378,10 +379,12 @@ constexpr int MATCH_TIMEOUT_MS = 30000;
 
 namespace {
 
-// Everything a user sees after running the executable once. The command line is
-// parsed out of the process arguments (Config::Config() reads qApp->arguments()),
-// so it cannot be exercised from inside this process -- this test binary has
-// arguments of its own -- and it is driven as a child process instead.
+// Everything a user sees after running the executable once. The exit status and
+// the two streams are what the cases below assert on, and neither exists above a
+// process -- --help, --version and every rejected value go through the
+// configuration and then std::exit() -- so the command line is driven as a child
+// process rather than from inside this one. The cases that want only the values
+// the configuration resolved build it here instead (see config_ below).
 struct RunResult
 {
     QProcess::ExitStatus exitStatus = QProcess::CrashExit;
@@ -588,6 +591,13 @@ private slots:
     // through a run, so the answer is the list itself and not whichever error a
     // run happened to reach.
     void style_acceptsTheImplementedStylesAndTheReservedOne();
+
+    // What the configuration resolved, read back through the same accessors the
+    // executable reads them through in main(). These are built here, from a
+    // command line handed to the configuration, because a run that got this far
+    // would be signing in rather than reporting anything.
+    void config_resolvesTheHostNameAndStyleFromTheCommandLine();
+    void config_defaultsTheNameToEmptyAndTheStyleToKnifePreferred();
 };
 
 void tst_QMdmmBot::revenge_recordsHostileActionsOnly()
@@ -2098,6 +2108,31 @@ void tst_QMdmmBot::style_acceptsTheImplementedStylesAndTheReservedOne()
     QVERIFY(!Bot::styleExist(u"bogus"_s));
     QVERIFY(!Bot::styleExist(QString()));
     QVERIFY(!Bot::styleExist(u"KnifePreferred"_s));
+}
+
+// These three values are the configuration's whole output, and each of them is
+// read off the object once, by main(), before the run signs in. That run is the
+// one thing no child process can report on -- it stays in the bot's own event
+// loop -- so the object is built here, from a command line given to it, and the
+// values are read back through the same accessors.
+void tst_QMdmmBot::config_resolvesTheHostNameAndStyleFromTheCommandLine()
+{
+    const Config config {QStringList {u"QMdmmBot"_s, u"-l"_s, u"somewhere"_s, u"-n"_s, u"Botty"_s, u"-s"_s, u"horsePreferred"_s}};
+
+    QCOMPARE(config.host(), u"somewhere"_s);
+    QCOMPARE(config.name(), u"Botty"_s);
+    QCOMPARE(config.playingStyle(), u"horsePreferred"_s);
+}
+
+// Only the host is required of the caller. The name is empty rather than some
+// fallback, and the style takes the default the help text names -- which is
+// also what keeps a run with no -s out of the rejection the case above drives.
+void tst_QMdmmBot::config_defaultsTheNameToEmptyAndTheStyleToKnifePreferred()
+{
+    const Config config {QStringList {u"QMdmmBot"_s, u"-l"_s, u"somewhere"_s}};
+
+    QVERIFY(config.name().isEmpty());
+    QCOMPARE(config.playingStyle(), u"knifePreferred"_s);
 }
 
 namespace {

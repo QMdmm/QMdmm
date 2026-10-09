@@ -13,7 +13,11 @@
 class Config
 {
 public:
-    Config();
+    // The command line to read, in QCoreApplication::arguments()' shape: the
+    // program name first, then the options. It is a parameter rather than a
+    // read of the global application object, so that the values below can be
+    // asked for without a process to run in.
+    explicit Config(const QStringList &arguments);
 
     [[nodiscard]] QString host() const
     {
