@@ -112,6 +112,7 @@ private slots:
     void switchValues_reachThePrintedConfiguration_data();
     void switchValues_reachThePrintedConfiguration();
     void portThatIsAlreadyTaken_makesTheRunGiveUp();
+    void stopSignal_closesTheListenersAndExitsZero();
 };
 
 // --help is the first option a user reaches for, and it is the only one that
@@ -502,6 +503,72 @@ void tst_QMdmmServer::portThatIsAlreadyTaken_makesTheRunGiveUp()
     const RunResult result = runServer({u"-t"_s, u"on"_s, u"-p"_s, QString::number(port), u"-l"_s, u"off"_s, u"-w"_s, u"off"_s});
 
     QVERIFY(result.exitStatus == QProcess::CrashExit);
+}
+
+// A run that is asked to stop -- the signal a supervisor or a terminal sends -- closes its
+// listeners, writes down why it stopped, and leaves with a code of its own. Left unwired, the
+// signal ends the process the way the kernel does: no record, and nothing beyond the signal
+// itself as a code (143).
+//
+// The peer on the socket is the second half of that: the run closes its own ends on the way
+// out, so what the peer reads is an ordinary close rather than a reset. The connection is
+// also what says the run got as far as listening, which is past the point its handlers are
+// installed at.
+//
+// SIGTERM is a POSIX notion, so this case has nothing to send on Windows and skips there.
+void tst_QMdmmServer::stopSignal_closesTheListenersAndExitsZero()
+{
+#ifndef Q_OS_UNIX
+    QSKIP("SIGTERM is POSIX; there is nothing to send on this platform.");
+#else
+    // The run needs a free port of its own, so this case takes one and hands it back before
+    // the run starts -- the reservation the case above makes, read the other way round.
+    QTcpServer reservation;
+    QVERIFY(reservation.listen(QHostAddress::Any, 0));
+    const quint16 port = reservation.serverPort();
+    reservation.close();
+
+    QProcess process;
+    process.start(QString::fromLatin1(QMDMMSERVER_EXECUTABLE), {u"-t"_s, u"on"_s, u"-p"_s, QString::number(port), u"-l"_s, u"off"_s, u"-w"_s, u"off"_s});
+    if (!process.waitForStarted(60000))
+        qFatal("the executable under test did not start");
+
+    // An attempt that is refused means the run is not there yet, which is a wait rather than
+    // a failure: it has to reach the loop that accepts this connection. A refused attempt
+    // comes back at once, so the pause is what the wait is made of.
+    QTcpSocket peer;
+    bool connected = false;
+    for (int attempt = 0; attempt < 200 && !connected; ++attempt) {
+        peer.connectToHost(QHostAddress::LocalHost, port);
+        connected = peer.waitForConnected(200);
+        if (!connected) {
+            peer.abort();
+            QTest::qWait(50);
+        }
+    }
+    if (!connected) {
+        process.kill();
+        process.waitForFinished();
+        qFatal("the executable under test never started listening");
+    }
+
+    process.terminate();
+
+    if (!process.waitForFinished(60000)) {
+        process.kill();
+        process.waitForFinished();
+        qFatal("the executable under test did not exit on the signal; a run that handles it exits with a code of its own");
+    }
+
+    QVERIFY(process.exitStatus() == QProcess::NormalExit);
+    QCOMPARE(process.exitCode(), 0);
+
+    const QString standardError = QString::fromLocal8Bit(process.readAllStandardError());
+    QVERIFY2(standardError.contains(u"Received a signal to stop"_s), qPrintable(standardError));
+
+    // The peer is disconnected by the run's own exit, without having to time out first.
+    QVERIFY(peer.state() == QAbstractSocket::UnconnectedState || peer.waitForDisconnected(60000));
+#endif
 }
 
 QTEST_GUILESS_MAIN(tst_QMdmmServer)
