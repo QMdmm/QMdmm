@@ -1008,7 +1008,7 @@ void ClientP::scheduleReconnect()
         return;
     }
 
-    const int interval = ReconnectBaseIntervalMs << std::min(reconnectAttempts, 4);
+    const int interval = ReconnectBaseIntervalMs * static_cast<int>(1U << std::min(static_cast<unsigned int>(reconnectAttempts), 4U));
     reconnectTimer->start(std::min(interval, ReconnectMaxIntervalMs));
 }
 
