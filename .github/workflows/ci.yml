@@ -212,9 +212,15 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          # The line the packaging workflows install, and WebSockets as the one
-          # add-on module QMdmmNetworking links against.
-          version: '6.12.*'
+          # 6.8, not the 6.12 the packaging workflows take: Windows desktop is
+          # the one host that cannot follow them there. aqt has no retrievable
+          # metadata for qt6_6120 there -- the install step dies with "Failed to
+          # locate XML data for Qt version '6.12.0'", which reproduces against
+          # download.qt.io outside CI -- while 6.8, 6.9 and 6.10 all resolve.
+          # 6.8 is therefore the LTS line this probe takes. WebSockets, as
+          # everywhere else, is the one add-on module QMdmmNetworking links
+          # against.
+          version: '6.8.*'
           arch: win64_msvc2022_64
           modules: 'qtwebsockets'
 
