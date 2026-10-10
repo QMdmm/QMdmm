@@ -118,7 +118,7 @@ if (NOT MSVC)
         INTERFACE "$<$<CONFIG:Debug>:--coverage>"
     )
 else()
-    if ( ( Debug IN LISTS CMAKE_CONFIGURATION_TYPES ) OR ( CMAKE_BUILD_TYPE STREQUAL Debug ) )
+    if ( ( Debug IN_LIST CMAKE_CONFIGURATION_TYPES ) OR ( CMAKE_BUILD_TYPE STREQUAL Debug ) )
         message(AUTHOR_WARNING "Coverage generation is not supported in MSVC")
     endif()
 endif()
