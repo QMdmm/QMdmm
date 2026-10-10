@@ -130,7 +130,8 @@ public:
     }
     bool hasError(QString *errorString = nullptr) const;
 
-    static QMDMMCORE_EXPORT Packet fromJson(const QByteArray &serialized);
+    // The enclosing class carries QMDMMCORE_EXPORT, which is what exports this one; MSVC rejects the second marking (C2487).
+    static Packet fromJson(const QByteArray &serialized);
 
 #ifndef DOXYGEN
 private:

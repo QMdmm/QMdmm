@@ -43,7 +43,8 @@ struct QMDMMNETWORKING_EXPORT ServerConfiguration final : public QJsonObject
     Q_PROPERTY(int requestTimeout READ requestTimeout WRITE setRequestTimeout DESIGNABLE false FINAL)
 
 public:
-    static QMDMMNETWORKING_EXPORT const ServerConfiguration &defaults();
+    // The enclosing class carries QMDMMNETWORKING_EXPORT, which is what exports this one; MSVC rejects the second marking (C2487).
+    static const ServerConfiguration &defaults();
 
 #ifdef Q_MOC_RUN
     Q_INVOKABLE QMdmmServerConfiguration();

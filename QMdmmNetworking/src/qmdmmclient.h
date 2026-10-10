@@ -33,7 +33,8 @@ struct QMDMMNETWORKING_EXPORT ClientConfiguration final : public QVariantMap
     Q_PROPERTY(QString screenName READ screenName WRITE setScreenName DESIGNABLE false FINAL)
 
 public:
-    static QMDMMNETWORKING_EXPORT const ClientConfiguration &defaults();
+    // The enclosing class carries QMDMMNETWORKING_EXPORT, which is what exports this one; MSVC rejects the second marking (C2487).
+    static const ClientConfiguration &defaults();
 
 #ifdef Q_MOC_RUN
     Q_INVOKABLE QMdmmClientConfiguration();

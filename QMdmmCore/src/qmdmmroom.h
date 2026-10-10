@@ -46,8 +46,9 @@ class QMDMMCORE_EXPORT LogicConfiguration final : public QJsonObject
     Q_PROPERTY(bool canBuyOnlyInInitialCity READ canBuyOnlyInInitialCity WRITE setCanBuyOnlyInInitialCity DESIGNABLE false FINAL)
 
 public:
-    static QMDMMCORE_EXPORT const LogicConfiguration &defaults();
-    static QMDMMCORE_EXPORT const LogicConfiguration &v1();
+    // The enclosing class carries QMDMMCORE_EXPORT, which is what exports these two; MSVC rejects the second marking (C2487).
+    static const LogicConfiguration &defaults();
+    static const LogicConfiguration &v1();
 
     enum PunishHpRoundStrategy : uint8_t
     {
