@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <limits>
+#include <utility>
 
 using namespace Qt::StringLiterals;
 
@@ -372,7 +373,7 @@ PacketDataP::PacketDataP(const QJsonObject &ob) noexcept(noexcept(QJsonObject(ob
 {
 }
 
-PacketDataP &PacketDataP::operator=(const QJsonObject &ob) noexcept(noexcept(QJsonObject::operator=(ob)))
+PacketDataP &PacketDataP::operator=(const QJsonObject &ob) noexcept(noexcept(std::declval<QJsonObject &>() = ob))
 {
     QJsonObject::operator=(ob);
     return *this;

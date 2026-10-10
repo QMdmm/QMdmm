@@ -10,6 +10,7 @@
 #include <QSharedData>
 
 #include <cstdint>
+#include <utility>
 
 QMDMM_EXPORT_NAME(QMdmmProtocol)
 QMDMM_EXPORT_NAME(QMdmmPacket)
@@ -100,7 +101,9 @@ struct QMDMMCORE_EXPORT PacketDataP final : public QSharedData, public QJsonObje
 
     // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor): copy-init from QJsonObject exercised by QMdmmPacketDataCopy test
     PacketDataP(const QJsonObject &ob) noexcept(noexcept(QJsonObject(ob)));
-    PacketDataP &operator=(const QJsonObject &ob) noexcept(noexcept(QJsonObject::operator=(ob)));
+    // std::declval rather than an explicit qualified call: MSVC does not parse the latter in an
+    // exception specification (it reports C2382 and C2352 instead).
+    PacketDataP &operator=(const QJsonObject &ob) noexcept(noexcept(std::declval<QJsonObject &>() = ob));
 
     // NOLINTNEXTLINE(misc-non-private-member-variables-in-classes)
     QString error;
