@@ -348,6 +348,9 @@ namespace {
 }
 #endif
 
+// Q_DISABLE_COPY_MOVE below deletes copy and move deliberately; the check reads those four
+// deleted members as a class with special members but no destructor, of which there is none to write.
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 struct ConfigurationDirectory final
 {
     QString dir;
@@ -366,6 +369,9 @@ struct ConfigurationDirectory final
     Q_DISABLE_COPY_MOVE(ConfigurationDirectory);
 };
 
+// Q_DISABLE_COPY_MOVE below deletes copy and move deliberately; the check reads those four
+// deleted members as a class with special members but no destructor, of which there is none to write.
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 struct RuntimeDataDirectory final
 {
     QString dir;
