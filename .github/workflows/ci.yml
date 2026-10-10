@@ -181,6 +181,73 @@ jobs:
           git remote add origin "https://x-access-token:${COVERAGE_TOKEN}@github.com/nemn9852/qmdmm-coverage.git"
           git push -f origin main
 
+  build-windows:
+    name: Build & test (windows-latest probe, ${{ matrix.build_type }})
+    #
+    # A probe, and the only cell in this file that is allowed to be red. The
+    # tree has carried its Windows branches for a long time -- CMakeLists.txt
+    # clears the shared-module and shared-library prefixes and gives MSVC an .a
+    # import suffix, QMdmmCore adds UNICODE and _UNICODE, QMdmmGui declares its
+    # executable WIN32 -- but nothing here has ever built it on Windows, so
+    # neither the MSVC build nor ctest has a reading at all. Producing one is
+    # the point of this job: the name says probe and continue-on-error keeps a
+    # red cell from holding main red while it is worked through, but the reading
+    # still has to come out of the log, failures included.
+    #
+    runs-on: windows-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          path: QMdmm
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          # The line the packaging workflows install, and WebSockets as the one
+          # add-on module QMdmmNetworking links against.
+          version: '6.12.*'
+          arch: win64_msvc2022_64
+          modules: 'qtwebsockets'
+
+      - name: Configure
+        id: configure
+        run: |
+          # No -G: the default generator on a windows-latest runner is the
+          # Visual Studio one, and naming a version here would be one more
+          # literal to revisit whenever the image moves. That generator is
+          # multi-config, so the build type is chosen on the build and test
+          # steps rather than here; -A x64 matches the architecture of the Qt
+          # archive installed above.
+          cmake -B build -S QMdmm -A x64 \
+            -DBUILD_TESTING=ON \
+            -DQMDMM_EXPORT_PRIVATE=NO \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+
+      - name: Build
+        id: build
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel
+
+      - name: Test
+        id: test
+        run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
+
+      - name: Report the probe's reading
+        if: always()
+        run: |
+          # One line saying which of the three steps carried out and which did
+          # not. With continue-on-error the run stays green, so the reading has
+          # to be legible from the log rather than from the run's colour.
+          echo "probe: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} test=${{ steps.test.outcome }}"
+
   docs:
     name: Publish API docs
     runs-on: macos-latest
