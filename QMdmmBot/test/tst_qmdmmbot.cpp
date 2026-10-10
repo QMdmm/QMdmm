@@ -395,16 +395,13 @@ struct RunResult
 
 // Runs the executable under test with @p arguments and collects what it printed.
 //
-// The runs made here all finish on their own, though not all of them cleanly:
-// --help and --version print and exit, and everything the configuration rejects --
-// a stray word, a missing host, a style nobody implements -- goes through
-// configError(), which writes the reason to stderr and exits 3. The style the
-// configuration accepts but no style implements is the third way out: it gets
-// past the configuration and then terminates on its way to signing in, so that
-// run ends without an exit code. Either way it ends on its own, so a run that
-// outlives the timeout means the executable stopped exiting where it is expected
-// to -- the helper kills it and fails rather than reporting a half-collected
-// result.
+// Every run made here ends on its own, and each of them ends through std::exit():
+// --help and --version print and exit 0, and everything the program turns away --
+// a stray word, a missing host, a style nobody implements, whether the
+// configuration rejects it or its own constructor does -- leaves the reason on
+// stderr and exits 3. So a run that outlives the timeout means the executable
+// stopped exiting where it is expected to -- the helper kills it and fails rather
+// than reporting a half-collected result.
 RunResult runBot(const QStringList &arguments, int timeoutMs = 60000)
 {
     QProcess process;
@@ -584,8 +581,8 @@ private slots:
     void cli_unknownPlayingStyleIsRejected();
 
     // The style the configuration accepts and no style implements: recognized,
-    // and a hard failure rather than a seat that plays nothing.
-    void cli_unimplementedStyleTerminatesAtStartup();
+    // and refused rather than played as a seat that plays nothing.
+    void cli_unimplementedStyleIsRejectedAtStartup();
 
     // The whitelist those rejections are decided by, asked directly rather than
     // through a run, so the answer is the list itself and not whichever error a
@@ -1494,8 +1491,8 @@ void tst_QMdmmBot::rps_doesNotAlwaysAnswerTheSameThrow()
     };
 
     // The two implemented styles answer through one shared fallback (the rl style
-    // is a placeholder that terminates in its constructor, so it never gets as far
-    // as answering).
+    // is a placeholder that refuses the run in its constructor, so it never gets as
+    // far as answering).
     const QList<QString> styles {u"knifePreferred"_s, u"horsePreferred"_s};
     for (const QString &style : styles) {
         QMdmmNetworking::Client client {QMdmmNetworking::ClientConfiguration::defaults()};
@@ -2082,16 +2079,20 @@ void tst_QMdmmBot::cli_unknownPlayingStyleIsRejected()
     QVERIFY(result.standardError.contains(u"Specified playing style does not exist."_s));
 }
 
-// The style the parser accepts but no style implements is a hard failure rather
-// than a seat that plays nothing: the run gets past the configuration and then
-// terminates on its way to signing in. Nothing about it comes back as an exit
-// status, so that is the assertion -- and the help text is where the behaviour is
-// announced to the user (see cli_helpPrintsTheUsageAndExitsZero).
-void tst_QMdmmBot::cli_unimplementedStyleTerminatesAtStartup()
+// The style the parser accepts but no style implements is refused rather than
+// played as a seat that does nothing: the run gets past the configuration and is
+// then turned away in RlBot's constructor, the same shape the configuration turns
+// the cases above away in -- the reason on stderr and status 3. The status is the
+// assertion and the message keeps it from passing on some other refusal; the help
+// text is where the behaviour is announced to the user (see
+// cli_helpPrintsTheUsageAndExitsZero).
+void tst_QMdmmBot::cli_unimplementedStyleIsRejectedAtStartup()
 {
     const RunResult result = runBot({u"-l"_s, u"somewhere"_s, u"-s"_s, u"rl"_s});
 
-    QVERIFY(result.exitStatus == QProcess::CrashExit);
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+    QVERIFY(result.standardError.contains(u"Reinforcement Learning playing style is not implemented"_s));
 }
 
 // The whitelist the configuration validates against, asked through the same
@@ -2102,7 +2103,7 @@ void tst_QMdmmBot::style_acceptsTheImplementedStylesAndTheReservedOne()
     QVERIFY(Bot::styleExist(u"knifePreferred"_s));
     QVERIFY(Bot::styleExist(u"horsePreferred"_s));
     // Recognized so that the configuration lets it through; constructing one is
-    // the hard failure the case above drives (see RlBot's constructor).
+    // the refusal the case above drives (see RlBot's constructor).
     QVERIFY(Bot::styleExist(u"rl"_s));
 
     QVERIFY(!Bot::styleExist(u"bogus"_s));
