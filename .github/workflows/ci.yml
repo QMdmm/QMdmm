@@ -212,15 +212,27 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          # 6.8, not the 6.12 the packaging workflows take: Windows desktop is
-          # the one host that cannot follow them there. aqt has no retrievable
-          # metadata for qt6_6120 there -- the install step dies with "Failed to
-          # locate XML data for Qt version '6.12.0'", which reproduces against
-          # download.qt.io outside CI -- while 6.8, 6.9 and 6.10 all resolve.
-          # 6.8 is therefore the LTS line this probe takes. WebSockets, as
-          # everywhere else, is the one add-on module QMdmmNetworking links
-          # against.
-          version: '6.8.*'
+          # 6.12, the line the packaging workflows take, on the one backend that
+          # can still reach it here. Qt split the Windows desktop package
+          # folders per architecture from 6.11 on: the metadata used to sit one
+          # level in (qt6_6103/qt6_6103/Updates.xml) and now sits one
+          # architecture further down (qt6_6120/qt6_6120_msvc2022_64/
+          # Updates.xml exists, while qt6_6120/qt6_6120 is a 404). The released
+          # aqtinstall 3.3.0 -- this action's default backend -- still asks for
+          # the old path, so Install Qt died with "Failed to locate XML data for
+          # Qt version '6.12.0'"; 6.8, 6.9 and 6.10 resolve because their
+          # folders kept the old shape.
+          #
+          # aqtsource pins the upstream commit that learned the new layout
+          # (miurahr/aqtinstall#1000, reported through jurplel/install-qt-action
+          # #374). It is a full commit and not a branch, so this runner stays
+          # reproducible; revisit when Qt ships a newer release or aqtinstall
+          # cuts one, whichever comes first.
+          #
+          # WebSockets, as everywhere else, is the one add-on module
+          # QMdmmNetworking links against.
+          version: '6.12.*'
+          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7'
           arch: win64_msvc2022_64
           modules: 'qtwebsockets'
 
