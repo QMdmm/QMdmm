@@ -54,11 +54,10 @@ QProcessEnvironment environmentWithHome(const QString &home)
 // out of range, a value that cannot be parsed, an option pair that cannot both be
 // meant -- goes through configError(), which writes the reason to stderr and exits 3.
 // A run that does get past the configuration reaches the server itself, and a server
-// that cannot bind a transport it was asked for gives up through qFatal(): that run
-// ends by aborting rather than by returning an exit code. Either way it ends on its
-// own, so a run that outlives the timeout means the executable stopped exiting where
-// it is expected to -- the helper kills it and fails rather than reporting a
-// half-collected result.
+// that cannot bind a transport it was asked for is refused in that same shape: the
+// reason on stderr and status 3. Either way it ends on its own, so a run that outlives
+// the timeout means the executable stopped exiting where it is expected to -- the
+// helper kills it and fails rather than reporting a half-collected result.
 RunResult runServer(const QStringList &arguments, int timeoutMs = 60000, const QProcessEnvironment &environment = QProcessEnvironment::systemEnvironment())
 {
     QProcess process;
@@ -483,17 +482,17 @@ void tst_QMdmmServer::switchValues_reachThePrintedConfiguration()
 }
 
 // A run that gets past the configuration reaches the server itself, and a server that
-// cannot bind a transport it was asked for gives up through qFatal() rather than
-// staying up unreachable. The port cannot be picked by the child alone -- it may
-// already be held by another process, which is exactly the case worth pinning -- so
-// this case holds a port of its own and hands that port to the child.
+// cannot bind a transport it was asked for is refused rather than staying up
+// unreachable. The port cannot be picked by the child alone -- it may already be held
+// by another process, which is exactly the case worth pinning -- so this case holds a
+// port of its own and hands that port to the child.
 //
-// The run ends by aborting, not by returning an exit code, which is what tells it
-// apart from a run that hangs: the timeout guard in runServer() fails this case if the
-// child never exits. The messages on this path are not asserted here because they do
-// not reach stderr: QMdmmServer installs a message handler that writes to its log file
-// before it builds the server, so the transport error and the fatal notice land in
-// that file. What a user observes from this side is the run giving up.
+// The refusal is the one a bad command line gets: the reason on stderr and status 3.
+// That status is what tells the run apart from a run that hangs, together with the
+// timeout guard in runServer(), which fails this case if the child never exits. The
+// reason on stderr is the only line a caller sees: the transport error qCritical()
+// reports goes to the log file instead, because QMdmmServer installs a message handler
+// that writes there before it builds the server.
 void tst_QMdmmServer::portThatIsAlreadyTaken_makesTheRunGiveUp()
 {
     QTcpServer occupant;
@@ -502,7 +501,9 @@ void tst_QMdmmServer::portThatIsAlreadyTaken_makesTheRunGiveUp()
 
     const RunResult result = runServer({u"-t"_s, u"on"_s, u"-p"_s, QString::number(port), u"-l"_s, u"off"_s, u"-w"_s, u"off"_s});
 
-    QVERIFY(result.exitStatus == QProcess::CrashExit);
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+    QVERIFY2(result.standardError.contains(u"Unable to listen"_s), qPrintable(result.standardError));
 }
 
 // A run that is asked to stop -- the signal a supervisor or a terminal sends -- closes its

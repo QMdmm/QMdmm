@@ -12,6 +12,7 @@
 #include <QTimer>
 
 #include <csignal>
+#include <cstdlib>
 #include <iostream>
 
 using namespace Qt::StringLiterals;
@@ -100,9 +101,23 @@ int main(int argc, char *argv[])
         qCritical("Unable to listen on %s: %s", qPrintable(transportName), qPrintable(errorString));
     });
 
-    bool listen = server.listen();
-    if (!listen)
-        qFatal("Unable to listen, exiting.");
+    // A transport that cannot be bound is a user or environment error -- the port is already
+    // held by something else, or the run was pointed at an address it may not use -- so the run
+    // is refused the way every other unusable run is: the reason on stderr, the same line
+    // through qWarning() (which lands in the log file via the installed message handler), and
+    // exit 3. The shape is configErrorImpl()'s in config.cpp, which is file-local, hence the
+    // repetition.
+    //
+    // qFatal() would abort instead, ending the run on SIGABRT with no exit status a caller can
+    // read: a supervisor sees a crash where the run meant to say it could not start.
+    if (!server.listen()) {
+        const QString message = u"Unable to listen, exiting."_s;
+
+        std::cerr << qPrintable(message) << '\n' << std::flush;
+        qWarning().noquote() << message;
+
+        std::exit(3);
+    }
 
     // The two signals a supervisor or a terminal sends to ask a process to stop. A handler
     // that cannot be installed is worth saying out loud: the run still works, it just ends on
