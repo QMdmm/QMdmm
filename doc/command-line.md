@@ -24,11 +24,17 @@ from the terminal, so a room filled entirely with bots plays itself out.
   Defaults to `knifePreferred`, and the values it accepts are `knifePreferred`,
   `horsePreferred` and `rl`. The first two play real strategies; `rl` is a
   placeholder that is still accepted by the option check and then refuses to
-  start.
+  start, with status 3, rather than joining a game with no strategy.
 
 An unusable command line -- an argument that is not an option, a missing host,
-a style that does not exist -- is reported on stderr, and the program exits
-with status 3 rather than starting with something else.
+a style that does not exist, a style that exists but is refused before it can
+play -- is reported on stderr, and the program exits with status 3 rather than
+starting with something else.
+
+Asked to stop -- by a `SIGTERM` or a `SIGINT`, the two ways a supervisor or a
+terminal ask -- a run reports the stop on stderr and exits with status 0,
+rather than being killed by the signal and leaving a caller nothing but the
+signal (`143`) to read.
 
 ## QMdmmServer
 
@@ -51,8 +57,8 @@ the files live and how a value is looked up.
 
 All three listeners run side by side, and each can be turned off on its own;
 turning all three off leaves a server that listens on nothing. An `on/off` value
-also takes `true`/`false`, `yes`/`no`, `1`/`0` and `enable`/`disable`, in any
-case.
+also takes `true`/`false`, `yes`/`no`, `y`/`n`, `1`/`0`, `enable`/`enabled` and
+`disable`/`disabled`, in any case.
 
 - `-t`, `--tcp <on/off>` -- listen on TCP. Defaults to on.
 - `-p`, `--tcp-port <port>` -- the TCP port to listen on. Defaults to 6366,
@@ -68,7 +74,8 @@ case.
 
 A port is an unsigned 16-bit number, so 65535 is its ceiling. A port already in
 use is reported as the server starts, and a transport that cannot listen stops
-the run rather than letting it go on without one.
+the run rather than letting it go on without one: the reason is reported on
+stderr and the run exits with status 3.
 
 ### Room and timeout
 
@@ -140,6 +147,13 @@ been merged, so a value read from a file is judged exactly like one from a flag.
 - `-d`, `--show-current-configuration` -- print the configuration the run
   resolved as JSON, and exit with status 0. Given together with `-c` or `-C`,
   the JSON is printed and the save then decides the exit status.
+
+### Stopping
+
+Asked to stop -- by a `SIGTERM` or a `SIGINT`, the two ways a supervisor or a
+terminal ask -- the server closes its listeners, reports the stop on stderr and
+exits with status 0. That is a clean end rather than a refusal, so it does not
+carry the status of one: a peer sees an ordinary close rather than a reset.
 
 An unusable command line does not start the run. An option the program does not
 know, or one given without its value, is refused by Qt's own option parser with
