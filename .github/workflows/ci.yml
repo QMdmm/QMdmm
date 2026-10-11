@@ -391,6 +391,18 @@ jobs:
             tidy_args=()
           fi
           #
+          # Say which toolchain is about to run. The two cells get clang-tidy
+          # from different places -- the distribution's packages on Linux, a
+          # Homebrew keg on macOS -- and a red run whose cause was exactly that
+          # took a whole round to place, because nothing in the log said which
+          # generation either cell had. The path is decided just above, so this
+          # names the one the scan will really use; and it stays a reading
+          # rather than a pin: the two cells together are what covers the check
+          # families, so holding either of them to the other's version would
+          # drop checks rather than add discipline.
+          #
+          PATH="$tidy_path" clang-tidy --version
+          #
           # One home for the module list, as in the coverage step: the range
           # below is built from it, and the checks after the run walk the same
           # list, so a module cannot be named in one of them and forgotten in
