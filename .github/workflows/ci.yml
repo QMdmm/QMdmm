@@ -390,7 +390,18 @@ jobs:
             tidy_path="$PATH"
             tidy_args=()
           fi
-          range='QMdmm(Core|Networking|Gui|Server|Bot)/(src|test)/'
+          #
+          # One home for the module list, as in the coverage step: the range
+          # below is built from it, and the checks after the run walk the same
+          # list, so a module cannot be named in one of them and forgotten in
+          # the other.
+          #
+          modules=(QMdmmCore QMdmmNetworking QMdmmGui QMdmmServer QMdmmBot)
+          joined=""
+          for module in "${modules[@]}"; do
+            joined="${joined:+$joined|}$module"
+          done
+          range="(${joined})/(src|test)/"
           log="${RUNNER_TEMP}/clang-tidy.log"
           cd QMdmm
           rc=0
@@ -406,13 +417,35 @@ jobs:
           # looks like.
           #
           grep -o '[0-9][0-9]* files out of [0-9][0-9]*' "$log" || true
-          files=$(grep -c 'files out of' "$log" || true)
+          scanned=$(grep -oE '[0-9]+ files out of' "$log" | head -1 | grep -oE '[0-9]+' || true)
           warnings=$(grep -cE ': warning:' "$log" || true)
           errors=$(grep -cE ': error:' "$log" || true)
           nochecks=$(grep -c 'no checks enabled' "$log" || true)
           echo "clang-tidy: $warnings warning(s), $errors error(s), $nochecks unit(s) with no checks enabled, exit $rc"
-          if [ "$files" -eq 0 ]; then
+          if [ "${scanned:-0}" -eq 0 ]; then
             echo "::error::clang-tidy reported no file range -- nothing was scanned"
+            exit 1
+          fi
+          #
+          # Losing a module is not caught by the count above: the scan stays
+          # plausible and merely covers less, and the number it prints is one
+          # nothing compares with the tree. On 2026-10-11 the range and the tree
+          # agreed on 51 units, and run-clang-tidy prints one progress line per
+          # unit -- ending it with the unit's path -- so ask for every module by
+          # name, and for the tree's own count.
+          #
+          expected=$(git ls-files | grep -cE '/(src|test)/.*\.cpp$' || true)
+          for module in "${modules[@]}"; do
+            want=$(git ls-files "$module/src/*.cpp" "$module/test/*.cpp" | wc -l | tr -d ' ')
+            got=$(grep -oE '[^[:space:]]*\.cpp$' "$log" | grep -cE "/$module/" || true)
+            echo "clang-tidy: ${module}: ${got} of ${want} unit(s) scanned"
+            if [ "$want" -gt 0 ] && [ "$got" -eq 0 ]; then
+              echo "::error::clang-tidy scanned nothing under ${module} -- the range no longer covers it"
+              exit 1
+            fi
+          done
+          if [ "$scanned" -ne "$expected" ]; then
+            echo "::error::clang-tidy scanned ${scanned} unit(s) where the tree holds ${expected} under (src|test) -- the range and the tree no longer agree"
             exit 1
           fi
           if [ "$warnings" -ne 0 ] || [ "$errors" -ne 0 ] || [ "$nochecks" -ne 0 ] || [ "$rc" -ne 0 ]; then
