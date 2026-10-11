@@ -9,6 +9,7 @@
 
 /**
  * @namespace QMdmmNetworking
+ * @ingroup QMdmmNetworking
  * @brief The Networking API, including server / client, logic runner, etc.
  */
 

@@ -23,6 +23,7 @@ using namespace Qt::StringLiterals;
 
 /**
  * @namespace QMdmmCore
+ * @ingroup QMdmmCore
  * @brief The Core API, including game logic, configuration, and debug essentials.
  */
 
@@ -50,6 +51,7 @@ namespace v0 {
 
 /**
  * @namespace QMdmmCore::Data
+ * @ingroup QMdmmCore
  * @headerfile <QMdmmData>
  * @brief Various data definition of MDMM game
  */
@@ -305,6 +307,7 @@ QStringList Data::rockPaperScissorsWinners(const QHash<QString, Data::RockPaperS
 
 /**
  * @namespace QMdmmCore::Global
+ * @ingroup QMdmmCore
  * @headerfile <QMdmmGlobal>
  * @brief Global functions of QMdmm
  */
@@ -466,6 +469,7 @@ const QString &Global::runtimeDataDirectory()
 
 /**
  * @namespace QMdmmCore::Utilities
+ * @ingroup QMdmmCore
  * @headerfile <QMdmmUtilities>
  * @brief Convenience functions and types for working with QMdmm library
  */

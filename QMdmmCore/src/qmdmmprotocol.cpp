@@ -25,6 +25,7 @@ namespace v0 {
 
 /**
  * @namespace Protocol
+ * @ingroup QMdmmCore
  * @brief The namespace for protocol
  */
 
