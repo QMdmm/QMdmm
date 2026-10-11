@@ -5,11 +5,13 @@
 #include <QMdmmCore/QMdmmDebug>
 
 #include <QBuffer>
+#include <QRegularExpression>
 #include <QTest>
 
 // NOLINTBEGIN
 // Exempt from clang-tidy by policy; see AGENTS.md.
 
+using namespace Qt::StringLiterals;
 using namespace QMdmmCore;
 
 class tst_QMdmmDebug : public QObject
@@ -133,6 +135,28 @@ private slots:
         QVERIFY(data.contains("a warning message"));
         QVERIFY(data.contains("a critical message"));
         QCOMPARE(data.count('\n'), 4);
+    }
+
+    void QMdmmDebuglinesCarryTimeLevelAndCategory()
+    {
+        qMdmmDebugSetDevice(&buf);
+
+        qDebug("a debug line");
+        qInfo("an info line");
+        qWarning("a warning line");
+
+        const QStringList lines = QString::fromUtf8(buf.data()).split(u'\n', Qt::SkipEmptyParts);
+        QCOMPARE(lines.size(), 3);
+
+        // <time> <level> <category>: <message>, with the time in ISO 8601.
+        static const QRegularExpression lineFormat(uR"(^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3} \S+ \S+: )"_s);
+
+        for (const QString &line : lines)
+            QVERIFY2(lineFormat.match(line).hasMatch(), qPrintable(line));
+
+        QVERIFY(lines.at(0).endsWith(u"debug default: a debug line"_s));
+        QVERIFY(lines.at(1).endsWith(u"info default: an info line"_s));
+        QVERIFY(lines.at(2).endsWith(u"warning default: a warning line"_s));
     }
 };
 
