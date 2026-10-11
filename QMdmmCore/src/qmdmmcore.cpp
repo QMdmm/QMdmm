@@ -10,6 +10,8 @@
 #include <QStandardPaths>
 #endif
 
+#include <cstdlib>
+#include <iostream>
 #include <map>
 
 using namespace Qt::StringLiterals;
@@ -398,7 +400,19 @@ struct RuntimeDataDirectory final
         if (QDir().mkpath(dir) && QFileInfo(dir).isWritable())
             return;
 
-        qFatal("Runtime data can't be saved: neither %s nor %s can be created and written. Exiting.", qPrintable(configured), qPrintable(dir));
+        // Neither attempt worked, which is an environment error rather than a program bug -- the
+        // same class of error an unusable command line is. The run is refused the way those are:
+        // the reason and exit 3, the shape configErrorImpl() in QMdmmServer/src/config.cpp has
+        // (file-local there, hence the repetition), rather than by aborting, which reads to a
+        // caller as a crash instead of as a refusal. No caller installs a log device before this
+        // point, so both writes below reach stderr and the reason is printed twice; the
+        // qWarning() is kept because it is the write that would reach a log file.
+        const QString message = u"Runtime data can't be saved: neither "_s + configured + u" nor "_s + dir + u" can be created and written. Exiting."_s;
+
+        std::cerr << qPrintable(message) << '\n' << std::flush;
+        qWarning().noquote() << message;
+
+        std::exit(3);
         Q_UNREACHABLE();
     }
 
@@ -437,8 +451,9 @@ const QString &Global::configurationDirectory()
  * with one addition: this directory has to be writable, or the run would have nowhere to
  * report from. An installation under a prefix owned by someone else is the ordinary reason it
  * is not, and the second attempt is then @c $HOME/.QMdmm/var. A run that can write to neither
- * stops, rather than continuing as a process whose logs nobody will ever read. The directory
- * that is used is created here, so the caller may find it already in place.
+ * stops, rather than continuing as a process whose logs nobody will ever read: the reason is
+ * reported on stderr and the run exits with status 3. The directory that is used is created
+ * here, so the caller may find it already in place.
  *
  * Both are looked up once, on the first call -- that is where the stopping happens too.
  */
