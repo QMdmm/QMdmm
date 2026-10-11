@@ -5,12 +5,21 @@
 #include <QHostAddress>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QScopeGuard>
 #include <QSettings>
 #include <QString>
 #include <QStringList>
 #include <QTcpServer>
 #include <QTemporaryDir>
 #include <QTest>
+
+#ifdef Q_OS_UNIX
+#include <arpa/inet.h>
+#include <cerrno>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 // NOLINTBEGIN
 // Exempt from clang-tidy by policy; see AGENTS.md.
@@ -516,6 +525,13 @@ void tst_QMdmmServer::portThatIsAlreadyTaken_makesTheRunGiveUp()
 // also what says the run got as far as listening, which is past the point its handlers are
 // installed at.
 //
+// That difference is one the wire carries, not one Qt's socket does: a QTcpSocket reports a
+// reset and an ordinary close the same way (RemoteHostClosedError, measured on both platforms
+// this case runs on), so the peer here is a socket of this case's own and the reading is the
+// one the syscall gives back -- the end of the stream, not ECONNRESET. Letting a QTcpSocket
+// read it, or asking for peer.error(), would pass just as well on a run that reset instead of
+// closing, which is the whole thing this half is here to tell apart.
+//
 // SIGTERM is a POSIX notion, so this case has nothing to send on Windows and skips there.
 void tst_QMdmmServer::stopSignal_closesTheListenersAndExitsZero()
 {
@@ -536,18 +552,43 @@ void tst_QMdmmServer::stopSignal_closesTheListenersAndExitsZero()
 
     // An attempt that is refused means the run is not there yet, which is a wait rather than
     // a failure: it has to reach the loop that accepts this connection. A refused attempt
-    // comes back at once, so the pause is what the wait is made of.
-    QTcpSocket peer;
-    bool connected = false;
-    for (int attempt = 0; attempt < 200 && !connected; ++attempt) {
-        peer.connectToHost(QHostAddress::LocalHost, port);
-        connected = peer.waitForConnected(200);
-        if (!connected) {
-            peer.abort();
-            QTest::qWait(50);
+    // comes back at once, so the pause is what the wait is made of. A refused connect leaves
+    // its socket in no shape to be tried again, so each attempt takes a socket of its own.
+    int peer = -1;
+    const auto closePeer [[maybe_unused]] = qScopeGuard([&peer] {
+        if (peer >= 0)
+            ::close(peer);
+    });
+    for (int attempt = 0; attempt < 200 && peer < 0; ++attempt) {
+        const int candidate = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (candidate < 0)
+            qFatal("this case could not open a socket of its own");
+
+        // The read below waits for the end of the stream: a run that neither closes nor resets
+        // its ends -- one that hangs on to the socket -- has to come back as this case failing
+        // rather than as one that never finishes. The timeout is a property of the socket, so
+        // it goes on here, while the socket is still the case's own to set up.
+        timeval receiveTimeout {};
+        receiveTimeout.tv_sec = 60;
+        if (::setsockopt(candidate, SOL_SOCKET, SO_RCVTIMEO, &receiveTimeout, sizeof(receiveTimeout)) != 0) {
+            ::close(candidate);
+            qFatal("this case could not put a receive timeout on its socket");
         }
+
+        sockaddr_in address {};
+        address.sin_family = AF_INET;
+        address.sin_port = htons(port);
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+        if (::connect(candidate, reinterpret_cast<sockaddr *>(&address), sizeof(address)) == 0) {
+            peer = candidate;
+            break;
+        }
+
+        ::close(candidate);
+        QTest::qWait(50);
     }
-    if (!connected) {
+    if (peer < 0) {
         process.kill();
         process.waitForFinished();
         qFatal("the executable under test never started listening");
@@ -567,8 +608,16 @@ void tst_QMdmmServer::stopSignal_closesTheListenersAndExitsZero()
     const QString standardError = QString::fromLocal8Bit(process.readAllStandardError());
     QVERIFY2(standardError.contains(u"Received a signal to stop"_s), qPrintable(standardError));
 
-    // The peer is disconnected by the run's own exit, without having to time out first.
-    QVERIFY(peer.state() == QAbstractSocket::UnconnectedState || peer.waitForDisconnected(60000));
+    // What the run wrote before stopping -- the version it introduces its sockets with -- is
+    // not what this half reads. What it is after is how the stream ends: a close hands that
+    // back as a read of zero bytes, and a reset fails the same read with ECONNRESET instead.
+    char buffer[4096];
+    int readResult = -1;
+    do {
+        readResult = int(::recv(peer, buffer, sizeof(buffer), 0));
+    } while (readResult > 0);
+
+    QVERIFY2(readResult == 0, qPrintable(u"the peer read the stream as %1 bytes with errno %2 rather than as its end"_s.arg(readResult).arg(errno)));
 #endif
 }
 
