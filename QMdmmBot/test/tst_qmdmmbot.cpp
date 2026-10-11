@@ -10,8 +10,10 @@
 #include <QMdmmServer>
 
 #include <QEventLoop>
+#include <QHostAddress>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QTcpServer>
 #include <QTest>
 #include <QTimer>
 
@@ -595,6 +597,12 @@ private slots:
     // would be signing in rather than reporting anything.
     void config_resolvesTheHostNameAndStyleFromTheCommandLine();
     void config_defaultsTheNameToEmptyAndTheStyleToKnifePreferred();
+
+    // A run that is asked to stop -- the signal a supervisor or a terminal
+    // sends -- writes down why it stopped and leaves with a code of its own,
+    // rather than being killed by the signal and reporting nothing but the
+    // signal itself.
+    void stopSignal_recordsTheStopAndExitsZero();
 };
 
 void tst_QMdmmBot::revenge_recordsHostileActionsOnly()
@@ -2134,6 +2142,54 @@ void tst_QMdmmBot::config_defaultsTheNameToEmptyAndTheStyleToKnifePreferred()
 
     QVERIFY(config.name().isEmpty());
     QCOMPARE(config.playingStyle(), u"knifePreferred"_s);
+}
+
+// A run that is asked to stop -- the signal a supervisor or a terminal sends -- writes down
+// why it stopped and leaves with a code of its own. Left unwired, the signal ends the process
+// the way the kernel does: no record, and nothing beyond the signal itself as a code (143).
+//
+// The socket is what says the run got past installing its handlers: they go in before it
+// dials out, so an accepted connection means a stop from here on is answered rather than
+// merely fatal. There is nothing to dial for the rest of it -- the case is not about what the
+// peer says, only that something was dialled.
+//
+// SIGTERM is a POSIX notion, so this case has nothing to send on Windows and skips there.
+void tst_QMdmmBot::stopSignal_recordsTheStopAndExitsZero()
+{
+#ifndef Q_OS_UNIX
+    QSKIP("SIGTERM is POSIX; there is nothing to send on this platform.");
+#else
+    // The run needs an address of its own to dial, so this case listens on one and hands the
+    // port over: nothing below speaks the protocol, the listener only has to accept.
+    QTcpServer listener;
+    QVERIFY(listener.listen(QHostAddress::LocalHost, 0));
+    const quint16 port = listener.serverPort();
+
+    QProcess process;
+    process.start(QString::fromLatin1(QMDMMBOT_EXECUTABLE), {u"-l"_s, u"qmdmm://127.0.0.1:"_s + QString::number(port)});
+    if (!process.waitForStarted(60000))
+        qFatal("the executable under test did not start");
+
+    if (!listener.waitForNewConnection(60000)) {
+        process.kill();
+        process.waitForFinished();
+        qFatal("the executable under test never dialled out");
+    }
+
+    process.terminate();
+
+    if (!process.waitForFinished(60000)) {
+        process.kill();
+        process.waitForFinished();
+        qFatal("the executable under test did not exit on the signal; a run that handles it exits with a code of its own");
+    }
+
+    QVERIFY(process.exitStatus() == QProcess::NormalExit);
+    QCOMPARE(process.exitCode(), 0);
+
+    const QString standardError = QString::fromLocal8Bit(process.readAllStandardError());
+    QVERIFY2(standardError.contains(u"Received a signal to stop"_s), qPrintable(standardError));
+#endif
 }
 
 namespace {

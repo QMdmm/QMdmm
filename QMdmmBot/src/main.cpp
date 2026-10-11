@@ -10,8 +10,61 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QTimer>
+
+#include <csignal>
+#include <iostream>
 
 using namespace Qt::StringLiterals;
+
+namespace {
+
+// A signal handler may only do what the standard calls async-signal-safe, and that rules out
+// everything the event loop owns -- the client and the log device among them. The handler
+// therefore raises a flag and nothing else, and the loop picks the flag up where those two
+// can be touched safely. Polling the flag, rather than passing a byte through a socket pair,
+// keeps this file free of anything that exists on one platform only.
+//
+// The flag is a member of a struct rather than a variable sitting in the namespace: clang-tidy
+// reports a namespace-scope variable that is not const, and this one cannot be const -- the
+// handler writes it. What it is -- a plain object with static storage duration -- is the only
+// shape a handler may touch at all.
+struct StopRequest
+{
+    static volatile std::sig_atomic_t flag;
+};
+
+volatile std::sig_atomic_t StopRequest::flag = 0;
+
+extern "C" void stopSignalHandler(int signalNumber)
+{
+    Q_UNUSED(signalNumber)
+    StopRequest::flag = 1;
+}
+
+// Reports the stop and exits with code 0.
+//
+// A run that is asked to stop is not a failed run, so it ends the way --help does rather than
+// the way a rejected configuration does: the code is 0 and the reason is written down. The
+// message goes to stderr as well as through qWarning() -- which lands in the log file via the
+// installed message handler, one flushed line at a time -- following the shape
+// configErrorImpl() uses for the outcomes a user reads from the outside.
+//
+// There is nothing else to wind down, and nothing here has to be closed by hand: unlike the
+// server, a bot holds no listener, and the one socket it owns goes away with the client,
+// which is destroyed as main() returns from the call this exit makes. The server then reads
+// an ordinary close rather than a reset.
+void shutDown()
+{
+    const QString message = u"Received a signal to stop; exiting."_s;
+
+    std::cerr << qPrintable(message) << '\n' << std::flush;
+    qWarning().noquote() << message;
+
+    QCoreApplication::exit(0);
+}
+
+} // namespace
 
 int main(int argc, char *argv[])
 {
@@ -60,6 +113,28 @@ int main(int argc, char *argv[])
     // Bot::styleExist before we get here, but the guarantee is implicit and worth
     // stating.
     Q_UNUSED(bot);
+
+    // The two signals a supervisor or a terminal sends to ask a process to stop. A handler
+    // that cannot be installed is worth saying out loud: the run still works, it just ends on
+    // the signal the way the kernel does, without the record and the code below.
+    //
+    // They are installed before the run dials out, which is what lets a connection this
+    // process has opened stand for the point a stop is answered at rather than merely fatal.
+    for (int signalNumber : {SIGTERM, SIGINT}) {
+        if (std::signal(signalNumber, stopSignalHandler) == SIG_ERR)
+            qWarning("Unable to install the handler for signal %d; the run will end on it without shutting down.", signalNumber);
+    }
+
+    QTimer stopPoll;
+    QObject::connect(&stopPoll, &QTimer::timeout, &a, [&stopPoll]() {
+        if (StopRequest::flag == 0)
+            return;
+
+        stopPoll.stop();
+        StopRequest::flag = 0;
+        shutDown();
+    });
+    stopPoll.start(100);
 
     client.connectToHost(config.host(), QMdmmCore::Data::StateOnlineBot);
 
