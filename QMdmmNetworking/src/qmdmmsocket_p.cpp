@@ -62,6 +62,30 @@ SocketP::SocketP(Socket *q)
     connect(q, &Socket::sendPacket, this, &SocketP::sendPacket);
 }
 
+void SocketP::setMaximumPacketSize(int maximumPacketSize)
+{
+    this->maximumPacketSize = maximumPacketSize;
+    applyMaximumPacketSize();
+}
+
+void SocketP::applyMaximumPacketSize()
+{
+    // Nothing to cap by default: only the transports that frame packets by lines have a buffer
+    // that a peer can grow.
+}
+
+// NOLINTNEXTLINE(readability-make-member-function-const)
+bool SocketP::giveUpOnUnterminatedData(qint64 availableBytes)
+{
+    if (maximumPacketSize <= 0 || availableBytes < maximumPacketSize)
+        return false;
+
+    const Socket::Error error {.code = Socket::ProtocolError, .errorString = u"the peer sent %1 bytes without ending a packet"_s.arg(availableBytes)};
+    errorOccurred(error);
+    q->setError(error);
+    return true;
+}
+
 // NOLINTNEXTLINE(readability-make-member-function-const)
 bool SocketP::packetReceived(const QByteArray &arr)
 {
@@ -138,6 +162,20 @@ void SocketP_QTcpSocket::setupSocket()
     connect(socket, &QTcpSocket::errorOccurred, this, &SocketP_QTcpSocket::errorOccurredTcpSocket);
     connect(socket, &QTcpSocket::disconnected, this, &SocketP_QTcpSocket::socketDisconnected);
     connect(socket, &QTcpSocket::disconnected, socket, &QTcpSocket::deleteLater);
+
+    // Through the class name on purpose: this also runs from the constructor, where an unqualified
+    // call would resolve to the SocketP virtual (the dispatch for an object under construction)
+    // and silently do nothing.
+    SocketP_QTcpSocket::applyMaximumPacketSize();
+}
+
+void SocketP_QTcpSocket::applyMaximumPacketSize()
+{
+    if (socket == nullptr)
+        return;
+
+    // A non-positive bound means "no bound", which is what a read buffer size of 0 asks Qt for.
+    socket->setReadBufferSize(maximumPacketSize > 0 ? static_cast<qint64>(maximumPacketSize) : 0);
 }
 
 void SocketP_QTcpSocket::sendPacket(QMdmmCore::Packet packet)
@@ -150,13 +188,16 @@ void SocketP_QTcpSocket::sendPacket(QMdmmCore::Packet packet)
 
 void SocketP_QTcpSocket::readyRead()
 {
-    if (socket != nullptr) {
-        while (socket->canReadLine()) {
-            QByteArray arr = socket->readLine();
-            if (!packetReceived(arr))
-                break;
-        }
+    if (socket == nullptr)
+        return;
+
+    while (socket->canReadLine()) {
+        const QByteArray arr = socket->readLine();
+        if (!packetReceived(arr))
+            return; // the connection is already being given up on
     }
+
+    giveUpOnUnterminatedData(socket->bytesAvailable());
 }
 
 void SocketP_QTcpSocket::errorOccurredTcpSocket(QAbstractSocket::SocketError /*e*/)
@@ -206,6 +247,20 @@ void SocketP_QLocalSocket::setupSocket()
     connect(socket, &QLocalSocket::errorOccurred, this, &SocketP_QLocalSocket::errorOccurredLocalSocket);
     connect(socket, &QLocalSocket::disconnected, this, &SocketP_QLocalSocket::socketDisconnected);
     connect(socket, &QLocalSocket::disconnected, socket, &QLocalSocket::deleteLater);
+
+    // Through the class name on purpose: this also runs from the constructor, where an unqualified
+    // call would resolve to the SocketP virtual (the dispatch for an object under construction)
+    // and silently do nothing.
+    SocketP_QLocalSocket::applyMaximumPacketSize();
+}
+
+void SocketP_QLocalSocket::applyMaximumPacketSize()
+{
+    if (socket == nullptr)
+        return;
+
+    // A non-positive bound means "no bound", which is what a read buffer size of 0 asks Qt for.
+    socket->setReadBufferSize(maximumPacketSize > 0 ? static_cast<qint64>(maximumPacketSize) : 0);
 }
 
 void SocketP_QLocalSocket::sendPacket(QMdmmCore::Packet packet)
@@ -218,13 +273,16 @@ void SocketP_QLocalSocket::sendPacket(QMdmmCore::Packet packet)
 
 void SocketP_QLocalSocket::readyRead()
 {
-    if (socket != nullptr) {
-        while (socket->canReadLine()) {
-            QByteArray arr = socket->readLine();
-            if (!packetReceived(arr))
-                break;
-        }
+    if (socket == nullptr)
+        return;
+
+    while (socket->canReadLine()) {
+        const QByteArray arr = socket->readLine();
+        if (!packetReceived(arr))
+            return; // the connection is already being given up on
     }
+
+    giveUpOnUnterminatedData(socket->bytesAvailable());
 }
 
 void SocketP_QLocalSocket::errorOccurredLocalSocket(QLocalSocket::LocalSocketError /*e*/)

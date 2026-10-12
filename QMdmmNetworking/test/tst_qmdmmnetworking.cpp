@@ -71,6 +71,7 @@ private slots:
     void socketError_isRegisteredAsAMetatype();
     void server_requestTimeoutDisconnectsASilentClient();
     void server_zeroRequestTimeoutNeverArmsTheTimer();
+    void server_givesUpOnAPeerThatNeverEndsAPacket();
 };
 
 // A room that is not full has not started a game yet: a dropped socket removes the player
@@ -1599,6 +1600,92 @@ void tst_QMdmmNetworking::server_zeroRequestTimeoutNeverArmsTheTimer()
     QTest::qWait(500);
     QCOMPARE(p1Lost, 0);
     QCOMPARE(p2Lost, 0);
+}
+
+// One packet is one line, so a peer that has sent a packet's worth of bytes without ever ending a
+// line is not speaking the protocol. The server must not hold an unbounded amount of such data:
+// every socket carries a bound on one packet (ServerConfiguration::maximumPacketSize, which starts
+// at Socket::DefaultMaximumPacketSize for everyone), the bound is handed to the transport's own
+// read buffer so a peer cannot grow the process past it, and reaching it ends the connection with
+// a ProtocolError -- the error any other unusable packet gets -- instead of waiting for a line that
+// may never come.
+//
+// Driven over a raw QTcpSocket: a Client would frame the packets itself, and the framing is exactly
+// what is under test. A normal packet goes out over that same connection and configuration just
+// before the flood and comes back answered, which is what says the bound is what turns the flood
+// away rather than something about this server being unable to talk at all.
+//
+// The process' own memory is deliberately not measured here: that would take a platform-specific
+// high-water read (getrusage) whose baseline is polluted by every other case in this binary, and it
+// could only ever confirm what the bound already guarantees structurally. Pinned instead are the
+// bound itself -- a small constant by default, so no single socket can hold more than that -- and
+// the observable consequence of reaching it.
+void tst_QMdmmNetworking::server_givesUpOnAPeerThatNeverEndsAPacket()
+{
+    // The framing layer's own starting bound: it is what every socket uses unless a server lowers
+    // it, so this is the number that caps a socket's memory. Small on purpose, not a placeholder.
+    {
+        Socket socket;
+        QCOMPARE(socket.maximumPacketSize(), Socket::DefaultMaximumPacketSize);
+        QCOMPARE(Socket::DefaultMaximumPacketSize, 1024 * 1024);
+    }
+
+    LogicConfiguration conf = LogicConfiguration::defaults();
+
+    const int packetSizeBound = 64 * 1024;
+
+    ServerConfiguration serverConf = ServerConfiguration::defaults();
+    serverConf.setTcpPort(16384);
+    serverConf.setLocalEnabled(false);
+    serverConf.setWebsocketEnabled(false);
+    serverConf.setRequestTimeout(0); // nothing but the framing bound may end this connection
+    serverConf.setMaximumPacketSize(packetSizeBound);
+
+    Server server(serverConf, conf);
+    QVERIFY(server.listen());
+
+    // A raw peer: it speaks the wire format by hand and never signs in, so from the server's point
+    // of view it stays a bare connection -- no room and no game traffic are involved.
+    auto *peer = new QTcpSocket(&server);
+    peer->connectToHost(QHostAddress::LocalHost, 16384);
+    QVERIFY(peer->waitForConnected(5000));
+
+    // The control: a normal packet, over this very connection. A server-bound ping comes back as a
+    // pong, so the answer proves the server framed the line and dispatched it -- the same path the
+    // flood below is expected to be turned away from.
+    peer->write(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPingServer, QJsonValue(qint64(1))).serialize().append('\n'));
+    peer->flush();
+
+    bool pongSeen = false;
+    QVERIFY2(QTest::qWaitFor(
+                 [peer, &pongSeen]() {
+                     while (peer->canReadLine()) {
+                         const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(peer->readLine());
+                         if (packet.type() == QMdmmCore::Protocol::TypeNotify && packet.notifyId() == QMdmmCore::Protocol::NotifyPongServer)
+                             pongSeen = true;
+                     }
+                     return pongSeen;
+                 },
+                 5000),
+             "the server never answered a normal packet, so this connection was not usable to begin with");
+
+    // The flood: far more than the bound, and not a single line ending anywhere in it.
+    bool dropped = false;
+    QObject::connect(peer, &QAbstractSocket::disconnected, peer, [&dropped]() { dropped = true; });
+
+    peer->write(QByteArray(packetSizeBound * 8, 'x'));
+    peer->flush();
+
+    QVERIFY2(QTest::qWaitFor([&dropped]() { return dropped; }, 10000), "the server kept a peer that never ended a packet connected, so it was buffering without a bound");
+
+    // The server side records why. The peer never signed in, so the connection object is still
+    // there to be asked; it never went through any of the game paths that would report this.
+    const QList<Socket *> serverSockets = server.findChildren<Socket *>();
+    QCOMPARE(serverSockets.size(), 1);
+
+    const auto serverError = serverSockets.first()->error();
+    QVERIFY2(serverError.has_value(), "the server dropped the connection without recording a reason");
+    QCOMPARE(serverError->code, Socket::ProtocolError);
 }
 
 // The read-only status snapshot reports how many rooms exist, how many of them are running a game,

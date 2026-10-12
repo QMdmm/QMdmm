@@ -66,6 +66,16 @@ namespace v0 {
  */
 
 /**
+ * @var Socket::DefaultMaximumPacketSize
+ * @brief The bound on one packet a socket starts with, in bytes.
+ *
+ * One packet is one line, so a peer that has sent this many bytes without ending a line is not
+ * speaking the protocol and is given up on. It is far above any packet this protocol produces,
+ * so it does not get in the way of a legitimate peer; it only keeps a peer from filling memory
+ * with data that can never become a packet.
+ */
+
+/**
  * @struct Socket::Error
  * @ingroup QMdmmNetworking
  * @brief A value type describing a socket error: a stable code plus a human-readable description.
@@ -143,6 +153,35 @@ Socket::Type Socket::type() const
 }
 
 /**
+ * @brief The largest packet this socket is willing to receive.
+ * @return the bound in bytes, or a non-positive value if there is no bound
+ */
+int Socket::maximumPacketSize() const
+{
+    return packetSizeBound;
+}
+
+/**
+ * @brief Set the largest packet this socket is willing to receive.
+ * @param maximumPacketSize the bound in bytes; a non-positive value means no bound
+ *
+ * A packet is one line, so a peer that has sent this many bytes without ending a line is not
+ * speaking the protocol: the socket records a @c ProtocolError and disconnects instead of
+ * buffering data that can never become a packet. The bound also caps the transport's own read
+ * buffer, so the peer cannot make the process grow past it.
+ *
+ * The transports that frame packets by lines (TCP socket, local socket) apply the bound; a
+ * WebSocket delivers whole messages instead, and an unusable one is rejected by the packet layer.
+ */
+void Socket::setMaximumPacketSize(int maximumPacketSize)
+{
+    packetSizeBound = maximumPacketSize;
+
+    if (d != nullptr)
+        d->setMaximumPacketSize(maximumPacketSize);
+}
+
+/**
  * @brief Mark the socket as errored and disconnect the underlying transport.
  * @param error the error to record
  *
@@ -204,6 +243,7 @@ bool Socket::connectToHost(const QString &host)
     d = p::SocketPFactory::create(t, this);
     if (d == nullptr)
         return false;
+    d->setMaximumPacketSize(packetSizeBound);
     return d->connectToHost(host);
 }
 

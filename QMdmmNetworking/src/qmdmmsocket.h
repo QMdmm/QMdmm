@@ -49,6 +49,13 @@ public:
         ProtocolError,
     };
 
+    // The bound a socket starts with: one packet is one line, so a peer that has sent this many
+    // bytes without ending a line is not speaking the protocol and is given up on. It is far
+    // above any packet this protocol produces (they are small JSON objects), so it does not get
+    // in the way of a legitimate peer; it only keeps a peer from filling memory with data that
+    // can never become a packet.
+    static constexpr int DefaultMaximumPacketSize = 1024 * 1024;
+
     struct Error
     {
         ErrorCode code = NoError;
@@ -65,6 +72,9 @@ public:
     ~Socket() override;
 
     [[nodiscard]] Type type() const;
+
+    [[nodiscard]] int maximumPacketSize() const;
+    void setMaximumPacketSize(int maximumPacketSize);
 
     void setError(const Error &error);
     [[nodiscard]] std::optional<Error> error() const;
@@ -88,6 +98,12 @@ private:
     // function connectToHost alters this d-ptr with proper implementation.
     // SocketP is QObject. QPointer can't be used since it is incomplete here
     p::SocketP *d;
+
+    // Kept here as well as in the implementation so that a bound set before a transport exists
+    // survives the transport being created later (a client-side socket creates its transport in
+    // connectToHost, long after the caller may have set this). Named apart from the accessors:
+    // a data member and a member function cannot share a name.
+    int packetSizeBound = DefaultMaximumPacketSize;
 #endif
 };
 

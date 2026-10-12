@@ -89,6 +89,17 @@ namespace v0 {
  */
 
 /**
+ * @property ServerConfiguration::maximumPacketSize
+ * @brief The largest packet the server accepts from a peer, in bytes, default 1 MiB
+ *
+ * A packet is one line, so a peer that sends this many bytes without ending a line is not
+ * speaking the protocol: the server records a @c Socket::ProtocolError and drops the
+ * connection instead of buffering data that can never become a packet. The value has to be
+ * at least 1024, so that the protocol's own packets always fit; there is no "unlimited"
+ * setting, since the bound is the point.
+ */
+
+/**
  * @fn ServerConfiguration::tcpEnabled() const
  * @brief getter of @c ServerConfiguration::tcpEnabled
  * @return @c ServerConfiguration::tcpEnabled
@@ -197,6 +208,18 @@ namespace v0 {
  */
 
 /**
+ * @fn ServerConfiguration::maximumPacketSize() const
+ * @brief getter of @c ServerConfiguration::maximumPacketSize
+ * @return @c ServerConfiguration::maximumPacketSize
+ */
+
+/**
+ * @fn ServerConfiguration::setMaximumPacketSize(int maximumPacketSize)
+ * @brief setter of @c ServerConfiguration::maximumPacketSize
+ * @param maximumPacketSize @c ServerConfiguration::maximumPacketSize
+ */
+
+/**
  * @brief Get default values of configuration
  * @return default configuration
  */
@@ -213,6 +236,7 @@ const ServerConfiguration &ServerConfiguration::defaults()
         qMakePair(u"websocketPort"_s, static_cast<int>(6367U)),
         qMakePair(u"playerNumPerRoom"_s, 3),
         qMakePair(u"requestTimeout"_s, 20),
+        qMakePair(u"maximumPacketSize"_s, Socket::DefaultMaximumPacketSize),
     };
     // clang-format on
 
@@ -257,6 +281,7 @@ IMPLEMENTATION_CONFIGURATION_SETTER_CONST_REFERENCE(QString, websocketName, Webs
 IMPLEMENTATION_CONFIGURATION(uint16_t, websocketPort, WebsocketPort, CONVERTTOTYPEUINT16T, )
 IMPLEMENTATION_CONFIGURATION(int, playerNumPerRoom, PlayerNumPerRoom, CONVERTTOTYPEINT, )
 IMPLEMENTATION_CONFIGURATION(int, requestTimeout, RequestTimeout, CONVERTTOTYPEINT, )
+IMPLEMENTATION_CONFIGURATION(int, maximumPacketSize, MaximumPacketSize, CONVERTTOTYPEINT, )
 
 #undef IMPLEMENTATION_CONFIGURATION_SETTER_CONST_REFERENCE
 #undef IMPLEMENTATION_CONFIGURATION
@@ -277,7 +302,8 @@ IMPLEMENTATION_CONFIGURATION(int, requestTimeout, RequestTimeout, CONVERTTOTYPEI
  * fields must be booleans and string fields must be strings; every numeric field must be a whole number
  * (fractions, NaN and negatives are rejected). Ports must be in [1, 65535] (port 0 is reserved);
  * @c playerNumPerRoom must be at least 2 (a game needs an opponent for rock-paper-scissors action-order
- * resolution); @c requestTimeout is either 0 (no timeout) or at least 15 seconds.
+ * resolution); @c requestTimeout is either 0 (no timeout) or at least 15 seconds;
+ * @c maximumPacketSize is at least 1024 bytes.
  * Unknown keys are ignored.
  */
 bool ServerConfiguration::deserialize(const QJsonValue &value) // NOLINT(readability-function-cognitive-complexity)
@@ -365,6 +391,20 @@ bool ServerConfiguration::deserialize(const QJsonValue &value) // NOLINT(readabi
             if (parsed != 0 && parsed < 15)
                 return false;
             result.insert(u"requestTimeout"_s, parsed);
+        }
+    }
+
+    // maximumPacketSize: at least 1 KiB, so that the protocol's own packets always fit. There is
+    // no "unlimited" value to fall back on -- accepting an unbounded amount of data from a peer is
+    // the case this bound exists for.
+    {
+        int parsed = 0;
+        if (ob.contains(u"maximumPacketSize"_s)) {
+            if (!parseNonNegativeInt(ob.value(u"maximumPacketSize"_s), &parsed))
+                return false;
+            if (parsed < 1024)
+                return false;
+            result.insert(u"maximumPacketSize"_s, parsed);
         }
     }
 

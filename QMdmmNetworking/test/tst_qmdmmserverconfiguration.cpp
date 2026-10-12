@@ -35,6 +35,7 @@ private slots:
         QCOMPARE(c.websocketPort(), (uint16_t)6367);
         QCOMPARE(c.playerNumPerRoom(), 3);
         QCOMPARE(c.requestTimeout(), 20);
+        QCOMPARE(c.maximumPacketSize(), 1024 * 1024);
     }
 
     void QMdmmServerConfigurationsetters()
@@ -49,6 +50,7 @@ private slots:
         c.setWebsocketPort(8000);
         c.setPlayerNumPerRoom(8);
         c.setRequestTimeout(30);
+        c.setMaximumPacketSize(4096);
 
         QCOMPARE(c.tcpEnabled(), false);
         QCOMPARE(c.tcpPort(), (uint16_t)7000);
@@ -59,6 +61,7 @@ private slots:
         QCOMPARE(c.websocketPort(), (uint16_t)8000);
         QCOMPARE(c.playerNumPerRoom(), 8);
         QCOMPARE(c.requestTimeout(), 30);
+        QCOMPARE(c.maximumPacketSize(), 4096);
     }
 
     void QMdmmServerConfigurationdeserialize_data()
@@ -76,6 +79,7 @@ private slots:
             {u"websocketPort"_s, 6367}, //
             {u"playerNumPerRoom"_s, 3}, //
             {u"requestTimeout"_s, 20}, //
+            {u"maximumPacketSize"_s, 4096}, //
         };
 
         QTest::newRow("valid") << QJsonValue(validOb) << true;
@@ -153,6 +157,30 @@ private slots:
             ob.insert(u"requestTimeout"_s, 15);
             QTest::newRow("timeoutMinimum") << QJsonValue(ob) << true;
         }
+        // maximumPacketSize below the minimum of 1 KiB.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"maximumPacketSize"_s, 1023);
+            QTest::newRow("packetSizeBelowMinimum") << QJsonValue(ob) << false;
+        }
+        // maximumPacketSize = 1024 (the minimum) is valid.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"maximumPacketSize"_s, 1024);
+            QTest::newRow("packetSizeMinimum") << QJsonValue(ob) << true;
+        }
+        // Negative maximumPacketSize.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"maximumPacketSize"_s, -1);
+            QTest::newRow("negativePacketSize") << QJsonValue(ob) << false;
+        }
+        // Fractional maximumPacketSize.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"maximumPacketSize"_s, 4096.5);
+            QTest::newRow("fractionalPacketSize") << QJsonValue(ob) << false;
+        }
     }
 
     void QMdmmServerConfigurationdeserialize()
@@ -188,6 +216,7 @@ private slots:
         QCOMPARE(conf.websocketPort(), defaults.websocketPort());
         QCOMPARE(conf.playerNumPerRoom(), defaults.playerNumPerRoom());
         QCOMPARE(conf.requestTimeout(), defaults.requestTimeout());
+        QCOMPARE(conf.maximumPacketSize(), defaults.maximumPacketSize());
     }
 
     void QMdmmServerConfigurationdeserializeIgnoresUnknownKeys()

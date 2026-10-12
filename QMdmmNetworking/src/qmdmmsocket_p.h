@@ -25,14 +25,30 @@ public:
     virtual bool connectToHost(const QString &addr) = 0;
     virtual bool disconnectFromHost() = 0;
 
+    // The bound lives here, next to the transport that has to honour it.
+    void setMaximumPacketSize(int maximumPacketSize);
+
     Socket *q;
     std::optional<Socket::Error> error;
+    int maximumPacketSize = Socket::DefaultMaximumPacketSize;
 
 public slots: // NOLINT(readability-redundant-access-specifiers)
     virtual void sendPacket(QMdmmCore::Packet packet) = 0;
     bool packetReceived(const QByteArray &arr);
     void socketDisconnected();
     void errorOccurred(const Socket::Error &error);
+
+protected:
+    // Push the bound onto the transport itself, so it stops reading from the peer once the bound
+    // is reached instead of buffering an unbounded amount of data. The transports that frame by
+    // lines implement this; a WebSocket delivers whole messages and has nothing to cap here.
+    virtual void applyMaximumPacketSize();
+
+    // Called once a transport has no complete line left to hand over: if what it still holds has
+    // already reached the bound, the peer is not ending its lines at all, so the connection is
+    // given up on (a @c ProtocolError, exactly as for any other unusable packet).
+    // Returns @c true when it did that, in which case the caller must stop touching the transport.
+    bool giveUpOnUnterminatedData(qint64 availableBytes);
 };
 
 class QMDMMNETWORKING_PRIVATE_EXPORT SocketP_QTcpSocket : public SocketP
@@ -53,6 +69,9 @@ public:
 
     QPointer<QTcpSocket> socket;
     void setupSocket();
+
+protected:
+    void applyMaximumPacketSize() override;
 
 public slots: // NOLINT(readability-redundant-access-specifiers)
     void sendPacket(QMdmmCore::Packet packet) override;
@@ -78,6 +97,9 @@ public:
 
     QPointer<QLocalSocket> socket;
     void setupSocket();
+
+protected:
+    void applyMaximumPacketSize() override;
 
 public slots: // NOLINT(readability-redundant-access-specifiers)
     void sendPacket(QMdmmCore::Packet packet) override;

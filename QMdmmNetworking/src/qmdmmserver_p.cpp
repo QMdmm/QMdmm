@@ -204,6 +204,10 @@ void ServerP::introduceSocket(Socket *socket) // NOLINT(readability-make-member-
 {
     connect(socket, &Socket::packetReceived, this, &ServerP::socketPacketReceived);
 
+    // One packet is one line, so a peer that never ends a line must not be allowed to make this
+    // process grow: the socket is bounded by the configured packet size and gives up on such a peer.
+    socket->setMaximumPacketSize(serverConfiguration.maximumPacketSize());
+
     QJsonObject ob;
     ob.insert(u"versionNumber"_s, QMdmmCore::Global::version().toString());
     ob.insert(u"protocolVersion"_s, QMdmmCore::Protocol::version());

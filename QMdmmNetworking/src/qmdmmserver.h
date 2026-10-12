@@ -41,6 +41,7 @@ struct QMDMMNETWORKING_EXPORT ServerConfiguration final : public QJsonObject
     Q_PROPERTY(uint16_t websocketPort READ websocketPort WRITE setWebsocketPort DESIGNABLE false FINAL)
     Q_PROPERTY(int playerNumPerRoom READ playerNumPerRoom WRITE setPlayerNumPerRoom DESIGNABLE false FINAL)
     Q_PROPERTY(int requestTimeout READ requestTimeout WRITE setRequestTimeout DESIGNABLE false FINAL)
+    Q_PROPERTY(int maximumPacketSize READ maximumPacketSize WRITE setMaximumPacketSize DESIGNABLE false FINAL)
 
 public:
     // The enclosing class carries QMDMMNETWORKING_EXPORT, which is what exports this one; MSVC rejects the second marking (C2487).
@@ -71,6 +72,8 @@ public:
     void setPlayerNumPerRoom(int playerNumPerRoom);
     [[nodiscard]] int requestTimeout() const;
     void setRequestTimeout(int requestTimeout);
+    [[nodiscard]] int maximumPacketSize() const;
+    void setMaximumPacketSize(int maximumPacketSize);
 
     bool deserialize(const QJsonValue &value);
 
