@@ -72,6 +72,8 @@ private slots:
     void server_requestTimeoutDisconnectsASilentClient();
     void server_zeroRequestTimeoutNeverArmsTheTimer();
     void server_givesUpOnAPeerThatNeverEndsAPacket();
+    void server_turnsAwayUnusableFramesWithoutDisturbingTheRoom_data();
+    void server_turnsAwayUnusableFramesWithoutDisturbingTheRoom();
 };
 
 // A room that is not full has not started a game yet: a dropped socket removes the player
@@ -1744,6 +1746,164 @@ void tst_QMdmmNetworking::server_statusReportsRoomsGamesAndPlayers()
     QTRY_COMPARE(statusCount(u"players"_s), 2);
     QCOMPARE(statusCount(u"games"_s), 1);
     QCOMPARE(statusCount(u"rooms"_s), 1);
+}
+
+// The inbound path is the only place a peer's bytes are trusted, so a frame the server cannot use
+// has to be turned away without taking anything else with it. This is the corpus behind that claim.
+// Three families go in over a raw socket, one row at a time:
+//
+//   - the parser refuses the frame, and the recorded reason is fromJson's own message naming the
+//     offending field (unparseable, truncated and non-object JSON, a fractional or out-of-range
+//     enum field, a request carrying a notify id and the other way round, a missing value, bytes
+//     that are not UTF-8, a nesting depth the parser refuses);
+//   - the parser accepts the frame, but the packet is not one this side may send, and the dispatch
+//     layer drops it: control traffic requiring a signed-in player, before signing in (observe,
+//     managed-changed) or with a payload that is not the object sign-in needs;
+//   - the frame is legal client-to-server traffic (one ping; two pings in a single write), which
+//     must come back answered with the connection kept -- that is what says the rows above are
+//     turned away for what they are, rather than by a server that drops whatever it is handed.
+//
+// One more row pins the other half of "not acted on": a request, which only the logic ever sends
+// (D-025), arriving from a peer that has not signed in is neither acted on nor punished -- the
+// connection stays up and a ping after it is still answered. That is recorded here rather than
+// filed anywhere: it costs the server nothing (the packet-size bound caps what such a peer can
+// make it hold) and it is what the code deliberately does, not a gap in the corpus above.
+//
+// The collateral half is the part a unit test usually cannot reach: a legitimate Client is signed
+// in and seated the whole time, and punishing the other connection must leave it connected with its
+// player still in the room. The offending peer never signs in, so it is not *in* that room -- what
+// is checked here is the weaker, checkable claim that one connection's punishment does not reach
+// another.
+//
+// Driven over a raw QTcpSocket: a Client would frame the packets itself, and the framing is exactly
+// what the corpus is feeding. Where a parser message is expected, only its "Json error: " prefix is
+// pinned: the rest of the text is Qt's, and this tree is built against more than one Qt version.
+// The reason is read back from the server-side Socket (the same observable the packet-size bound
+// case uses) rather than from a log line, because the drop path records the parser's own message
+// there and logs nothing at all.
+void tst_QMdmmNetworking::server_turnsAwayUnusableFramesWithoutDisturbingTheRoom_data()
+{
+    QTest::addColumn<QByteArray>("frame");
+    QTest::addColumn<bool>("expectDrop");
+    QTest::addColumn<QString>("expectReason");
+    QTest::addColumn<int>("expectPongs");
+
+    const auto asFrame = [](const QByteArray &json) {
+        QByteArray ret = json;
+        ret.append('\n');
+        return ret;
+    };
+
+    const QByteArray ping = asFrame(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPingServer, QJsonValue(qint64(1))).serialize());
+
+    // The parser refuses these, and the recorded reason is its own message.
+    QTest::newRow("json-is-unparseable") << "hello, client\n"_ba << true << u"Json error: "_s << 0;
+    QTest::newRow("json-is-truncated") << asFrame(R"json({"type":1,"requestId":2,"notifyId":0)json") << true << u"Json error: "_s << 0;
+    QTest::newRow("json-is-not-an-object") << asFrame("[1,2,3]") << true << u"Document is not object"_s << 0;
+    QTest::newRow("enum-field-is-fractional") << asFrame(R"json({"type":1.5,"requestId":2,"notifyId":0,"value":null})json") << true << u"'type' is not an integer"_s << 0;
+    QTest::newRow("type-is-out-of-range") << asFrame(R"json({"type":99,"requestId":0,"notifyId":0,"value":null})json") << true << u"'type' is out of range"_s << 0;
+    QTest::newRow("request-id-is-out-of-range") << asFrame(R"json({"type":1,"requestId":99,"notifyId":0,"value":null})json") << true << u"'requestId' is out of range"_s << 0;
+    QTest::newRow("notify-id-is-out-of-range") << asFrame(R"json({"type":3,"requestId":0,"notifyId":999,"value":null})json") << true << u"'notifyId' is out of range"_s << 0;
+    QTest::newRow("request-carries-a-notify-id") << asFrame(R"json({"type":1,"requestId":1,"notifyId":4097,"value":null})json") << true
+                                                 << u"'notifyId' should be invalid for a request/reply packet"_s << 0;
+    QTest::newRow("notify-carries-a-request-id") << asFrame(R"json({"type":3,"requestId":1,"notifyId":4097,"value":null})json") << true
+                                                 << u"'requestId' should be invalid for a notify packet"_s << 0;
+    QTest::newRow("value-is-missing") << asFrame(R"json({"type":1,"requestId":2,"notifyId":0})json") << true << u"'value' is non-existent"_s << 0;
+    QTest::newRow("bytes-are-not-utf8") << asFrame(QByteArray(R"json({"type":1,"requestId":2,"notifyId":0,"value":")json") + QByteArray::fromHex("fffe") + QByteArray("\"}"))
+                                        << true << u"Json error: "_s << 0;
+    QTest::newRow("value-is-nested-too-deeply") << asFrame(QByteArray(R"json({"type":1,"requestId":2,"notifyId":0,"value":)json") + QByteArray(4096, '[') + QByteArray(4096, ']')
+                                                           + QByteArray("}"))
+                                                << true << u"Json error: "_s << 0;
+
+    // The parser accepts these; the dispatch layer is what turns them away. They carry no parser
+    // message, so the drop itself is the whole observation.
+    QTest::newRow("sign-in-payload-is-not-an-object") << asFrame(R"json({"type":3,"requestId":0,"notifyId":16386,"value":"a string, not the object sign-in needs"})json") << true
+                                                      << QString() << 0;
+    QTest::newRow("observe-before-sign-in") << asFrame(R"json({"type":3,"requestId":0,"notifyId":16387,"value":null})json") << true << QString() << 0;
+    QTest::newRow("managed-changed-before-sign-in") << asFrame(R"json({"type":3,"requestId":0,"notifyId":16388,"value":null})json") << true << QString() << 0;
+
+    // Legal client-to-server traffic.
+    QTest::newRow("one-ping") << ping << false << QString() << 1;
+    QTest::newRow("two-pings-in-one-write") << ping + ping << false << QString() << 2;
+
+    // Not acted on, and not punished either: the connection is still there afterwards, which the
+    // ping that follows the request proves.
+    QTest::newRow("a-request-before-sign-in-is-ignored") << asFrame(R"json({"type":1,"requestId":1,"notifyId":0,"value":null})json") + ping << false << QString() << 1;
+}
+
+void tst_QMdmmNetworking::server_turnsAwayUnusableFramesWithoutDisturbingTheRoom()
+{
+    QFETCH(QByteArray, frame);
+    QFETCH(bool, expectDrop);
+    QFETCH(QString, expectReason);
+    QFETCH(int, expectPongs);
+
+    LogicConfiguration conf = LogicConfiguration::defaults();
+
+    ServerConfiguration serverConf = ServerConfiguration::defaults();
+    serverConf.setPlayerNumPerRoom(2);
+    serverConf.setTcpPort(16385);
+    serverConf.setLocalEnabled(false);
+    serverConf.setWebsocketEnabled(false);
+    serverConf.setRequestTimeout(0); // the bystander stays silent and must stay connected
+
+    Server server(serverConf, conf);
+    QVERIFY(server.listen());
+
+    const QString host = u"qmdmm://localhost:16385"_s;
+
+    // The bystander: a legitimate client, signed in and seated before anything happens.
+    auto *bystander = new Client(ClientConfiguration(), &server);
+    QVERIFY(bystander->connectToHost(host, Data::StateOnline));
+    QTRY_VERIFY_WITH_TIMEOUT(bystander->room() != nullptr && bystander->room()->player(bystander->objectName()) != nullptr, 5000);
+
+    // The offender: a raw socket that speaks the wire format by hand and never signs in.
+    auto *peer = new QTcpSocket(&server);
+    peer->connectToHost(QHostAddress::LocalHost, 16385);
+    QVERIFY(peer->waitForConnected(5000));
+
+    bool peerDropped = false;
+    QObject::connect(peer, &QAbstractSocket::disconnected, peer, [&peerDropped]() { peerDropped = true; });
+
+    int pongs = 0;
+    QObject::connect(peer, &QAbstractSocket::readyRead, peer, [peer, &pongs]() {
+        while (peer->canReadLine()) {
+            const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(peer->readLine());
+            if (packet.type() == QMdmmCore::Protocol::TypeNotify && packet.notifyId() == QMdmmCore::Protocol::NotifyPongServer)
+                ++pongs;
+        }
+    });
+
+    peer->write(frame);
+    peer->flush();
+
+    if (expectPongs > 0)
+        QTRY_COMPARE_WITH_TIMEOUT(pongs, expectPongs, 5000);
+    else
+        QTest::qWait(200);
+
+    if (expectDrop) {
+        QVERIFY2(QTest::qWaitFor([&peerDropped]() { return peerDropped; }, 10000), "the server kept a peer that sent a frame it could not use");
+
+        // The server records why, on the connection object it was talking over.
+        QList<Socket *> failed;
+        for (Socket *socket : server.findChildren<Socket *>())
+            if (socket->error().has_value())
+                failed.append(socket);
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(failed.first()->error()->code, Socket::ProtocolError);
+        if (!expectReason.isEmpty())
+            QVERIFY2(failed.first()->error()->errorString.contains(expectReason),
+                     qPrintable(u"expected the recorded reason to name the offending field, got \"%1\""_s.arg(failed.first()->error()->errorString)));
+    } else {
+        QVERIFY2(!peerDropped, "the server turned away legal client-to-server traffic");
+        QCOMPARE(peer->state(), QAbstractSocket::ConnectedState);
+    }
+
+    // The collateral: the legitimate client is untouched and still seated.
+    QVERIFY2(bystander->isConnected(), "punishing one connection took the legitimate one with it");
+    QVERIFY(bystander->room() != nullptr);
+    QVERIFY(bystander->room()->player(bystander->objectName()) != nullptr);
 }
 
 namespace {
