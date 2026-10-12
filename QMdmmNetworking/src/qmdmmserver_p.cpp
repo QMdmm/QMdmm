@@ -211,6 +211,39 @@ void ServerP::introduceSocket(Socket *socket) // NOLINT(readability-make-member-
     emit socket->sendPacket(packet);
 }
 
+QJsonObject ServerP::status() const
+{
+    int rooms = 0;
+    int games = 0;
+    int players = 0;
+
+    // A room is a LogicRunner. Every runner is visited, not just `current`: a full room keeps
+    // running in the background while `current` moves on to the next recruiter (see signIn above).
+    // A room whose game has started is exactly a full one -- both addAgent() and agentDisconnected()
+    // switch on full() to tell "the game is running" from "still recruiting".
+    const QList<LogicRunner *> runners = findChildren<LogicRunner *>();
+    for (const LogicRunner *runner : runners) {
+        ++rooms;
+
+        if (runner->full())
+            ++games;
+
+        // The agents are children of the runner (signIn parents a network agent to its runner, and
+        // a local agent follows the same shape), so a runner's own subtree holds the room's players.
+        const QList<Agent *> agents = runner->findChildren<Agent *>();
+        for (const Agent *agent : agents) {
+            if (agent->state().testFlag(QMdmmCore::Data::StateMaskOnline))
+                ++players;
+        }
+    }
+
+    QJsonObject ob;
+    ob.insert(u"rooms"_s, rooms);
+    ob.insert(u"games"_s, games);
+    ob.insert(u"players"_s, players);
+    return ob;
+}
+
 void ServerP::tcpServerNewConnection()
 {
     while (t->hasPendingConnections()) {

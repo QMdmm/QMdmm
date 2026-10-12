@@ -11,6 +11,7 @@
 
 #include <QHash>
 #include <QIODevice>
+#include <QJsonObject>
 #include <QList>
 #include <QLocalServer>
 #include <QObject>
@@ -42,6 +43,8 @@ public:
     void observe(Socket *socket, const QJsonValue &packetValue);
 
     void introduceSocket(Socket *socket);
+
+    [[nodiscard]] QJsonObject status() const;
 
 public slots: // NOLINT(readability-redundant-access-specifiers)
     void tcpServerNewConnection();

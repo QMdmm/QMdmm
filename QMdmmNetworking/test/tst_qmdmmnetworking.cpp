@@ -14,6 +14,7 @@
 #include <QMdmmSocket>
 
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QMetaType>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -59,6 +60,7 @@ private slots:
     void client_disconnectFromHostStopsAutoReconnect();
     void client_disconnectsOnProtocolVersionMismatch();
     void server_listenErrorAndClose();
+    void server_statusReportsRoomsGamesAndPlayers();
     void client_infeasibleUpgradeReplyDoesNotStall();
     void client_disconnectDuringUpgradeStillAdvances();
     void socket_addressSchemeWhitelist();
@@ -1555,6 +1557,64 @@ void tst_QMdmmNetworking::server_zeroRequestTimeoutNeverArmsTheTimer()
     QTest::qWait(500);
     QCOMPARE(p1Lost, 0);
     QCOMPARE(p2Lost, 0);
+}
+
+// The read-only status snapshot reports how many rooms exist, how many of them are running a game,
+// and how many players are online. Driven end-to-end through the public Server / Client API: a
+// three-person room with two players signed in is still recruiting, so "games" stays 0, and the
+// third sign-in fills the room, which is when the game starts. The snapshot is also read before
+// anyone connects, where all three counts have to be zero.
+void tst_QMdmmNetworking::server_statusReportsRoomsGamesAndPlayers()
+{
+    LogicConfiguration conf = LogicConfiguration::defaults();
+
+    ServerConfiguration serverConf = ServerConfiguration::defaults();
+    serverConf.setPlayerNumPerRoom(3); // 3-person room: two players leave it still recruiting
+    serverConf.setTcpPort(16382);
+    serverConf.setLocalEnabled(false);
+    serverConf.setWebsocketEnabled(false);
+    serverConf.setRequestTimeout(0); // the bots stay silent; a 0 timeout leaves them connected
+
+    Server server(serverConf, conf);
+    QVERIFY(server.listen());
+
+    const auto statusCount = [&server](const QString &key) { return server.status().value(key).toInt(); };
+
+    // Nothing has connected yet.
+    QCOMPARE(statusCount(u"rooms"_s), 0);
+    QCOMPARE(statusCount(u"games"_s), 0);
+    QCOMPARE(statusCount(u"players"_s), 0);
+
+    const QString host = u"qmdmm://localhost:16382"_s;
+
+    auto *p1 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p1->connectToHost(host, Data::StateOnline));
+    QTRY_VERIFY_WITH_TIMEOUT(p1->room() != nullptr, 5000);
+
+    auto *p2 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p2->connectToHost(host, Data::StateOnlineBot));
+    QTRY_VERIFY_WITH_TIMEOUT(p2->room() != nullptr && p2->room()->player(p1->objectName()) != nullptr, 5000);
+
+    // One room, two players online, and no game yet -- the room is not full.
+    QTRY_COMPARE(statusCount(u"rooms"_s), 1);
+    QTRY_COMPARE(statusCount(u"players"_s), 2);
+    QCOMPARE(statusCount(u"games"_s), 0);
+
+    auto *p3 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p3->connectToHost(host, Data::StateOnlineBot));
+    QTRY_VERIFY_WITH_TIMEOUT(p3->room() != nullptr, 5000);
+
+    // The room is full now, which is when the game starts. Still a single room, still three players.
+    QTRY_COMPARE(statusCount(u"games"_s), 1);
+    QCOMPARE(statusCount(u"rooms"_s), 1);
+    QTRY_COMPARE(statusCount(u"players"_s), 3);
+
+    // A player who drops while the game is running keeps their seat, so the room stays full and the
+    // game stays counted; they simply stop being online, which is what the player count reports.
+    p3->disconnectFromHost();
+    QTRY_COMPARE(statusCount(u"players"_s), 2);
+    QCOMPARE(statusCount(u"games"_s), 1);
+    QCOMPARE(statusCount(u"rooms"_s), 1);
 }
 
 namespace {

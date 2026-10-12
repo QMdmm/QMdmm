@@ -442,6 +442,23 @@ void Server::close()
 }
 
 /**
+ * @brief Read a snapshot of what the server is doing right now
+ * @return a @c QJsonObject with the fixed keys @c "rooms", @c "games" and @c "players"
+ *
+ * @c "rooms" counts the rooms that exist right now: both the one still recruiting players and any
+ * room whose game is running in the background. @c "games" counts how many of them have started a
+ * game -- a room starts one as soon as it fills up. @c "players" counts the players currently
+ * online across all rooms, so a player whose connection dropped and who has not reconnected yet is
+ * not counted even though the seat is kept for them.
+ *
+ * The snapshot is read-only and can be taken at any time; it changes nothing.
+ */
+QJsonObject Server::status() const
+{
+    return d->status();
+}
+
+/**
  * @fn Server::listenError(const QString &transportName, const QString &errorString, QPrivateSignal)
  * @brief emitted when a transport fails to start listening in @c listen()
  * @param transportName which transport failed: @c "tcp", @c "local" or @c "websocket"

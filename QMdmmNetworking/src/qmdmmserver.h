@@ -90,6 +90,8 @@ public:
     explicit Server(ServerConfiguration serverConfiguration, QMdmmCore::LogicConfiguration logicConfiguration, QObject *parent = nullptr);
     ~Server() override;
 
+    [[nodiscard]] QJsonObject status() const;
+
 public slots: // NOLINT(readability-redundant-access-specifiers)
     [[nodiscard]] bool listen();
     void close();
