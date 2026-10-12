@@ -101,7 +101,20 @@ jobs:
         run: cmake --build build --parallel
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: |
+          # Every case carries its own bound (see the test CMakeLists files), and the bound is
+          # printed before the run: a case that has to be killed says which number it ran
+          # under, and a case that lost its bound shows up here as "no bound" rather than as a
+          # hang that eats the job's budget. --timeout below is the second half of the same
+          # guard: it is the longest bound any case has, so a case that goes without one still
+          # cannot outlast the longest-bounded case.
+          ctest --test-dir build --show-only=json-v1 | python3 -c '
+          import json, sys
+          for case in json.load(sys.stdin)["tests"]:
+              bound = next((p["value"] for p in case["properties"] if p["name"] == "TIMEOUT"), None)
+              print("%s: TIMEOUT %s" % (case["name"], bound if bound else "not set"))
+          '
+          ctest --test-dir build --output-on-failure --timeout 360
 
       - name: Test the system-wide configuration path
         run: |

@@ -64,3 +64,8 @@ set_target_properties(tst_qmdmmbot6 PROPERTIES
 target_include_directories(tst_qmdmmbot6 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 
 add_test(NAME "QMdmmBot - bot - Qt6" COMMAND tst_qmdmmbot6)
+
+# See the note in QMdmmCore/test/CMakeLists.txt for how the bound is chosen. This case drives
+# whole games through the three styles, which is what its 34.59 s reading is; six times that
+# rounds up to 240 s.
+set_tests_properties("QMdmmBot - bot - Qt6" PROPERTIES TIMEOUT 240)

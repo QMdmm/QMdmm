@@ -98,6 +98,12 @@ target_compile_definitions(tst_qmdmmguiapp6 PRIVATE
 
 add_test(NAME "QMdmmGui - application - Qt6" COMMAND tst_qmdmmguiapp6)
 
+# See the note in QMdmmCore/test/CMakeLists.txt for how the bound is chosen. The smoke test
+# drives whole games and reads up to 56.78 s, so six times that rounds up to 360 s; the
+# application case only reaches main() and reads up to 0.40 s, which takes the floor.
+set_tests_properties("QMdmmGui - gui smoke - Qt6" PROPERTIES TIMEOUT 360)
+set_tests_properties("QMdmmGui - application - Qt6" PROPERTIES TIMEOUT 60)
+
 # To prevent initializing a real display in headless CI run, recognize the CI
 # environment variable.
 # As far as I know both GitHub Actions and Jenkins set this environment variable.

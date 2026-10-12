@@ -47,3 +47,7 @@ target_compile_definitions(tst_qmdmmserver6 PRIVATE
 )
 
 add_test(NAME "QMdmmServer - server cli - Qt6" COMMAND tst_qmdmmserver6)
+
+# See the note in QMdmmCore/test/CMakeLists.txt for how the bound is chosen. The slowest
+# reading this case has across the CI cells is 5.43 s, and six times that is below the floor.
+set_tests_properties("QMdmmServer - server cli - Qt6" PROPERTIES TIMEOUT 60)

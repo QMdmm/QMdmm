@@ -19,6 +19,14 @@ function(add_qmdmmcore_test TEST_SOURCE)
         endif()
         set_target_properties("tst_qmdmmcore_${TEST_TARGET_EXECUTABLE}6" PROPERTIES AUTOMOC ON AUTOUIC ON AUTORCC ON)
         add_test(NAME "QMdmmCore - ${TEST_SOURCE} - Qt6" COMMAND "tst_qmdmmcore_${TEST_TARGET_EXECUTABLE}6")
+
+        # Every case is bounded, so a case that hangs is killed instead of eating the job's
+        # budget. The bound is a hang detector, not a performance gate: six times the slowest
+        # reading the case has across the CI cells, rounded up to a whole minute, with a
+        # one-minute floor. The slowest reading any case in this module has is 0.27 s, so they
+        # all take the floor -- and because the bound is set here rather than per case, a case
+        # added to the list below cannot quietly go without one.
+        set_tests_properties("QMdmmCore - ${TEST_SOURCE} - Qt6" PROPERTIES TIMEOUT 60)
     endif()
 endfunction()
 
