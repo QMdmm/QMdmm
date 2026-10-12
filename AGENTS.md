@@ -134,25 +134,28 @@ Read these before touching code:
 
 ### `QStringLiteral`
 
-- `QStringLiteral` macro was previously heavily used, but got replaced by UDL
-  during a modernize process.
-- Use `using namespace Qt::StringLiterals;` and the UDL `u"..."_s` instead of
-  `QStringLiteral("...")`
-  - For macro usage, see following example
-  ```
+- In production code (i.e. `src/`)
+  - `QStringLiteral` macro was previously heavily used, but got replaced by UDL
+    during a modernize process.
+  - Use `using namespace Qt::StringLiterals;` and the UDL `u"..."_s` instead of
+    `QStringLiteral("...")`
+    - For macro usage, see following example
+    ```
 #define SOME_MACRO(x) \
   if (x)              \
       v << QStringLiteral(x);
-  ```
-  Above example code should be modified to:
-  ```
+    ```
+    Above example code should be modified to:
+    ```
 #define SOME_MACRO(x) \
   if (x)              \
       v << u"" x ""_s;
-  ```
-- The same namespace carries the byte-string UDL `"..."_ba` for `QByteArray`.
-  It takes a narrow `const char *`, so the literal has no `u` prefix --
-  `u"..."_ba` matches no `_ba` overload and does not compile.
+    ```
+  - The same namespace carries the byte-string UDL `"..."_ba` for `QByteArray`.
+    It takes a narrow `const char *`, so the literal has no `u` prefix --
+    `u"..."_ba` matches no `_ba` overload and does not compile.
+- In test code (i.e. `test/`)
+  - Use whatever convenient for testing.
 
 ### Qt names are always versioned
 
