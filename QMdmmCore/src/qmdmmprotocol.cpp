@@ -123,7 +123,8 @@ namespace v0 {
  * When @c protocolVersion differs from @c Protocol::version() the client disconnects: the wire
  * protocol is incompatible, so it drops the connection via @c disconnectFromHost() rather than
  * entering the auto-reconnect loop (which would re-hit the same mismatch). A @c versionNumber
- * mismatch is tolerated -- the wire protocol is still compatible -- and is currently a no-op.
+ * mismatch is tolerated -- the wire protocol is still compatible -- and the client reports both
+ * version numbers on the log before going on with the handshake.
  */
 
 /**

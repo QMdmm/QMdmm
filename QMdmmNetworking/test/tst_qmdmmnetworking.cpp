@@ -16,6 +16,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMetaType>
+#include <QRegularExpression>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTest>
@@ -59,6 +60,7 @@ private slots:
     void server_doesNotDropServerBoundNotify();
     void client_disconnectFromHostStopsAutoReconnect();
     void client_disconnectsOnProtocolVersionMismatch();
+    void client_reportsAVersionNumberMismatchAndSignsIn();
     void server_listenErrorAndClose();
     void server_statusReportsRoomsGamesAndPlayers();
     void client_infeasibleUpgradeReplyDoesNotStall();
@@ -992,6 +994,46 @@ void tst_QMdmmNetworking::client_disconnectsOnProtocolVersionMismatch()
     // No auto-reconnect: past the first retry interval the client is still disconnected.
     QTest::qWait(700);
     QVERIFY(!p1->isConnected());
+}
+
+// A versionNumber mismatch is tolerated -- the wire protocol is still compatible -- but it must not
+// be silent: the client reports both version numbers and then goes on with the handshake. The log
+// line is asserted here by name, so changing its wording or its log level in ClientP::notifyVersion
+// makes this test fail instead of passing quietly.
+void tst_QMdmmNetworking::client_reportsAVersionNumberMismatchAndSignsIn()
+{
+    QTcpServer rawServer;
+    QVERIFY(rawServer.listen(QHostAddress::Any, 16383));
+
+    QByteArray received;
+    QObject::connect(&rawServer, &QTcpServer::newConnection, &rawServer, [&rawServer, &received]() {
+        QTcpSocket *sock = rawServer.nextPendingConnection();
+        QObject::connect(sock, &QTcpSocket::readyRead, sock, [sock, &received]() { received.append(sock->readAll()); });
+        QJsonObject ob;
+        ob.insert(u"versionNumber"_s, u"9.9.9"_s); // differs from this build
+        ob.insert(u"protocolVersion"_s, QMdmmCore::Protocol::version()); // still compatible
+        sock->write(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyVersion, ob).serialize().append('\n'));
+        sock->flush();
+    });
+
+    // Registering the expectation before the handshake runs turns "the line disappeared" into a
+    // failure of this test; the wording is matched up to this build's own version number, which is
+    // read from the build rather than pinned here.
+    QTest::ignoreMessage(QtWarningMsg,
+                         QRegularExpression(u"ClientP::notifyVersion: the server reports version \"9\\.9\\.9\" while this build is \"%1\""_s.arg(
+                             QRegularExpression::escape(QMdmmCore::Global::version().toString()))));
+
+    auto *p1 = new Client(ClientConfiguration(), &rawServer);
+    QVERIFY(p1->connectToHost(u"qmdmm://localhost:16383"_s, Data::StateOnline));
+
+    // The handshake proceeds over the same connection: the client signs in rather than dropping it.
+    QTRY_VERIFY_WITH_TIMEOUT(received.contains('\n'), 5000);
+    const Packet signIn = Packet::fromJson(received.left(received.indexOf('\n')));
+    QVERIFY(!signIn.hasError());
+    QCOMPARE(int(signIn.type()), int(Protocol::TypeNotify));
+    QCOMPARE(int(signIn.notifyId()), int(Protocol::NotifySignIn));
+    QCOMPARE(signIn.value().toObject().value(u"playerName"_s).toString(), p1->objectName());
+    QVERIFY(p1->isConnected());
 }
 
 // The server reports per-transport listen failures via listenError (the aggregate return value

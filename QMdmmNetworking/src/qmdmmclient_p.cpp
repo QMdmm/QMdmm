@@ -277,7 +277,12 @@ void ClientP::notifyVersion(const QJsonValue &value)
 
     if (QVersionNumber::fromString(versionNumber) != QMdmmCore::Global::version()) {
         // The client version differs, but the wire protocol is compatible, so the handshake can
-        // proceed; the mismatch is tolerated (no-op) for now.
+        // proceed. Only the mismatch itself is reported, so that a server running a different
+        // build of the same protocol is visible in the log rather than silent. The wording and
+        // the log level of this line are an interface: tst_qmdmmnetworking.cpp asserts the line
+        // by name, so changing either makes that test fail.
+        qWarning() << "ClientP::notifyVersion: the server reports version" << versionNumber << "while this build is" << QMdmmCore::Global::version().toString()
+                   << "; the wire protocol is compatible, so the handshake proceeds.";
     }
 
     // sign in process
