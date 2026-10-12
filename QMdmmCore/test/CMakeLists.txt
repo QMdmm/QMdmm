@@ -18,6 +18,14 @@ function(add_qmdmmcore_test TEST_SOURCE)
             target_link_libraries("tst_qmdmmcore_${TEST_TARGET_EXECUTABLE}6" PUBLIC Qt6::Test)
         endif()
         set_target_properties("tst_qmdmmcore_${TEST_TARGET_EXECUTABLE}6" PROPERTIES AUTOMOC ON AUTOUIC ON AUTORCC ON)
+
+        # The protocol fixtures read the header that declares the ids to compare them
+        # against, so its path is named here rather than looked up from the test
+        # binary, which sits at a different depth in a build tree and in an install.
+        target_compile_definitions("tst_qmdmmcore_${TEST_TARGET_EXECUTABLE}6" PRIVATE
+            QMDMM_PROTOCOL_HEADER="${CMAKE_CURRENT_SOURCE_DIR}/../src/qmdmmprotocol.h"
+        )
+
         add_test(NAME "QMdmmCore - ${TEST_SOURCE} - Qt6" COMMAND "tst_qmdmmcore_${TEST_TARGET_EXECUTABLE}6")
 
         # Every case is bounded, so a case that hangs is killed instead of eating the job's

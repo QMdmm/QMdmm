@@ -2,8 +2,19 @@
 
 #include <QMdmmCore/QMdmmProtocol>
 
+#include <QFile>
+#include <QJsonDocument>
 #include <QJsonObject>
+#include <QMap>
+#include <QRegularExpression>
+#include <QStringList>
 #include <QTest>
+
+// The fixtures below read the protocol header at run time, so its path has to come
+// from the build; see QMdmmCore/test/CMakeLists.txt.
+#ifndef QMDMM_PROTOCOL_HEADER
+#error "QMDMM_PROTOCOL_HEADER must name QMdmmCore/src/qmdmmprotocol.h; see QMdmmCore/test/CMakeLists.txt"
+#endif
 
 using namespace Qt::StringLiterals;
 
@@ -11,6 +22,115 @@ using namespace Qt::StringLiterals;
 // Exempt from clang-tidy by policy; see AGENTS.md.
 
 using namespace QMdmmCore;
+
+namespace {
+
+// One legal packet per enumerator a packet can carry, so that an enumerator added to
+// the header without a fixture here is a test failure instead of a silent gap.
+struct ProtocolIdFixture
+{
+    const char *enumName;
+    const char *enumerator;
+    Protocol::PacketType type;
+    Protocol::RequestId requestId;
+    Protocol::NotifyId notifyId;
+};
+
+// A sentinel (RequestInvalid / NotifyInvalid / TypeInvalid) or a mask marker
+// (NotifyFromServerMask and friends) names no packet of its own, so the table carries
+// no row for it -- and the header scan does not ask for one either.
+bool isWireId(const QString &enumerator)
+{
+    return !enumerator.endsWith(u"Invalid"_s) && !enumerator.contains(u"Mask"_s);
+}
+
+const ProtocolIdFixture protocolIdFixtures[] = {
+    {"RequestId", "RequestRockPaperScissors", Protocol::TypeRequest, Protocol::RequestRockPaperScissors, Protocol::NotifyInvalid},
+    {"RequestId", "RequestActionOrder", Protocol::TypeRequest, Protocol::RequestActionOrder, Protocol::NotifyInvalid},
+    {"RequestId", "RequestAction", Protocol::TypeRequest, Protocol::RequestAction, Protocol::NotifyInvalid},
+    {"RequestId", "RequestUpgrade", Protocol::TypeRequest, Protocol::RequestUpgrade, Protocol::NotifyInvalid},
+
+    {"NotifyId", "NotifyPongServer", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyPongServer},
+    {"NotifyId", "NotifyVersion", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyVersion},
+    {"NotifyId", "NotifyLogicConfiguration", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyLogicConfiguration},
+    {"NotifyId", "NotifyAgentStateChanged", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyAgentStateChanged},
+    {"NotifyId", "NotifyPlayerAdded", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyPlayerAdded},
+    {"NotifyId", "NotifyPlayerRemoved", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyPlayerRemoved},
+    {"NotifyId", "NotifyGameStart", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyGameStart},
+    {"NotifyId", "NotifyRoundStart", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyRoundStart},
+    {"NotifyId", "NotifyRockPaperScissors", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyRockPaperScissors},
+    {"NotifyId", "NotifyActionOrder", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyActionOrder},
+    {"NotifyId", "NotifyAction", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyAction},
+    {"NotifyId", "NotifyRoundOver", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyRoundOver},
+    {"NotifyId", "NotifyUpgrade", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyUpgrade},
+    {"NotifyId", "NotifyGameOver", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyGameOver},
+    {"NotifyId", "NotifySpoken", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifySpoken},
+    {"NotifyId", "NotifyOperated", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyOperated},
+    {"NotifyId", "NotifyPingServer", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyPingServer},
+    {"NotifyId", "NotifySignIn", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifySignIn},
+    {"NotifyId", "NotifyObserve", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyObserve},
+    {"NotifyId", "NotifyManagedChanged", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyManagedChanged},
+    {"NotifyId", "NotifySpeak", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifySpeak},
+    {"NotifyId", "NotifyOperate", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyOperate},
+
+    {"PacketType", "TypeRequest", Protocol::TypeRequest, Protocol::RequestRockPaperScissors, Protocol::NotifyInvalid},
+    {"PacketType", "TypeReply", Protocol::TypeReply, Protocol::RequestRockPaperScissors, Protocol::NotifyInvalid},
+    {"PacketType", "TypeNotify", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyLogicConfiguration},
+};
+
+// The comparison in QMdmmProtocolenumeratorsMatchTheFixtures runs at run time: neither
+// std::map nor QHash is constexpr, so it cannot be a static_assert yet. C++26 is where a
+// constexpr std::map arrives, so the standard version carries the tripwire -- the day
+// this tree moves to C++26 the build stops here and asks for the comparison to be lifted
+// into the assertion (the QHash half never can be, being implicitly shared).
+static_assert(__cplusplus < 202400L, "a constexpr std::map is available: lift the fixture comparison into a static_assert");
+
+// The enumerators of every enum the header declares, grouped by enum name. They come
+// from the header rather than from a second list here: noticing an enumerator that has
+// no fixture is the whole point, and a copy of the list could not do that.
+QMap<QString, QStringList> enumeratorsInProtocolHeader(const QByteArray &source)
+{
+    // The bodies of these enums carry braces inside their line comments (e.g. "object
+    // { string playerName: int rps }"), so the comments go first.
+    static const QRegularExpression lineComment(u"//[^\n]*"_s);
+    QString text = QString::fromUtf8(source);
+    text.remove(lineComment);
+
+    QMap<QString, QStringList> ret;
+    static const QRegularExpression enumDeclaration(u"enum\\s+(\\w+)\\s*:\\s*\\w+\\s*\\{([^}]*)\\}"_s);
+    QRegularExpressionMatchIterator matches = enumDeclaration.globalMatch(text);
+    while (matches.hasNext()) {
+        const QRegularExpressionMatch match = matches.next();
+
+        QStringList enumerators;
+        const QStringList pieces = match.captured(2).split(u',', Qt::SkipEmptyParts);
+        for (const QString &piece : pieces) {
+            // The last field is the whitespace between the trailing comma and the
+            // closing brace; it is not an enumerator.
+            const QString enumerator = piece.section(u'=', 0, 0).trimmed();
+            if (!enumerator.isEmpty())
+                enumerators.append(enumerator);
+        }
+
+        ret.insert(match.captured(1), enumerators);
+    }
+
+    return ret;
+}
+
+QStringList wireIdsOf(const QStringList &enumerators)
+{
+    QStringList ret;
+    for (const QString &enumerator : enumerators) {
+        if (isWireId(enumerator))
+            ret.append(enumerator);
+    }
+    ret.sort();
+
+    return ret;
+}
+
+} // namespace
 
 class tst_QMdmmProtocol : public QObject
 {
@@ -231,6 +351,70 @@ private slots:
         Packet p(Protocol::TypeRequest, Protocol::RequestRockPaperScissors, {});
         QVariant v = QVariant::fromValue<Packet>(p);
         QCOMPARE(v.value<Packet>().serialize(), p.serialize());
+    }
+
+    // Every enumerator the protocol header declares either carries a packet or is a
+    // sentinel / mask marker, and every one of the former has a fixture above. An
+    // enumerator added without a fixture, or a fixture left behind by a removed
+    // enumerator, fails here.
+    void QMdmmProtocolenumeratorsMatchTheFixtures()
+    {
+        QFile header(QStringLiteral(QMDMM_PROTOCOL_HEADER));
+        if (!header.open(QIODevice::ReadOnly))
+            QFAIL(qPrintable(u"%1: %2"_s.arg(header.fileName(), header.errorString())));
+
+        const QMap<QString, QStringList> found = enumeratorsInProtocolHeader(header.readAll());
+
+        QMap<QString, QStringList> covered;
+        for (const ProtocolIdFixture &fixture : protocolIdFixtures)
+            covered[QString::fromLatin1(fixture.enumName)].append(QString::fromLatin1(fixture.enumerator));
+
+        // A whole enum added to the header goes with its own group of fixtures.
+        QCOMPARE(covered.keys(), found.keys());
+
+        const QStringList enumNames = found.keys();
+        for (const QString &enumName : enumNames) {
+            QStringList coveredHere = covered.value(enumName);
+            coveredHere.sort();
+            QCOMPARE(coveredHere, wireIdsOf(found.value(enumName)));
+        }
+    }
+
+    // The same fixtures as packets that travel: each one parses, and comes back byte
+    // for byte. A fixture whose id is not also in the deserializer's whitelist fails
+    // here, which is the coupling that id lives by.
+    void QMdmmProtocolfixturePackets_data()
+    {
+        QTest::addColumn<QByteArray>("serialized");
+
+        for (const ProtocolIdFixture &fixture : protocolIdFixtures) {
+            QJsonObject ob;
+            ob.insert(u"type"_s, static_cast<int>(fixture.type));
+            ob.insert(u"requestId"_s, static_cast<int>(fixture.requestId));
+            ob.insert(u"notifyId"_s, static_cast<int>(fixture.notifyId));
+            ob.insert(u"value"_s, QJsonValue());
+
+            QTest::newRow(fixture.enumerator) << QJsonDocument(ob).toJson(QJsonDocument::Compact);
+        }
+    }
+
+    void QMdmmProtocolfixturePackets()
+    {
+        QFETCH(QByteArray, serialized);
+
+        Packet packet = Packet::fromJson(serialized);
+
+        QString errorString;
+        const bool failed = packet.hasError(&errorString);
+        QVERIFY2(!failed, qPrintable(u"%1: %2"_s.arg(QString::fromUtf8(serialized), errorString)));
+
+        QCOMPARE(packet.serialize(), serialized);
+
+        // Each fixture also has a malformed form: a packet without its payload is not
+        // a legal packet.
+        QJsonObject ob = QJsonDocument::fromJson(serialized).object();
+        ob.remove(u"value"_s);
+        QVERIFY2(Packet::fromJson(QJsonDocument(ob).toJson(QJsonDocument::Compact)).hasError(), qPrintable(QString::fromUtf8(serialized)));
     }
 };
 
