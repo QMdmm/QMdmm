@@ -271,6 +271,35 @@ jobs:
         id: test
         run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
 
+      - name: Show what the failing tests reported
+        if: always()
+        run: |
+          # ctest --output-on-failure prints nothing at all for the cases that
+          # fail here: the log runs straight from the ***Failed line to the next
+          # test, so neither the case that failed nor what it compared is
+          # anywhere in it. The reading is one level down instead -- the shared
+          # test main starts every binary with -o <name>6.xml,junitxml, and those
+          # reports carry the case name and quote its message. A failing case
+          # with no report beside it is a reading too: that process died before
+          # it got as far as writing one.
+          shopt -s globstar nullglob
+          reports=(build/**/*6.xml)
+          failing=()
+          for report in "${reports[@]}"; do
+            if grep -q '<failure' "$report"; then
+              failing+=("$report")
+            fi
+          done
+          echo "junit reports under the build tree: ${#reports[@]}, of them failing: ${#failing[@]}"
+          if (( ${#reports[@]} == 0 )); then
+            echo "no junit report was written anywhere under build; what is there:"
+            find build -name '*.xml' | head -20
+          fi
+          for report in "${failing[@]}"; do
+            echo "=== $report"
+            cat "$report"
+          done
+
       - name: Report the probe's reading
         if: always()
         run: |
