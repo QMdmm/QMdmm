@@ -277,14 +277,17 @@ jobs:
           # ctest --output-on-failure prints nothing at all for the cases that
           # fail here: the log runs straight from the ***Failed line to the next
           # test, so neither the case that failed nor what it compared is
-          # anywhere in it. The reading is one level down instead -- the shared
-          # test main starts every binary with -o <name>6.xml,junitxml, and those
-          # reports carry the case name and quote its message.
+          # anywhere in it. The reading is one level down instead -- every QtTest
+          # entry is started with -o <name>6.xml,junitxml, and those reports carry
+          # the case name and quote its message. The eleven binaries with a shared
+          # test main get it from that main; the smoke runner, the server cli and
+          # the two GUI binaries are given it by their own add_test.
           #
-          # Four of the sixteen entries never write one, because their main is not
-          # that one -- the smoke runner, the server cli and the two GUI binaries.
-          # So the census below is over the eleven that do, and it is read as such
-          # rather than as a process that died before it could write anything.
+          # Two of the sixteen entries still write none -- the smoke runner's two,
+          # whose main is a hand-written game loop rather than a QtTest one and so
+          # takes no -o at all. The census below is over the fourteen that do, and
+          # it is read as such rather than as a process that died before it could
+          # write anything.
           shopt -s globstar nullglob
           reports=(build/**/*6.xml)
           failing=()
@@ -306,12 +309,14 @@ jobs:
       - name: Re-run the failing tests verbosely
         if: failure() && steps.test.outcome == 'failure'
         run: |
-          # The census in the step above only reaches the eleven entries whose main is the
-          # shared one; the other five -- the smoke runner's two, the server cli and the two
-          # GUI binaries -- write no report, so a failure in one of them has no reading in the
-          # log at all (the step above says as much in its own comment). Re-running just the
-          # entries that failed, with -V, is what is left to read those by. It costs the time
-          # of the tests that failed and only a red probe pays it.
+          # The census in the step above leaves out the two entries whose main is not a
+          # QtTest one -- the smoke runner's two -- so a failure in those has no report to
+          # read. Re-running just the entries that failed, with -V, is what is left for
+          # them: it prints ctest's own reading of each one (the command, the working
+          # directory, the environment, the time it took). The tests' own output is not
+          # expected here -- on this runner it reaches neither this log nor the census --
+          # and it is not asked for. It costs the time of the tests that failed and only a
+          # red probe pays it.
           #
           # failure() is not redundant here. A step condition that names no status function is
           # taken as success() && that condition, so on its own the comparison below never

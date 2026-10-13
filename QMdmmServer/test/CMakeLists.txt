@@ -46,7 +46,13 @@ target_compile_definitions(tst_qmdmmserver6 PRIVATE
     "QMDMMSERVER_EXECUTABLE=\"$<TARGET_FILE:QMdmmServer6>\""
 )
 
-add_test(NAME "QMdmmServer - server cli - Qt6" COMMAND tst_qmdmmserver6)
+# What a failing case leaves behind has to be a file. This binary's own output does not reach
+# the CI log on every runner -- the Windows probe writes it nowhere -- while a junit report
+# does. It is the same report the shared test main writes for the other QtTest suites (see
+# QMdmmCore/test/test.cpp). The Qt major version comes from Qt6_VERSION_MAJOR, since this test
+# has no shared main to take it from. The second -o keeps the plain reading on stdout as well:
+# naming any -o suppresses it, and the runners whose logs do carry the plain one should keep it.
+add_test(NAME "QMdmmServer - server cli - Qt6" COMMAND tst_qmdmmserver6 "-o" "-,txt" "-o" "tst_QMdmmServerCli${Qt6_VERSION_MAJOR}.xml,junitxml")
 
 # See the note in QMdmmCore/test/CMakeLists.txt for how the bound is chosen. The slowest
 # reading this case has across the CI cells is 5.43 s, and six times that is below the floor.

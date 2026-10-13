@@ -47,7 +47,14 @@ target_compile_definitions(tst_qmdmmgui6 PRIVATE
     "QUICK_TEST_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\""
 )
 
-add_test(NAME "QMdmmGui - gui smoke - Qt6" COMMAND tst_qmdmmgui6)
+# What a failing case leaves behind has to be a file. The test's own output does not reach the
+# CI log on every runner -- the Windows probe writes it nowhere -- while a junit report does,
+# and the report carries the case name and quotes its message. This is the same report the
+# shared test main writes for the other suites (see QMdmmCore/test/test.cpp). The Qt major
+# version comes from Qt6_VERSION_MAJOR, since this test has no shared main to take it from. The
+# second -o keeps the plain reading on stdout as well: naming any -o suppresses it, and the
+# runners whose logs do carry the plain one should keep it.
+add_test(NAME "QMdmmGui - gui smoke - Qt6" COMMAND tst_qmdmmgui6 "-o" "-,txt" "-o" "tst_QMdmmGuiSmoke${Qt6_VERSION_MAJOR}.xml,junitxml")
 
 # The application itself, which the smoke test above cannot reach: it drives the QML
 # scenes, while main() and MainWindow's constructor only run in the program. MainWindow
@@ -96,7 +103,8 @@ target_compile_definitions(tst_qmdmmguiapp6 PRIVATE
     "QMDMMGUI_EXECUTABLE=\"$<TARGET_FILE:QMdmm6>\""
 )
 
-add_test(NAME "QMdmmGui - application - Qt6" COMMAND tst_qmdmmguiapp6)
+# The same reading arrangement as the smoke test above.
+add_test(NAME "QMdmmGui - application - Qt6" COMMAND tst_qmdmmguiapp6 "-o" "-,txt" "-o" "tst_QMdmmGuiApp${Qt6_VERSION_MAJOR}.xml,junitxml")
 
 # See the note in QMdmmCore/test/CMakeLists.txt for how the bound is chosen. The smoke test
 # drives whole games and reads up to 56.78 s, so six times that rounds up to 360 s; the
