@@ -66,6 +66,9 @@ QProcessEnvironment environmentWithHome(const QString &home)
 // own whichever home it was handed. A case with nothing to write under but the user's own file
 // comes back empty, and the case that asked skips rather than reach into a configuration someone
 // is using.
+//
+// A case that writes there puts its writing back on the way out (PerUserFileRestore). On CI that is
+// not politeness: the file belongs to the machine and the tests that run after this one read it too.
 QString perUserCaseHome(QTemporaryDir &scratch)
 {
     if (qEnvironmentVariableIsSet("CI"))
@@ -80,6 +83,60 @@ QString perUserCaseHome(QTemporaryDir &scratch)
     return scratch.path();
 #endif
 }
+
+// The environment a per-user case hands the run it starts. On CI the run is meant to reach the
+// machine's own home, which is where it already looks, so nothing is pointed anywhere. Off CI the
+// home is the case's own and has to be handed over.
+QProcessEnvironment perUserCaseEnvironment(const QString &home)
+{
+    if (qEnvironmentVariableIsSet("CI"))
+        return QProcessEnvironment::systemEnvironment();
+    return environmentWithHome(home);
+}
+
+// The per-user file under the home a case was handed, put back the way the case found it when this
+// goes out of scope.
+//
+// On CI that file is not the case's own: it is the machine's, and more than the run the case starts
+// reads it -- tst_qmdmmgui6 starts a real server later in the same ctest run, and that server
+// resolves its logic configuration from this very file. So a case that writes there has to take its
+// writing back out, or it decides what the GUI reads. It did: the [logic] section the case below
+// plants was still in the file when the GUI ran, and its readings came out as the planted values --
+// a maximum-maxhp of 10 where that case expected the default 20, and an upgrade list built from it
+// with one offer missing. Every Build & test entry in that run went down with it, none of them near
+// this file.
+//
+// Off CI the home is one of the case's own and nothing else can reach the file, but the same guard
+// is used there rather than a second shape.
+class PerUserFileRestore
+{
+public:
+    explicit PerUserFileRestore(const QString &home)
+        : m_path(perUserConfigurationFile(home))
+    {
+        QFile file(m_path);
+        m_existed = file.exists();
+        if (m_existed && file.open(QIODevice::ReadOnly))
+            m_contents = file.readAll();
+    }
+
+    ~PerUserFileRestore()
+    {
+        if (!m_existed) {
+            QFile::remove(m_path);
+            return;
+        }
+
+        QFile file(m_path);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            file.write(m_contents);
+    }
+
+private:
+    const QString m_path;
+    bool m_existed = false;
+    QByteArray m_contents;
+};
 
 // Runs the executable under test with @p arguments and collects what it printed.
 // @p environment replaces the process environment when a case has to steer where the
@@ -188,9 +245,10 @@ void tst_QMdmmServer::savingToBothInstances_isRejected()
 // case assert on that one file rather than on whatever configuration the machine happens to hold.
 //
 // It writes the file it watches, so it writes where perUserCaseHome sends it: a home of its own off
-// CI, and the machine's own on it, where there is nothing to protect. The platform whose home does
-// not follow the environment is the one place that choice does not exist, and there the case has
-// nothing of its own to watch off CI, so it skips.
+// CI, and the machine's own on it. The writing is taken back out on the way out, because on CI that
+// file is read by the runs tst_qmdmmgui6 starts as well. The platform whose home does not follow the
+// environment is the one place that choice does not exist, and there the case has nothing of its own
+// to watch off CI, so it skips.
 void tst_QMdmmServer::savingPerUserConfiguration_writesTheFileUnderHome()
 {
     QTemporaryDir scratch;
@@ -198,7 +256,9 @@ void tst_QMdmmServer::savingPerUserConfiguration_writesTheFileUnderHome()
     if (home.isEmpty())
         QSKIP("the home does not follow the environment here and this machine is not one to be thrown away; a run would write the machine's own per-user file");
 
-    const RunResult result = runServer({u"-c"_s}, 60000, environmentWithHome(home));
+    const PerUserFileRestore restore(home);
+
+    const RunResult result = runServer({u"-c"_s}, 60000, perUserCaseEnvironment(home));
 
     QVERIFY(result.exitStatus == QProcess::NormalExit);
     QCOMPARE(result.exitCode, 0);
@@ -293,9 +353,10 @@ void tst_QMdmmServer::v1Presets_reachThePrintedConfiguration()
 // home of its own off CI, and the machine's own on it, where a file being the machine's is the point
 // rather than a problem. Where the home does not follow the environment there is nothing to plant
 // under off CI -- a run reads the machine's own file whichever home the case asks for -- so the case
-// skips rather than read that file and call whatever is in it its own setup. The file is left as the
-// case wrote it: on CI the machine goes away with it, and the cases after this one read it only
-// through values the command line or the preset settles.
+// skips rather than read that file and call whatever is in it its own setup. The file is taken back
+// out on the way out, the way the case above takes its own writing back out: on CI it is under the
+// machine's own home, and the server tst_qmdmmgui6 starts reads it from there, so a planted [logic]
+// section left behind there would decide what that test's readings come out as.
 void tst_QMdmmServer::v1Presets_outrankAStoredLogicSection_data()
 {
     QTest::addColumn<QStringList>("arguments");
@@ -315,6 +376,8 @@ void tst_QMdmmServer::v1Presets_outrankAStoredLogicSection()
     if (home.isEmpty())
         QSKIP("the home does not follow the environment here and this machine is not one to be thrown away; the stored file would have to be the machine's own");
 
+    const PerUserFileRestore restore(home);
+
     // The directory the file goes in. Only the write below needs it, and a case that finds it already
     // there -- the machine's own home on CI, where the case above has written -- is not an error, so
     // what mkpath() returned is not the assertion; the directory being there is.
@@ -327,7 +390,7 @@ void tst_QMdmmServer::v1Presets_outrankAStoredLogicSection()
     QVERIFY(file.write("[server]\ntcp-port=7777\n\n[logic]\nmaximum-maxhp=10\n") > 0);
     file.close();
 
-    const RunResult result = runServer(arguments, 60000, environmentWithHome(home));
+    const RunResult result = runServer(arguments, 60000, perUserCaseEnvironment(home));
 
     QVERIFY(result.exitStatus == QProcess::NormalExit);
     QCOMPARE(result.exitCode, 0);
