@@ -304,7 +304,7 @@ jobs:
           done
 
       - name: Re-run the failing tests verbosely
-        if: steps.test.outcome == 'failure'
+        if: failure() && steps.test.outcome == 'failure'
         run: |
           # The census in the step above only reaches the eleven entries whose main is the
           # shared one; the other five -- the smoke runner's two, the server cli and the two
@@ -312,6 +312,11 @@ jobs:
           # log at all (the step above says as much in its own comment). Re-running just the
           # entries that failed, with -V, is what is left to read those by. It costs the time
           # of the tests that failed and only a red probe pays it.
+          #
+          # failure() is not redundant here. A step condition that names no status function is
+          # taken as success() && that condition, so on its own the comparison below never
+          # held and this step was skipped in the run that added it, with steps.test.outcome
+          # reading failure in the step after it.
           ctest --test-dir build -C ${{ matrix.build_type }} --rerun-failed -V
 
       - name: Report the probe's reading
