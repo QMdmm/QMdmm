@@ -161,7 +161,9 @@ private slots:
 };
 
 namespace {
-RegisterTestObject<tst_QMdmmDebug> _a;
+// Not _a: the void ** parameter moc gives the qt_static_metacall() it generates is named _a,
+// and MSVC's /W4 reports that parameter as hiding this global (C4459).
+RegisterTestObject<tst_QMdmmDebug> _;
 } // namespace
 #include "tst_qmdmmdebug.moc"
 

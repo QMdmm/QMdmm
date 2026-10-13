@@ -267,7 +267,9 @@ void tst_QMdmmSettings::valueAndContainsReadEveryInstance()
 }
 
 namespace {
-RegisterTestObject<tst_QMdmmSettings> _a;
+// Not _a: the void ** parameter moc gives the qt_static_metacall() it generates is named _a,
+// and MSVC's /W4 reports that parameter as hiding this global (C4459).
+RegisterTestObject<tst_QMdmmSettings> _;
 } // namespace
 #include "tst_qmdmmsettings.moc"
 
