@@ -37,9 +37,8 @@ struct RunResult
     QString standardError;
 };
 
-// The per-user configuration file, at the exact path doc/getting-started.md names.
-// The per-user configuration lives under $HOME, so the cases below can redirect
-// HOME to a directory of their own and watch this one file appear in it.
+// The per-user configuration file, at the exact path doc/getting-started.md names. It goes under
+// the home a run resolves, so a case hands this the same home it handed the run.
 QString perUserConfigurationFile(const QString &home)
 {
     return QDir(home).absoluteFilePath(u".QMdmm/Fsu0413.me/QMdmm.ini"_s);
@@ -51,6 +50,35 @@ QProcessEnvironment environmentWithHome(const QString &home)
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     environment.insert(u"HOME"_s, home);
     return environment;
+}
+
+// The home a case that watches the per-user file is to run against, or an empty string when there
+// is none to be had here.
+//
+// A case that watches that file has to write where the run it starts will read. Off CI it does that
+// under a home of its own: HOME is pointed at @p scratch, so what the case writes is its own and
+// the configuration the machine holds is never touched. On CI there is nothing to protect -- the
+// machine is thrown away after the run -- and the cases run against the home the machine already
+// has instead, which is the same home the runs started there resolve.
+//
+// That last part is what the platform whose home does not follow the environment leaves out:
+// Windows reads the home off the process token, so the file a run reaches there is the machine's
+// own whichever home it was handed. A case with nothing to write under but the user's own file
+// comes back empty, and the case that asked skips rather than reach into a configuration someone
+// is using.
+QString perUserCaseHome(QTemporaryDir &scratch)
+{
+    if (qEnvironmentVariableIsSet("CI"))
+        return QDir::homePath();
+
+#ifdef Q_OS_WIN
+    Q_UNUSED(scratch)
+    return {};
+#else
+    if (!scratch.isValid())
+        return {};
+    return scratch.path();
+#endif
 }
 
 // Runs the executable under test with @p arguments and collects what it printed.
@@ -155,22 +183,27 @@ void tst_QMdmmServer::savingToBothInstances_isRejected()
     QVERIFY(result.standardError.contains(u"save both per-user configuration and global configuration"_s));
 }
 
-// -c saves the resolved configuration to the per-user file and exits 0. The file
-// used to be a native-format store that ignored HOME; as an INI file it follows
-// HOME, which is what lets this case point HOME at a directory of its own and
-// assert on that one file -- the real per-user configuration of whoever runs the
-// tests is never touched.
+// -c saves the resolved configuration to the per-user file and exits 0. The file used to be a
+// native-format store that ignored HOME; as an INI file it follows HOME, which is what lets this
+// case assert on that one file rather than on whatever configuration the machine happens to hold.
+//
+// It writes the file it watches, so it writes where perUserCaseHome sends it: a home of its own off
+// CI, and the machine's own on it, where there is nothing to protect. The platform whose home does
+// not follow the environment is the one place that choice does not exist, and there the case has
+// nothing of its own to watch off CI, so it skips.
 void tst_QMdmmServer::savingPerUserConfiguration_writesTheFileUnderHome()
 {
-    QTemporaryDir home;
-    QVERIFY(home.isValid());
+    QTemporaryDir scratch;
+    const QString home = perUserCaseHome(scratch);
+    if (home.isEmpty())
+        QSKIP("the home does not follow the environment here and this machine is not one to be thrown away; a run would write the machine's own per-user file");
 
-    const RunResult result = runServer({u"-c"_s}, 60000, environmentWithHome(home.path()));
+    const RunResult result = runServer({u"-c"_s}, 60000, environmentWithHome(home));
 
     QVERIFY(result.exitStatus == QProcess::NormalExit);
     QCOMPARE(result.exitCode, 0);
 
-    const QString configurationFile = perUserConfigurationFile(home.path());
+    const QString configurationFile = perUserConfigurationFile(home);
     QVERIFY2(QFile::exists(configurationFile), qPrintable(configurationFile));
 
     QFile file(configurationFile);
@@ -190,8 +223,18 @@ void tst_QMdmmServer::savingPerUserConfiguration_writesTheFileUnderHome()
 // the outside instead of passing as a success. A regular file where the per-user
 // directory would go makes the write fail on any account, and the run then exits
 // with AccessError rather than 0.
+//
+// The blocker is what makes this case need more than a home it may write under: the file goes
+// where the per-user directory would, and on the machine's own home that place is the user's
+// configuration directory, which is not this case's to take away. So unlike its two neighbours
+// it always asks for a home of its own -- on CI as well, where it is the platform's ability to
+// move the home that is being used rather than a disposable machine. Where the platform has no
+// home to offer -- its home does not follow the environment -- the blocker would land beside the
+// write instead of in its way, the save would reach the machine's own file, and there would be
+// nothing here to assert on. So it skips there.
 void tst_QMdmmServer::savingPerUserConfiguration_reportsASaveThatCannotReachItsHome()
 {
+#ifndef Q_OS_WIN
     QTemporaryDir home;
     QVERIFY(home.isValid());
 
@@ -205,6 +248,9 @@ void tst_QMdmmServer::savingPerUserConfiguration_reportsASaveThatCannotReachItsH
     QCOMPARE(result.exitCode, static_cast<int>(QSettings::AccessError));
 
     QVERIFY(!QFile::exists(perUserConfigurationFile(home.path())));
+#else
+    QSKIP("the home does not follow the environment here, and this case needs a home of its own to bend: the blocker would go where the machine's own per-user directory is");
+#endif
 }
 
 // -1 selects the v1 presets. Their maximum-maxhp is 7, exactly the floor the
@@ -242,6 +288,14 @@ void tst_QMdmmServer::v1Presets_reachThePrintedConfiguration()
 // is stored as 10, neither the default 20 nor the preset's 7, so the printed
 // value says which source won; tcp-port is stored as 7777 to show the file
 // itself is still read in both rows.
+//
+// The file both rows read is one the case plants itself, under the home perUserCaseHome sends it: a
+// home of its own off CI, and the machine's own on it, where a file being the machine's is the point
+// rather than a problem. Where the home does not follow the environment there is nothing to plant
+// under off CI -- a run reads the machine's own file whichever home the case asks for -- so the case
+// skips rather than read that file and call whatever is in it its own setup. The file is left as the
+// case wrote it: on CI the machine goes away with it, and the cases after this one read it only
+// through values the command line or the preset settles.
 void tst_QMdmmServer::v1Presets_outrankAStoredLogicSection_data()
 {
     QTest::addColumn<QStringList>("arguments");
@@ -256,16 +310,24 @@ void tst_QMdmmServer::v1Presets_outrankAStoredLogicSection()
     QFETCH(QStringList, arguments);
     QFETCH(QString, printed);
 
-    QTemporaryDir home;
-    QVERIFY(home.isValid());
-    QVERIFY(QDir(home.path()).mkpath(u".QMdmm/Fsu0413.me"_s));
+    QTemporaryDir scratch;
+    const QString home = perUserCaseHome(scratch);
+    if (home.isEmpty())
+        QSKIP("the home does not follow the environment here and this machine is not one to be thrown away; the stored file would have to be the machine's own");
 
-    QFile file(perUserConfigurationFile(home.path()));
+    // The directory the file goes in. Only the write below needs it, and a case that finds it already
+    // there -- the machine's own home on CI, where the case above has written -- is not an error, so
+    // what mkpath() returned is not the assertion; the directory being there is.
+    const QDir perUserDirectory(QDir(home).absoluteFilePath(u".QMdmm/Fsu0413.me"_s));
+    QDir(home).mkpath(u".QMdmm/Fsu0413.me"_s);
+    QVERIFY(perUserDirectory.exists());
+
+    QFile file(perUserConfigurationFile(home));
     QVERIFY(file.open(QIODevice::WriteOnly));
     QVERIFY(file.write("[server]\ntcp-port=7777\n\n[logic]\nmaximum-maxhp=10\n") > 0);
     file.close();
 
-    const RunResult result = runServer(arguments, 60000, environmentWithHome(home.path()));
+    const RunResult result = runServer(arguments, 60000, environmentWithHome(home));
 
     QVERIFY(result.exitStatus == QProcess::NormalExit);
     QCOMPARE(result.exitCode, 0);
