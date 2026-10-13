@@ -279,9 +279,12 @@ jobs:
           # test, so neither the case that failed nor what it compared is
           # anywhere in it. The reading is one level down instead -- the shared
           # test main starts every binary with -o <name>6.xml,junitxml, and those
-          # reports carry the case name and quote its message. A failing case
-          # with no report beside it is a reading too: that process died before
-          # it got as far as writing one.
+          # reports carry the case name and quote its message.
+          #
+          # Four of the sixteen entries never write one, because their main is not
+          # that one -- the smoke runner, the server cli and the two GUI binaries.
+          # So the census below is over the eleven that do, and it is read as such
+          # rather than as a process that died before it could write anything.
           shopt -s globstar nullglob
           reports=(build/**/*6.xml)
           failing=()
