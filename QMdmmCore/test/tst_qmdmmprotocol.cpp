@@ -16,6 +16,11 @@
 #error "QMDMM_PROTOCOL_HEADER must name QMdmmCore/src/qmdmmprotocol.h; see QMdmmCore/test/CMakeLists.txt"
 #endif
 
+// The case at the end reads the wire contract beside the header, for the same reason.
+#ifndef QMDMM_PROTOCOL_DOC
+#error "QMDMM_PROTOCOL_DOC must name doc/protocol.md; see QMdmmCore/test/CMakeLists.txt"
+#endif
+
 using namespace Qt::StringLiterals;
 
 // NOLINTBEGIN
@@ -126,6 +131,45 @@ QStringList wireIdsOf(const QStringList &enumerators)
             ret.append(enumerator);
     }
     ret.sort();
+
+    return ret;
+}
+
+// The id tables in doc/protocol.md sit between these two comments, and the check at the
+// end of this file reads the ids out of exactly that text: a table that drifts away from
+// the markers stops being read rather than passing quietly, and an empty reading fails
+// against the header. The markers are documentation's own -- a reader of the page never
+// sees them, HTML comments being stripped by every renderer that gets one.
+constexpr char ID_TABLE_BEGIN[] = "<!-- protocol-ids: begin -->";
+constexpr char ID_TABLE_END[] = "<!-- protocol-ids: end -->";
+
+// Every id the tables list, in file order, one entry per row. A row is
+// "| `AnId` | ... |": the header row and the rule carry no backtick in their first cell,
+// so this reads ids and nothing else.
+QStringList idsInProtocolDocument(const QByteArray &source)
+{
+    static const QRegularExpression row(u"^\\|\\s*`([A-Za-z0-9_]+)`\\s*\\|"_s);
+
+    QStringList ret;
+    bool inATable = false;
+    const QStringList lines = QString::fromUtf8(source).split(u'\n');
+    for (const QString &line : lines) {
+        const QString trimmed = line.trimmed();
+        if (trimmed == QString::fromLatin1(ID_TABLE_BEGIN)) {
+            inATable = true;
+            continue;
+        }
+        if (trimmed == QString::fromLatin1(ID_TABLE_END)) {
+            inATable = false;
+            continue;
+        }
+        if (!inATable)
+            continue;
+
+        const QRegularExpressionMatch match = row.match(trimmed);
+        if (match.hasMatch())
+            ret.append(match.captured(1));
+    }
 
     return ret;
 }
@@ -415,6 +459,42 @@ private slots:
         QJsonObject ob = QJsonDocument::fromJson(serialized).object();
         ob.remove(u"value"_s);
         QVERIFY2(Packet::fromJson(QJsonDocument(ob).toJson(QJsonDocument::Compact)).hasError(), qPrintable(QString::fromUtf8(serialized)));
+    }
+
+    // Every id the header declares, except the sentinels and the mask markers, has a row
+    // in the id tables of doc/protocol.md, and no row names an id the header does not
+    // declare. The tables and the header are two carriers of one list -- the pages a
+    // reader of the protocol goes to, and the enumerators the code decodes -- so this is
+    // what keeps them from drifting apart; either side moving alone fails here.
+    void QMdmmProtocoldocumentNamesEveryId()
+    {
+        QFile header(QStringLiteral(QMDMM_PROTOCOL_HEADER));
+        if (!header.open(QIODevice::ReadOnly))
+            QFAIL(qPrintable(u"%1: %2"_s.arg(header.fileName(), header.errorString())));
+
+        QFile doc(QStringLiteral(QMDMM_PROTOCOL_DOC));
+        if (!doc.open(QIODevice::ReadOnly))
+            QFAIL(qPrintable(u"%1: %2"_s.arg(doc.fileName(), doc.errorString())));
+
+        // The header side is the same reading the fixture case takes, so the three lists
+        // agree by construction; the document side is the one that can be behind.
+        QStringList declared;
+        const QMap<QString, QStringList> found = enumeratorsInProtocolHeader(header.readAll());
+        for (const QString &enumName : found.keys())
+            declared.append(wireIdsOf(found.value(enumName)));
+        declared.sort();
+
+        const QStringList documented = idsInProtocolDocument(doc.readAll());
+
+        // Two rows for one id would read as two ids, and a sorted comparison below could
+        // not tell that from the list simply being right, so it is looked at first.
+        QStringList sorted = documented;
+        sorted.sort();
+        QStringList deduplicated = sorted;
+        deduplicated.removeDuplicates();
+        QCOMPARE(deduplicated, sorted);
+
+        QCOMPARE(sorted, declared);
     }
 };
 

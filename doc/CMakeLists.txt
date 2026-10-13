@@ -50,6 +50,7 @@ if (DOXYGEN_FOUND)
         command-line.md
         concepts.md
         getting-started.md
+        protocol.md
         ALL
         USE_STAMP_FILE
     )

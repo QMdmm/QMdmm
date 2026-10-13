@@ -22,8 +22,11 @@ function(add_qmdmmcore_test TEST_SOURCE)
         # The protocol fixtures read the header that declares the ids to compare them
         # against, so its path is named here rather than looked up from the test
         # binary, which sits at a different depth in a build tree and in an install.
+        # The contract page beside it is read the same way: both are carriers of one
+        # list, and the case that reads them is what keeps them in step.
         target_compile_definitions("tst_qmdmmcore_${TEST_TARGET_EXECUTABLE}6" PRIVATE
             QMDMM_PROTOCOL_HEADER="${CMAKE_CURRENT_SOURCE_DIR}/../src/qmdmmprotocol.h"
+            QMDMM_PROTOCOL_DOC="${CMAKE_CURRENT_SOURCE_DIR}/../../doc/protocol.md"
         )
 
         add_test(NAME "QMdmmCore - ${TEST_SOURCE} - Qt6" COMMAND "tst_qmdmmcore_${TEST_TARGET_EXECUTABLE}6")

@@ -67,6 +67,8 @@ a running `QMdmmServer` over TCP or WebSocket.
   a round actually runs.
 - [Concepts](doc/concepts.md) — what each library is for, how the two meet, and
   where the programs sit on top of them.
+- [Wire protocol](doc/protocol.md) — the frames a server and a client exchange,
+  and every id a packet can carry with the payload that goes with it.
 - [Getting Started](doc/getting-started.md) — build, run, and play a headless
   game end-to-end.
 - [Command-line programs](doc/command-line.md) — every option `QMdmmBot` and
@@ -150,7 +152,8 @@ The wire protocol is JSON-based. Packets come in three kinds
 | `NotifyToAgentMask` | server → a specific agent | `Speak`, `Operate` |
 
 Transports: TCP (default port 6366), local sockets, and WebSocket (default
-port 6367).
+port 6367). The [wire protocol](doc/protocol.md) page carries the contract
+behind this summary: the frame, the payload of every id, and the handshake.
 
 ## Directory layout
 
