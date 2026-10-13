@@ -708,15 +708,19 @@ TestCase {
         // backoff (half a second, then doubling, five attempts) and only then says that it has
         // stopped. That last word is what the user waits for when the first one is not enough
         // to act on, and it travels the bridge's give-up channel rather than the transport's --
-        // without it the strip keeps saying "Connecting to server..." for good. The port below
-        // has nothing behind it, and the whole chain takes fifteen-odd seconds, which is what
-        // the window is for. The reason that arrives first is asserted apart from the notice,
-        // the two being different channels: a looser reading would be satisfied by either.
+        // without it the strip keeps saying "Connecting to server..." for good. What is below is
+        // a local socket name that was never created, rather than a closed TCP port: how long a
+        // refused connect takes is the platform's business (seconds per attempt on a Windows
+        // runner, which stretches the chain's six attempts far past the fifteen-odd seconds the
+        // backoff alone adds up to and past any window worth waiting), while a name with nothing
+        // at it is refused at once everywhere. This case is about the retries and the notice,
+        // not about that. The reason that arrives first is asserted apart from the notice, the
+        // two being different channels: a looser reading would be satisfied by either.
         var errors = createTemporaryObject(signalSpyComponent, testCase, {
                                                target: game,
                                                signalName: "errorOccurred"
                                            });
-        game.connectOnline("qmdmm://127.0.0.1:1", "Tester");
+        game.connectOnline("QMdmmUnstartedServer", "Tester");
 
         tryVerify(function () {
             return errors.count > 0;

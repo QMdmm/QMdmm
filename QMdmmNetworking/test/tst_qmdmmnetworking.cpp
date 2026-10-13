@@ -557,9 +557,13 @@ void tst_QMdmmNetworking::client_declaresManagedStateToServer()
     QVERIFY(p2->connectToHost(host, Data::StateOnlineBot));
     QTRY_VERIFY_WITH_TIMEOUT(p2->room() != nullptr && p2->room()->player(p1->objectName()) != nullptr, 5000);
 
-    // The sign-in carried Online without Trust, so nothing is managed before the toggle.
+    // The sign-in carried Online without Trust, so nothing is managed before the toggle. The
+    // state is quoted if this fails: the client reaches the managed flag either from a state the
+    // server sent it (notifyPlayerAdded / notifyAgentStateChanged adopt the server's view) or by
+    // declaring it itself (Agent::setManaged), and nothing here declares it before the toggle --
+    // so the number is what tells which of the two happened on a platform where this is red.
     QVERIFY(p1->agent()->state().testFlag(Data::StateMaskOnline));
-    QVERIFY(!p1->agent()->managed());
+    QVERIFY2(!p1->agent()->managed(), qPrintable(u"p1's agent state is 0x%1 before anything declared it managed"_s.arg(static_cast<int>(p1->agent()->state()), 0, 16)));
 
     bool p2SawManaged = false;
     connect(p2->agent(), &Agent::agentStateChangeNotified, &server, [&p2SawManaged, p1](const QString &playerName, const Data::AgentState &state) {
@@ -575,7 +579,8 @@ void tst_QMdmmNetworking::client_declaresManagedStateToServer()
     // own state is not touched -- a declaration is about the declaring player only.
     QVERIFY(p1->agent()->managed());
     QVERIFY(p1->agent()->state().testFlag(Data::StateMaskOnline));
-    QVERIFY(!p2->agent()->managed());
+    QVERIFY2(!p2->agent()->managed(),
+             qPrintable(u"p2's agent state is 0x%1; a declaration is about the declaring player only"_s.arg(static_cast<int>(p2->agent()->state()), 0, 16)));
 
     bool p2SawUnmanaged = false;
     connect(p2->agent(), &Agent::agentStateChangeNotified, &server, [&p2SawUnmanaged, p1](const QString &playerName, const Data::AgentState &state) {
