@@ -650,10 +650,16 @@ TestCase {
         compare(game.botProgram, "/nowhere/QMdmmBot6");
 
         // With neither path given, both are looked for next to this program -- which is where
-        // the build tree keeps them, next to this test.
+        // the build tree keeps them, next to this test. The name that comes back is the one
+        // the platform resolves, not the one written in the source: the lookup hands each name
+        // to QStandardPaths with the platform's own suffix list (gameclient.cpp), so on Windows
+        // the two are .exe files and the reading below has to expect the suffix the platform
+        // adds rather than the bare name. Asking for the suffix here is what keeps this a case
+        // about the name and the directory, and not about the platform's file naming.
+        var suffix = Qt.platform.os === "windows" ? ".exe" : "";
         game.setProgramPaths("", "");
-        verify(game.serverProgram.endsWith("/QMdmmServer6"), game.serverProgram);
-        verify(game.botProgram.endsWith("/QMdmmBot6"), game.botProgram);
+        verify(game.serverProgram.endsWith("/QMdmmServer6" + suffix), game.serverProgram);
+        verify(game.botProgram.endsWith("/QMdmmBot6" + suffix), game.botProgram);
     }
 
     function test_theLocalGameRunsOnTheServerDefaultSocketName() {
