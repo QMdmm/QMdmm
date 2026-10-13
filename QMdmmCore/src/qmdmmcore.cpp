@@ -416,7 +416,6 @@ struct RuntimeDataDirectory final
         qWarning().noquote() << message;
 
         std::exit(3);
-        Q_UNREACHABLE();
     }
 
     Q_DISABLE_COPY_MOVE(RuntimeDataDirectory);

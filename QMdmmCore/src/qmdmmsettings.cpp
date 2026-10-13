@@ -136,7 +136,6 @@ QVariant Settings::value(Instance instance, const QString &key, const QVariant &
     }
 
     Q_UNREACHABLE();
-    return {};
 }
 
 /**
@@ -194,7 +193,6 @@ bool Settings::contains(Instance instance, const QString &key) const
     }
 
     Q_UNREACHABLE();
-    return false;
 }
 
 #ifndef DOXYGEN
