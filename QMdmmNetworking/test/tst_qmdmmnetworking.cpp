@@ -571,6 +571,24 @@ void tst_QMdmmNetworking::client_declaresManagedStateToServer()
             p2SawManaged = true;
     });
 
+    // The declaring client is told the same way -- the server owns the agent state and reports the
+    // result back (see ClientP::sendManagedChanged), which is what the toggle's two halves below
+    // wait for. The unmanaged half is latched only once this half was seen, so an unsolicited
+    // earlier broadcast (the sign-in snapshot) cannot make that wait finish before the withdrawal
+    // has been read: the two halves arrive in this order, so seeing the second one means the first
+    // one is behind us.
+    bool p1SawOwnManaged = false;
+    bool p1SawOwnUnmanaged = false;
+    connect(p1->agent(), &Agent::agentStateChangeNotified, &server, [&p1SawOwnManaged, &p1SawOwnUnmanaged, p1](const QString &playerName, const Data::AgentState &state) {
+        if (playerName != p1->objectName())
+            return;
+
+        if (state.testFlag(Data::StateMaskTrust))
+            p1SawOwnManaged = true;
+        else if (p1SawOwnManaged)
+            p1SawOwnUnmanaged = true;
+    });
+
     p1->agent()->setManaged(true);
     QTRY_VERIFY_WITH_TIMEOUT(p2SawManaged, 5000);
 
@@ -589,8 +607,16 @@ void tst_QMdmmNetworking::client_declaresManagedStateToServer()
     });
 
     p1->agent()->setManaged(false);
+    // Both observers wait for the broadcast rather than for the client's own bookkeeping. The two
+    // sockets are read independently, so a wait that only covers p2 leaves the assertion below
+    // racing p1's own socket: it can still be holding the broadcast of the earlier declaration and
+    // read it after the withdrawal has cleared the flag locally, which puts the flag back until the
+    // withdrawal's own broadcast is read behind it. Waiting for p1's echo as well settles that
+    // first, and the state is quoted if this fails, so a red on a platform where the withdrawal
+    // never comes back says which of the two readings it was.
     QTRY_VERIFY_WITH_TIMEOUT(p2SawUnmanaged, 5000);
-    QVERIFY(!p1->agent()->managed());
+    QTRY_VERIFY_WITH_TIMEOUT(p1SawOwnUnmanaged, 5000);
+    QVERIFY2(!p1->agent()->managed(), qPrintable(u"p1's agent state is 0x%1 after the withdrawal was broadcast"_s.arg(static_cast<int>(p1->agent()->state()), 0, 16)));
 }
 
 // A reply carrying a statically checkable invalid value -- here an out-of-range
