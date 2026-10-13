@@ -163,7 +163,7 @@ QMdmmNetworking/ Network layer (server / client / protocol transport)
 QMdmmServer/     Standalone server program
 QMdmmGui/        Graphical client (QML)
 QMdmmBot/        Scripted client that plays automatically (bot strategies)
-doc/             Documentation: Doxygen config + guides (architecture, getting started)
+doc/             Documentation: Doxygen config + guides
 3rdparty/        Third-party dependencies
 cmake/           CMake helper modules
 ```
