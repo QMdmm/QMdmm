@@ -48,15 +48,25 @@ private:
 // Settings resolves QDir::home() once, when the first Settings object of this process is
 // built, and the per-user path is derived from it there. So the home has to move before any
 // case runs; nothing in this file touches Settings before this hook has returned.
+//
+// Whether it can be moved is the platform's answer rather than this file's. QDir::homePath()
+// follows the environment on the Unix platforms, while Windows takes the profile directory
+// out of the process token first -- USERPROFILE and HOMEDRIVE + HOMEPATH are asked before HOME
+// is -- so the temporary home below never becomes the one Settings resolves, and the case that
+// watches the per-user file says so instead of asserting on a home it did not get.
 void tst_QMdmmSettings::initTestCase()
 {
     QVERIFY(home.isValid());
     qputenv("HOME", home.path().toLocal8Bit());
+
+#ifndef Q_OS_WIN
     QCOMPARE(QDir::homePath(), home.path());
+#endif
 }
 
 void tst_QMdmmSettings::perUserConfigurationIsAnIniFileUnderTheHomeDirectory()
 {
+#ifndef Q_OS_WIN
     // The keys are arbitrary: this case is about where the configuration file goes, not
     // about what the game puts in it.
     Settings settings;
@@ -72,6 +82,13 @@ void tst_QMdmmSettings::perUserConfigurationIsAnIniFileUnderTheHomeDirectory()
     const QString iniFile = home.filePath(u".QMdmm/Fsu0413.me/QMdmm.ini"_s);
     QVERIFY(QFile::exists(iniFile));
     QCOMPARE(QSettings(iniFile, QSettings::IniFormat).value(u"logic/slash"_s).toInt(), 3);
+#else
+    // The file this case is about would be the machine's own, whose values a run of the
+    // server would then read, and there is no second home to write it under instead. Nothing
+    // here can say anything about the per-user path on this platform, so it skips rather than
+    // assume the home it asked for.
+    QSKIP("the home directory does not follow the environment on this platform; the per-user file would be the machine's own");
+#endif
 }
 
 // The other half of the pair: the global instance goes through the system scope. Which
