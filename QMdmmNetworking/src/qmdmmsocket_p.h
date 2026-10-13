@@ -25,8 +25,9 @@ public:
     virtual bool connectToHost(const QString &addr) = 0;
     virtual bool disconnectFromHost() = 0;
 
-    // The bound lives here, next to the transport that has to honour it.
-    void setMaximumPacketSize(int maximumPacketSize);
+    // The bound lives here, next to the transport that has to honour it. The parameter is
+    // underscored because it would otherwise hide the member of that name (MSVC /W4, C4458).
+    void setMaximumPacketSize(int _maximumPacketSize);
 
     Socket *q;
     std::optional<Socket::Error> error;
@@ -36,7 +37,7 @@ public slots: // NOLINT(readability-redundant-access-specifiers)
     virtual void sendPacket(QMdmmCore::Packet packet) = 0;
     bool packetReceived(const QByteArray &arr);
     void socketDisconnected();
-    void errorOccurred(const Socket::Error &error);
+    void errorOccurred(const Socket::Error &_error);
 
 protected:
     // Push the bound onto the transport itself, so it stops reading from the peer once the bound

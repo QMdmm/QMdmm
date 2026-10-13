@@ -62,9 +62,9 @@ SocketP::SocketP(Socket *q)
     connect(q, &Socket::sendPacket, this, &SocketP::sendPacket);
 }
 
-void SocketP::setMaximumPacketSize(int maximumPacketSize)
+void SocketP::setMaximumPacketSize(int _maximumPacketSize)
 {
-    this->maximumPacketSize = maximumPacketSize;
+    maximumPacketSize = _maximumPacketSize;
     applyMaximumPacketSize();
 }
 
@@ -80,9 +80,9 @@ bool SocketP::giveUpOnUnterminatedData(qint64 availableBytes)
     if (maximumPacketSize <= 0 || availableBytes < maximumPacketSize)
         return false;
 
-    const Socket::Error error {.code = Socket::ProtocolError, .errorString = u"the peer sent %1 bytes without ending a packet"_s.arg(availableBytes)};
-    errorOccurred(error);
-    q->setError(error);
+    const Socket::Error err {.code = Socket::ProtocolError, .errorString = u"the peer sent %1 bytes without ending a packet"_s.arg(availableBytes)};
+    errorOccurred(err);
+    q->setError(err);
     return true;
 }
 
@@ -94,9 +94,9 @@ bool SocketP::packetReceived(const QByteArray &arr)
     QString packetError;
     if (packet.hasError(&packetError)) {
         // Don't process more package for this connection. It is not guaranteed to be the desired client
-        const Socket::Error error {.code = Socket::ProtocolError, .errorString = packetError};
-        errorOccurred(error);
-        q->setError(error);
+        const Socket::Error err {.code = Socket::ProtocolError, .errorString = packetError};
+        errorOccurred(err);
+        q->setError(err);
         return false;
     }
 
@@ -111,10 +111,10 @@ void SocketP::socketDisconnected()
 }
 
 // NOLINTNEXTLINE(readability-make-member-function-const)
-void SocketP::errorOccurred(const Socket::Error &error)
+void SocketP::errorOccurred(const Socket::Error &_error)
 {
-    this->error = error;
-    emit q->socketErrorOccurred(error, Socket::QPrivateSignal());
+    error = _error;
+    emit q->socketErrorOccurred(_error, Socket::QPrivateSignal());
 }
 
 SocketP_QTcpSocket::SocketP_QTcpSocket(QTcpSocket *socket, Socket *q)

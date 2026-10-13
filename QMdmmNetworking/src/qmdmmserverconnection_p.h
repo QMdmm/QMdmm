@@ -67,7 +67,7 @@ public:
     // Reconnect on the wire layer (D-018): rebind the socket and replay the round events the
     // reconnecting client missed. The logic-side half of a reconnect (restore online/trust +
     // state snapshot) lives on LogicRunner::reconnectAgent, which only deals with agents.
-    void reconnect(Socket *socket, int lastRoundEventSeq);
+    void reconnect(Socket *_socket, int lastRoundEventSeq);
 
     void addRequest(QMdmmCore::Protocol::RequestId requestId, const QJsonValue &value);
 

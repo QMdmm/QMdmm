@@ -616,11 +616,11 @@ void ServerConnectionP::replayMissedRoundEvents(int lastRoundEventSeq)
         emit sendPacket(roundEventLog.at(i));
 }
 
-void ServerConnectionP::reconnect(Socket *socket, int lastRoundEventSeq)
+void ServerConnectionP::reconnect(Socket *_socket, int lastRoundEventSeq)
 {
     // Rebind the socket. setSocket is safe because onSocketDisconnected already set the old
     // socket to nullptr before this point, so nothing gets double-deleted.
-    setSocket(socket);
+    setSocket(_socket);
 
     // Precise catch-up: replay the round events the client missed. The client reported how many
     // round events it received before the drop (lastRoundEventSeq); every event this connection
