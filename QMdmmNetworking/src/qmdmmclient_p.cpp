@@ -979,6 +979,10 @@ void ClientP::handleSocketGone(const QString &errorString)
     if (socket == nullptr)
         return;
 
+    // The heartbeat belongs to the connection it pings: disarm it together with the socket, so a
+    // disconnected client stops pinging and can never address a socket that is going away.
+    // connectSocket() re-arms it once there is a connection again.
+    heartbeatTimer->stop();
     connected = false;
 
     // Detach first so a second signal from the same socket (error + disconnected
@@ -1012,6 +1016,9 @@ bool ClientP::connectSocket()
     connect(socket, &Socket::packetReceived, this, &ClientP::socketPacketReceived);
     if (socket->connectToHost(host)) {
         connected = true;
+        // Arm the heartbeat: while the client has a connection, NotifyPingServer goes out every
+        // heartbeat interval, which is what lets a server tell an idle player from a gone one.
+        heartbeatTimer->start();
         return true;
     }
 

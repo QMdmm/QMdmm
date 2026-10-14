@@ -60,6 +60,7 @@ private slots:
     void client_dropsOnAnUnparseablePacket();
     void server_doesNotDropServerBoundNotify();
     void client_disconnectFromHostStopsAutoReconnect();
+    void client_sendsHeartbeatPings();
     void client_disconnectsOnProtocolVersionMismatch();
     void client_reportsAVersionNumberMismatchAndSignsIn();
     void server_listenErrorAndClose();
@@ -1111,6 +1112,64 @@ void tst_QMdmmNetworking::client_disconnectFromHostStopsAutoReconnect()
     QVERIFY(p1->connectToHost(host, Data::StateOnline));
     QVERIFY(p1->isConnected());
     QTRY_VERIFY_WITH_TIMEOUT(p1->room() != nullptr && p1->room()->player(p1->objectName()) != nullptr, 5000);
+}
+
+// The heartbeat is what lets a server tell an idle player from one that is gone, and
+// NotifyPingServer has exactly one sender in a client: the heartbeat timer. The timer was created,
+// given its interval and wired to its slot, but nothing ever started it, so the ping never left
+// the client. The pings are read off a raw TCP server's accepted socket -- the connection's own
+// wire, not an internal counter. The interval is shortened on the client's timer rather than the
+// case waiting out 30s: it is about pings going out repeatedly, not about the wall clock, and the
+// client arms the timer itself (the case never starts it).
+void tst_QMdmmNetworking::client_sendsHeartbeatPings()
+{
+    QTcpServer rawServer;
+    QVERIFY(rawServer.listen(QHostAddress::LocalHost, 0));
+
+    QTcpSocket *accepted = nullptr;
+    int pings = 0;
+    QObject::connect(&rawServer, &QTcpServer::newConnection, &rawServer, [&rawServer, &accepted, &pings]() {
+        accepted = rawServer.nextPendingConnection();
+        QObject::connect(accepted, &QAbstractSocket::readyRead, accepted, [accepted, &pings]() {
+            while (accepted->canReadLine()) {
+                const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(accepted->readLine());
+                if (packet.type() == QMdmmCore::Protocol::TypeNotify && packet.notifyId() == QMdmmCore::Protocol::NotifyPingServer)
+                    ++pings;
+            }
+        });
+    });
+
+    const QString host = u"qmdmm://127.0.0.1:%1"_s.arg(rawServer.serverPort());
+
+    auto *client = new Client(ClientConfiguration(), &rawServer);
+
+    // The client owns two timers and only the heartbeat repeats (the reconnect timer is
+    // single-shot), so the repeating one is the heartbeat.
+    QTimer *heartbeat = nullptr;
+    for (QTimer *timer : client->findChildren<QTimer *>()) {
+        if (!timer->isSingleShot())
+            heartbeat = timer;
+    }
+    QVERIFY2(heartbeat != nullptr, "the client has no repeating heartbeat timer");
+    QCOMPARE(heartbeat->interval(), 30000);
+
+    QVERIFY(client->connectToHost(host, Data::StateOnline));
+    QVERIFY2(heartbeat->isActive(), "connecting did not arm the heartbeat timer");
+
+    heartbeat->setInterval(200); // does not start an idle timer: only the client's own arming counts
+    QTRY_VERIFY_WITH_TIMEOUT(pings >= 2, 5000);
+    QVERIFY(accepted != nullptr);
+
+    // The heartbeat belongs to the connection it pings: at the moment the client reports the
+    // connection lost, the timer must already be disarmed. Read inside the notice, while the
+    // reconnect loop has not had a chance to arm anything again. (read off the client, not
+    // asserted here: QVERIFY is not available in a lambda)
+    bool armedWhenTheConnectionWasLost = true;
+    connect(client, &Client::socketConnectionLost, &rawServer,
+            [heartbeat, &armedWhenTheConnectionWasLost](const QString &) { armedWhenTheConnectionWasLost = heartbeat->isActive(); });
+
+    accepted->close();
+    QTRY_VERIFY_WITH_TIMEOUT(!armedWhenTheConnectionWasLost, 5000);
 }
 
 // A protocolVersion mismatch is a hard incompatibility, not a transient failure: the client must
