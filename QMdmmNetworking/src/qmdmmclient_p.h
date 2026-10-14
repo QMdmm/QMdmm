@@ -64,6 +64,11 @@ public:
     QMdmmCore::Protocol::RequestId currentRequest;
     QMdmmCore::Data::AgentState initialState;
 
+    // True while a state the server pushed is being written into an agent. The server owns the
+    // agent state, so an adopted state is not declared back out on the wire -- only the operation
+    // side's own Agent::setManaged declares (see adoptAgentState and sendAgentStateChanged).
+    bool adoptingServerState = false;
+
     // Number of round events received this round. The client increments this counter by one for
     // every round-event notify it receives (and resets it on notifyRoundStart), and reports it on
     // reconnect for the precise catch-up (see backlog "precise catch-up"). Its value doubles as
@@ -91,6 +96,10 @@ public:
     void notifyGameOver(const QJsonValue &value);
     void notifySpoken(const QJsonValue &value);
     void notifyOperated(const QJsonValue &value);
+
+    // Write a state the server pushed into an agent. Every notify that carries a state goes
+    // through here, so that adopting it does not turn into a declaration of it.
+    void adoptAgentState(Agent *agent, const QMdmmCore::Data::AgentState &agentState);
 
     bool applyAction(const QString &playerName, QMdmmCore::Data::Action action, const QString &toPlayer, int toPlace);
     bool applyUpgrade(const QHash<QString, QList<QMdmmCore::Data::UpgradeItem>> &upgrades);
@@ -124,7 +133,8 @@ public slots: // NOLINT(readability-redundant-access-specifiers)
     void sendRequestGivenUp();
     // The operation side declared a different agent state: report the managed flag it carries to
     // the server, which owns the agent state and reports the result back through the ordinary
-    // broadcast. Mirrors Agent::setManaged.
+    // broadcast. Mirrors Agent::setManaged. A state adopted from the server is not declared back --
+    // see adoptAgentState.
     void sendAgentStateChanged(QMdmmCore::Data::AgentState state);
 };
 } // namespace p
