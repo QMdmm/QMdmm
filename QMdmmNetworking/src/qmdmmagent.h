@@ -94,11 +94,11 @@ public:
 
 signals:
     void screenNameChanged(const QString &, QPrivateSignal);
+    // The one signal the managed flag travels on, in both directions: the operation side declares
+    // it by flipping the flag in the state (see setManaged), and the server's own view of it
+    // arrives the same way. The wire declaration is built from this signal's state, so there is no
+    // separate managed-changed signal to keep in step with it.
     void stateChanged(QMdmmCore::Data::AgentState, QPrivateSignal);
-    // The operation side declared a different managed state (see setManaged). The server's own view
-    // of the flag arrives through stateChanged instead, so a server-driven change is never declared
-    // back out on the wire.
-    void managedChanged(bool managed, QPrivateSignal);
 
     void logicConfigurationNotified(QPrivateSignal);
     void agentStateChangeNotified(const QString &playerName, const QMdmmCore::Data::AgentState &agentState, QPrivateSignal);

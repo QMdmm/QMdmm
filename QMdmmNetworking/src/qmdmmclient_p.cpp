@@ -100,7 +100,7 @@ void ClientP::initSelfAgent()
     // Wire the client's own agent's reply / speech / operation signals to the encode-and-send
     // slots below. The operation side drives the Agent's bare-verb methods (rockPaperScissors /
     // actionOrder / action / upgrade) and speak / operate / setManaged, which forward as the
-    // replyXxx / spoken / operated / managedChanged signals; this client turns them back into wire
+    // replyXxx / spoken / operated / stateChanged signals; this client turns them back into wire
     // packets. Mirrors the server side, where ServerConnectionP wires the Agent's xxxRequested /
     // xxxNotified signals.
     connect(self, &Agent::replyRockPaperScissors, this, &ClientP::sendRockPaperScissorsReply);
@@ -110,7 +110,7 @@ void ClientP::initSelfAgent()
     connect(self, &Agent::spoken, this, &ClientP::sendSpeak);
     connect(self, &Agent::operated, this, &ClientP::sendOperate);
     connect(self, &Agent::requestGivenUp, this, &ClientP::sendRequestGivenUp);
-    connect(self, &Agent::managedChanged, this, &ClientP::sendManagedChanged);
+    connect(self, &Agent::stateChanged, this, &ClientP::sendAgentStateChanged);
 }
 
 // Qt documentation only mentioned "auto" here
@@ -887,15 +887,18 @@ void ClientP::sendRequestGivenUp()
 }
 
 // NOLINTNEXTLINE(readability-make-member-function-const)
-void ClientP::sendManagedChanged(bool managed)
+void ClientP::sendAgentStateChanged(QMdmmCore::Data::AgentState state)
 {
     // Declare the managed flag to the server, which owns the agent state: it applies the flag and
     // reports the result back through the ordinary agent state broadcast, so the client never
-    // treats its own declaration as the final word. The player is identified by the socket, hence
-    // no name in the payload.
+    // treats its own declaration as the final word. Driven by the agent's state signal, which also
+    // carries the server's own view of the flag; that view is what the client's state already
+    // holds, so the declaration it produces repeats a value the server has -- the server's own
+    // "only an actual change" guard settles it there and nothing oscillates. The player is
+    // identified by the socket, hence no name in the payload.
     if (socket != nullptr) {
         QJsonObject ob;
-        ob.insert(u"managed"_s, managed);
+        ob.insert(u"managed"_s, state.testFlag(QMdmmCore::Data::StateMaskTrust));
         emit socket->sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyManagedChanged, ob));
     }
 }

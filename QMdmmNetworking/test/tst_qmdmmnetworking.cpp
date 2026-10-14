@@ -182,6 +182,12 @@ void tst_QMdmmNetworking::signIn_reconnectsPlayerInNonCurrentRoom()
 // reconnect, which is the bug this guards against). p2, still connected in the same full room,
 // observes p1's reconnected state via the agentStateChangeNotified broadcast: the drop first
 // marks p1 offline (Online cleared), then the reconnect must report it online with Trust clear.
+//
+// The declaring client is the second half of that guard. The flag is declared while the connection
+// is up, so the drop has to withdraw it: p1 goes in managed, drops, and comes back, and it must not
+// re-declare the stale Trust it still held locally. A client-side echo of the stale flag would
+// re-grant Trust on the server -- the same outcome the server-side regression above produces, which
+// is why both halves are latched here.
 void tst_QMdmmNetworking::reconnectDoesNotAutoTrust()
 {
     LogicConfiguration conf = LogicConfiguration::defaults();
@@ -206,6 +212,16 @@ void tst_QMdmmNetworking::reconnectDoesNotAutoTrust()
     QVERIFY(p2->connectToHost(host, Data::StateOnlineBot));
     QTRY_VERIFY_WITH_TIMEOUT(p2->room() != nullptr && p2->room()->player(p1->objectName()) != nullptr, 5000);
 
+    // The flag has to really be on the server before the drop, otherwise the reconnect would not
+    // have anything stale to withdraw and the guard below would pass for the wrong reason.
+    bool p2SawManaged = false;
+    connect(p2->agent(), &Agent::agentStateChangeNotified, &server, [&p2SawManaged, p1](const QString &playerName, const Data::AgentState &state) {
+        if (playerName == p1->objectName() && state.testFlag(Data::StateMaskTrust))
+            p2SawManaged = true;
+    });
+    p1->agent()->setManaged(true);
+    QTRY_VERIFY_WITH_TIMEOUT(p2SawManaged, 5000);
+
     // p2 observes p1's state broadcasts. The drop reports p1 offline (Online cleared); only the
     // reconnect broadcasts p1 online again, and it must do so with Trust still clear. If the old
     // auto-Trust behavior regressed, no broadcast would ever carry Online-without-Trust and this
@@ -214,6 +230,21 @@ void tst_QMdmmNetworking::reconnectDoesNotAutoTrust()
     connect(p2->agent(), &Agent::agentStateChangeNotified, &server, [&p1OnlineNotTrusted, p1](const QString &playerName, const Data::AgentState &state) {
         if (playerName == p1->objectName() && state.testFlag(Data::StateMaskOnline) && !state.testFlag(Data::StateMaskTrust))
             p1OnlineNotTrusted = true;
+    });
+
+    // The stale-Trust latch: once p1 is seen offline, any later broadcast carrying Trust means the
+    // flag came back -- either from the server's own reconnect path or from the client declaring
+    // the value it still held locally. Both are D-021 violations and both land here.
+    bool p1Dropped = false;
+    bool p1TrustedAfterDrop = false;
+    connect(p2->agent(), &Agent::agentStateChangeNotified, &server, [&p1Dropped, &p1TrustedAfterDrop, p1](const QString &playerName, const Data::AgentState &state) {
+        if (playerName != p1->objectName())
+            return;
+
+        if (!state.testFlag(Data::StateMaskOnline))
+            p1Dropped = true;
+        else if (p1Dropped && state.testFlag(Data::StateMaskTrust))
+            p1TrustedAfterDrop = true;
     });
 
     QTcpSocket *p1Sock = p1->findChild<QTcpSocket *>();
@@ -225,6 +256,13 @@ void tst_QMdmmNetworking::reconnectDoesNotAutoTrust()
 
     QTRY_VERIFY_WITH_TIMEOUT(reconnected, 10000);
     QTRY_VERIFY_WITH_TIMEOUT(p1OnlineNotTrusted, 5000);
+
+    // The declaring client itself takes the server's word on the way back in: the snapshot the
+    // reconnect resends clears the flag it still held, and it is the snapshot -- not the client's
+    // own memory -- that settles it. Asserting the local flag after the broadcast above also pins
+    // the order: the state the client holds is the one the server reported.
+    QTRY_VERIFY_WITH_TIMEOUT(!p1->agent()->managed(), 5000);
+    QVERIFY(!p1TrustedAfterDrop);
 }
 
 // addAgent with a locally-owned agent (no ServerConnectionP child) registers a socket-less
@@ -572,7 +610,7 @@ void tst_QMdmmNetworking::client_declaresManagedStateToServer()
     });
 
     // The declaring client is told the same way -- the server owns the agent state and reports the
-    // result back (see ClientP::sendManagedChanged), which is what the toggle's two halves below
+    // result back (see ClientP::sendAgentStateChanged), which is what the toggle's two halves below
     // wait for. The unmanaged half is latched only once this half was seen, so an unsolicited
     // earlier broadcast (the sign-in snapshot) cannot make that wait finish before the withdrawal
     // has been read: the two halves arrive in this order, so seeing the second one means the first

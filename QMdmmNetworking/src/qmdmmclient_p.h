@@ -122,10 +122,10 @@ public slots: // NOLINT(readability-redundant-access-specifiers)
     // reply that triggers the server's default reply logic. Mirrors Agent::giveUpRequest (formerly
     // requestTimeout, moved from Client in D-019).
     void sendRequestGivenUp();
-    // The operation side declared a different managed state: report it to the server, which owns
-    // the agent state and reports the result back through the ordinary broadcast. Mirrors
-    // Agent::setManaged.
-    void sendManagedChanged(bool managed);
+    // The operation side declared a different agent state: report the managed flag it carries to
+    // the server, which owns the agent state and reports the result back through the ordinary
+    // broadcast. Mirrors Agent::setManaged.
+    void sendAgentStateChanged(QMdmmCore::Data::AgentState state);
 };
 } // namespace p
 } // namespace QMdmmNetworking
