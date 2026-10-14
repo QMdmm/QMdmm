@@ -195,20 +195,15 @@ jobs:
           git push -f origin main
 
   build-windows:
-    name: Build & test (windows-latest probe, ${{ matrix.build_type }})
+    name: Build & test (windows-latest, ${{ matrix.build_type }})
     #
-    # A probe, and the only cell in this file that is allowed to be red. The
-    # tree has carried its Windows branches for a long time -- CMakeLists.txt
-    # clears the shared-module and shared-library prefixes and gives MSVC an .a
-    # import suffix, QMdmmCore adds UNICODE and _UNICODE, QMdmmGui declares its
-    # executable WIN32 -- but nothing here has ever built it on Windows, so
-    # neither the MSVC build nor ctest has a reading at all. Producing one is
-    # the point of this job: the name says probe and continue-on-error keeps a
-    # red cell from holding main red while it is worked through, but the reading
-    # still has to come out of the log, failures included.
+    # The one cell that builds and tests the tree with MSVC. The tree carried its
+    # Windows branches for a long time -- CMakeLists.txt clears the shared-module
+    # and shared-library prefixes and gives MSVC an .a import suffix, QMdmmCore
+    # adds UNICODE and _UNICODE, QMdmmGui declares its executable WIN32 -- and
+    # this job is where they are exercised; nothing else here builds them.
     #
     runs-on: windows-latest
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -316,7 +311,7 @@ jobs:
           # directory, the environment, the time it took). The tests' own output is not
           # expected here -- on this runner it reaches neither this log nor the census --
           # and it is not asked for. It costs the time of the tests that failed and only a
-          # red probe pays it.
+          # red cell pays it.
           #
           # failure() is not redundant here. A step condition that names no status function is
           # taken as success() && that condition, so on its own the comparison below never
@@ -324,13 +319,13 @@ jobs:
           # reading failure in the step after it.
           ctest --test-dir build -C ${{ matrix.build_type }} --rerun-failed -V
 
-      - name: Report the probe's reading
+      - name: Report the reading
         if: always()
         run: |
           # One line saying which of the three steps carried out and which did
-          # not. With continue-on-error the run stays green, so the reading has
-          # to be legible from the log rather than from the run's colour.
-          echo "probe: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} test=${{ steps.test.outcome }}"
+          # not. A red run says that something failed, not which of configure,
+          # build and test it was, so the reading is taken from the log.
+          echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} test=${{ steps.test.outcome }}"
 
   docs:
     name: Publish API docs
