@@ -38,6 +38,21 @@ Read these before touching code:
   headers are installed (under `include/<Module>/private/<version>`) only when
   `QMDMM_EXPORT_PRIVATE` is on.
 
+### Export macros
+
+- A class that carries the module's export macro already exports its members,
+  so do not repeat the macro on a static member function of it. MSVC rejects
+  the second marking outright -- C2487, "member of dll interface class may not
+  be declared with dll interface" -- while the other toolchains stay silent
+  about it, which is how five members came to carry one
+  (`LogicConfiguration::defaults()` / `v1()`, `Packet::fromJson`,
+  `ClientConfiguration::defaults()`, `ServerConfiguration::defaults()`, all
+  cleaned up in `6d5a1f8`). Keep the macro on the class and leave the member
+  bare; the headers say why at each of those sites.
+- The redundant marking changes nothing about the export surface: the members
+  are exported because the class is. Dropping the class-level macro is what
+  stops exporting them, so that is not a way to silence MSVC.
+
 ### Memory management
 
 - Do not use `QScopedPointer` -- it is deprecated in Qt. Use `std::unique_ptr`
