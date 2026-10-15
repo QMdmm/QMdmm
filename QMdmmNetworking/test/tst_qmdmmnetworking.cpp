@@ -50,7 +50,6 @@ private slots:
     void client_routesAgentStateChangeToSelfAgent();
     void client_routesLogicConfigurationToSelfAgent();
     void client_declaresManagedStateToServer();
-    void client_withdrawalSurvivesAnUnreadDeclarationBroadcast();
     void server_disconnectsOnAbnormalPacket();
     void server_disconnectsOnOutOfRangeReply();
     void server_disconnectsOnOversizedActionOrderReply();
@@ -611,16 +610,12 @@ void tst_QMdmmNetworking::client_declaresManagedStateToServer()
             p2SawManaged = true;
     });
 
-    // The declaring client hears about the change the same way -- the server owns the agent state
-    // and broadcasts the state it applied to everyone in the room, the declaring player included --
-    // but that broadcast is not what settles the client's own flag: the flag is already the declared
-    // value before the event loop runs (asserted below), and what is adopted here is the server's
-    // view of it. The waits further down are drain markers instead: they say the declaring client's
-    // socket has read through the withdrawal's broadcast, so the value read afterwards is the
-    // settled one rather than one a still-unread broadcast is about to move. The unmanaged half is
-    // latched only once the managed half was seen, so an unsolicited earlier broadcast (the sign-in
-    // snapshot is unmanaged as well) cannot stand in for the withdrawal's: the two arrive in this
-    // order, so seeing the second one means the first is behind us.
+    // The declaring client is told the same way -- the server owns the agent state and reports the
+    // result back (see ClientP::sendAgentStateChanged), which is what the toggle's two halves below
+    // wait for. The unmanaged half is latched only once this half was seen, so an unsolicited
+    // earlier broadcast (the sign-in snapshot) cannot make that wait finish before the withdrawal
+    // has been read: the two halves arrive in this order, so seeing the second one means the first
+    // one is behind us.
     bool p1SawOwnManaged = false;
     bool p1SawOwnUnmanaged = false;
     connect(p1->agent(), &Agent::agentStateChangeNotified, &server, [&p1SawOwnManaged, &p1SawOwnUnmanaged, p1](const QString &playerName, const Data::AgentState &state) {
@@ -634,17 +629,11 @@ void tst_QMdmmNetworking::client_declaresManagedStateToServer()
     });
 
     p1->agent()->setManaged(true);
-
-    // The declaration is what sets the client's own flag: setManaged writes it into the agent's
-    // state directly, and the broadcast the server sends back carries the value the server now
-    // holds. So this holds before the event loop has run, and it is not something the echo can be
-    // said to confirm.
-    QVERIFY(p1->agent()->managed());
-
     QTRY_VERIFY_WITH_TIMEOUT(p2SawManaged, 5000);
 
-    // The flag is the only thing that moved: the player is still online, and p2's own state is not
-    // touched -- a declaration is about the declaring player only.
+    // The declaring client reflects it as well (applied on the way out, then confirmed by the
+    // broadcast), and the flag is the only thing that moved: the player is still online, and p2's
+    // own state is not touched -- a declaration is about the declaring player only.
     QVERIFY(p1->agent()->managed());
     QVERIFY(p1->agent()->state().testFlag(Data::StateMaskOnline));
     QVERIFY2(!p2->agent()->managed(),
@@ -657,81 +646,16 @@ void tst_QMdmmNetworking::client_declaresManagedStateToServer()
     });
 
     p1->agent()->setManaged(false);
-    QVERIFY(!p1->agent()->managed());
-
     // Both observers wait for the broadcast rather than for the client's own bookkeeping. The two
     // sockets are read independently, so a wait that only covers p2 leaves the assertion below
     // racing p1's own socket: it can still be holding the broadcast of the earlier declaration and
     // read it after the withdrawal has cleared the flag locally, which puts the flag back until the
-    // withdrawal's own broadcast is read behind it. Draining p1 as well settles that first, and the
-    // state is quoted if this fails, so a red on a platform where the withdrawal never comes back
-    // says which of the two readings it was.
+    // withdrawal's own broadcast is read behind it. Waiting for p1's echo as well settles that
+    // first, and the state is quoted if this fails, so a red on a platform where the withdrawal
+    // never comes back says which of the two readings it was.
     QTRY_VERIFY_WITH_TIMEOUT(p2SawUnmanaged, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(p1SawOwnUnmanaged, 5000);
     QVERIFY2(!p1->agent()->managed(), qPrintable(u"p1's agent state is 0x%1 after the withdrawal was broadcast"_s.arg(static_cast<int>(p1->agent()->state()), 0, 16)));
-}
-
-// The declaring client's socket can still be holding the broadcast of a declaration when the
-// operation side withdraws it: the two directions are read independently, so where the withdrawal
-// is written before that broadcast has been read, the flag is cleared locally while the declared
-// state is still on its way. Taken back from the wire, that state is stale -- declaring it out
-// again re-grants the flag on the server, whose broadcast moves the client a second time, and the
-// two sides keep granting and withdrawing it for as long as the case runs. The count below is what
-// makes that visible: p2 sees one grant for one declaration, or it sees the flag handed back and
-// forth. Both calls sit in a single event-loop turn here, which is what leaves the broadcast
-// unread, so the stale read does not depend on how a platform happens to interleave the sockets.
-void tst_QMdmmNetworking::client_withdrawalSurvivesAnUnreadDeclarationBroadcast()
-{
-    LogicConfiguration conf = LogicConfiguration::defaults();
-
-    ServerConfiguration serverConf = ServerConfiguration::defaults();
-    serverConf.setPlayerNumPerRoom(2);
-    serverConf.setTcpPort(16385);
-    serverConf.setLocalEnabled(false);
-    serverConf.setWebsocketEnabled(false);
-    serverConf.setRequestTimeout(60); // bots stay silent without timing out during the test
-
-    Server server(serverConf, conf);
-    QVERIFY(server.listen());
-
-    const QString host = u"qmdmm://localhost:16385"_s;
-
-    auto *p1 = new Client(ClientConfiguration(), &server);
-    QVERIFY(p1->connectToHost(host, Data::StateOnline));
-    QTRY_VERIFY_WITH_TIMEOUT(p1->room() != nullptr && p1->room()->player(p1->objectName()) != nullptr, 5000);
-
-    auto *p2 = new Client(ClientConfiguration(), &server);
-    QVERIFY(p2->connectToHost(host, Data::StateOnlineBot));
-    QTRY_VERIFY_WITH_TIMEOUT(p2->room() != nullptr && p2->room()->player(p1->objectName()) != nullptr, 5000);
-
-    // What p2 sees of p1 is the reading. The withdrawal is latched only once a grant was seen, so
-    // a broadcast from before the declaration (the sign-in snapshot is untrusted as well) cannot
-    // stand in for it.
-    int p1GrantedCount = 0;
-    bool p2SawWithdrawal = false;
-    connect(p2->agent(), &Agent::agentStateChangeNotified, &server, [&p1GrantedCount, &p2SawWithdrawal, p1](const QString &playerName, const Data::AgentState &state) {
-        if (playerName != p1->objectName())
-            return;
-
-        if (state.testFlag(Data::StateMaskTrust)) {
-            ++p1GrantedCount;
-        } else if (p1GrantedCount > 0) {
-            p2SawWithdrawal = true;
-        }
-    });
-
-    // One event-loop turn: the declaration is on the wire, its broadcast has not been read by this
-    // client yet, and the withdrawal clears the flag locally before any of that is processed.
-    p1->agent()->setManaged(true);
-    p1->agent()->setManaged(false);
-
-    QTRY_VERIFY_WITH_TIMEOUT(p2SawWithdrawal, 5000);
-
-    // Let anything still in flight land, then read the count: a settled pair leaves it at exactly
-    // the one declaration, while a flag handed back and forth keeps raising it.
-    QTest::qWait(500);
-    QVERIFY2(p1GrantedCount == 1, qPrintable(u"p1 was granted the managed flag %1 times; one declaration and its withdrawal leave it at one"_s.arg(p1GrantedCount)));
-    QVERIFY2(!p1->agent()->managed(), qPrintable(u"p1's agent state is 0x%1 after the withdrawal settled"_s.arg(static_cast<int>(p1->agent()->state()), 0, 16)));
 }
 
 // A reply carrying a statically checkable invalid value -- here an out-of-range

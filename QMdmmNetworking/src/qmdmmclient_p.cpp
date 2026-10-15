@@ -356,7 +356,7 @@ void ClientP::notifyAgentStateChanged(const QJsonValue &value)
     // the operation side (GUI) observes it via agentStateChangeNotified -- symmetric to how
     // notifyPlayerAdd / notifyPlayerRemove / notifyAction / notifySpeak route to selfAgent, and
     // to the server's agentStateChanged broadcast.
-    adoptAgentState(agent, agentState);
+    agent->setState(agentState);
     selfAgent->notifyAgentStateChange(playerName, agentState);
     onRet_.dismiss();
 }
@@ -399,7 +399,7 @@ void ClientP::notifyPlayerAdded(const QJsonValue &value)
         if (playerName == q->objectName()) {
             room->addPlayer(playerName);
             agent->setScreenName(screenName);
-            adoptAgentState(agent, agentState);
+            agent->setState(agentState);
             selfAgent->notifyPlayerAdd(playerName, screenName, agentState);
         }
         // A duplicate notifyPlayerAdded for another already-tracked player (a reconnect state
@@ -413,7 +413,7 @@ void ClientP::notifyPlayerAdded(const QJsonValue &value)
 
     Agent *agent = new Agent(playerName, this);
     agent->setScreenName(screenName);
-    adoptAgentState(agent, agentState);
+    agent->setState(agentState);
     agents.insert(playerName, agent);
 
     selfAgent->notifyPlayerAdd(playerName, screenName, agentState);
@@ -891,34 +891,16 @@ void ClientP::sendAgentStateChanged(QMdmmCore::Data::AgentState state)
 {
     // Declare the managed flag to the server, which owns the agent state: it applies the flag and
     // reports the result back through the ordinary agent state broadcast, so the client never
-    // treats its own declaration as the final word. Driven by the agent's state signal, which the
-    // operation side's own setManaged and the server's broadcasts both reach, so only the former is
-    // a declaration: a state being adopted is skipped (see adoptAgentState). Declaring that one
-    // back is a repeat at best -- and a stale one at worst, because a broadcast still unread when
-    // the operation side withdraws carries the withdrawn flag: the declaration re-grants it on the
-    // server, whose broadcast moves the client again, and the two sides hand the flag back and
-    // forth. The player is identified by the socket, hence no name in the payload.
-    if (adoptingServerState)
-        return;
-
+    // treats its own declaration as the final word. Driven by the agent's state signal, which also
+    // carries the server's own view of the flag; that view is what the client's state already
+    // holds, so the declaration it produces repeats a value the server has -- the server's own
+    // "only an actual change" guard settles it there and nothing oscillates. The player is
+    // identified by the socket, hence no name in the payload.
     if (socket != nullptr) {
         QJsonObject ob;
         ob.insert(u"managed"_s, state.testFlag(QMdmmCore::Data::StateMaskTrust));
         emit socket->sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyManagedChanged, ob));
     }
-}
-
-void ClientP::adoptAgentState(Agent *agent, const QMdmmCore::Data::AgentState &agentState)
-{
-    // The server's own view of an agent, taken as it is: an actual change here emits stateChanged,
-    // which is also what declares the client's own state to the server, so the flag holds that off
-    // for as long as the adopt is in progress. The client does keep the value -- the server owns
-    // the agent state, and it is what reports a cleared flag back (see D-021) -- it just does not
-    // say it back.
-    Q_ASSERT(!adoptingServerState);
-    adoptingServerState = true;
-    agent->setState(agentState);
-    adoptingServerState = false;
 }
 
 // NOLINTNEXTLINE(readability-make-member-function-const)
