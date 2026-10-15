@@ -100,6 +100,20 @@ namespace v0 {
  */
 
 /**
+ * @property ServerConfiguration::signInTimeout
+ * @brief How long a connection may stay silent before it is given up on, in seconds, default 60
+ *
+ * A peer that connects and never signs in is not a player yet, so nothing else in the server
+ * would ever notice it: without this deadline the connection (and the memory behind it) is held
+ * for as long as the peer cares to keep the socket open. Every accepted socket is given this
+ * long to sign in, and one that has not done so by then is dropped with a
+ * @c Socket::ProtocolError. A connection that did sign in is left alone -- the silence of a
+ * signed-in agent is @c requestTimeout's business, not this one's. A value of 0 turns the
+ * deadline off; a non-zero value has to be at least 15 seconds, since a shorter deadline would
+ * race an honest client's handshake rather than catch a peer that is not going to sign in at all.
+ */
+
+/**
  * @fn ServerConfiguration::tcpEnabled() const
  * @brief getter of @c ServerConfiguration::tcpEnabled
  * @return @c ServerConfiguration::tcpEnabled
@@ -220,6 +234,18 @@ namespace v0 {
  */
 
 /**
+ * @fn ServerConfiguration::signInTimeout() const
+ * @brief getter of @c ServerConfiguration::signInTimeout
+ * @return @c ServerConfiguration::signInTimeout
+ */
+
+/**
+ * @fn ServerConfiguration::setSignInTimeout(int signInTimeout)
+ * @brief setter of @c ServerConfiguration::signInTimeout
+ * @param signInTimeout @c ServerConfiguration::signInTimeout
+ */
+
+/**
  * @brief Get default values of configuration
  * @return default configuration
  */
@@ -237,6 +263,7 @@ const ServerConfiguration &ServerConfiguration::defaults()
         qMakePair(u"playerNumPerRoom"_s, 3),
         qMakePair(u"requestTimeout"_s, 20),
         qMakePair(u"maximumPacketSize"_s, Socket::DefaultMaximumPacketSize),
+        qMakePair(u"signInTimeout"_s, 60),
     };
     // clang-format on
 
@@ -282,6 +309,7 @@ IMPLEMENTATION_CONFIGURATION(uint16_t, websocketPort, WebsocketPort, CONVERTTOTY
 IMPLEMENTATION_CONFIGURATION(int, playerNumPerRoom, PlayerNumPerRoom, CONVERTTOTYPEINT, )
 IMPLEMENTATION_CONFIGURATION(int, requestTimeout, RequestTimeout, CONVERTTOTYPEINT, )
 IMPLEMENTATION_CONFIGURATION(int, maximumPacketSize, MaximumPacketSize, CONVERTTOTYPEINT, )
+IMPLEMENTATION_CONFIGURATION(int, signInTimeout, SignInTimeout, CONVERTTOTYPEINT, )
 
 #undef IMPLEMENTATION_CONFIGURATION_SETTER_CONST_REFERENCE
 #undef IMPLEMENTATION_CONFIGURATION
@@ -303,7 +331,8 @@ IMPLEMENTATION_CONFIGURATION(int, maximumPacketSize, MaximumPacketSize, CONVERTT
  * (fractions, NaN and negatives are rejected). Ports must be in [1, 65535] (port 0 is reserved);
  * @c playerNumPerRoom must be at least 2 (a game needs an opponent for rock-paper-scissors action-order
  * resolution); @c requestTimeout is either 0 (no timeout) or at least 15 seconds;
- * @c maximumPacketSize is at least 1024 bytes.
+ * @c maximumPacketSize is at least 1024 bytes; @c signInTimeout is either 0 (no deadline) or at
+ * least 15 seconds.
  * Unknown keys are ignored.
  */
 bool ServerConfiguration::deserialize(const QJsonValue &value) // NOLINT(readability-function-cognitive-complexity)
@@ -405,6 +434,20 @@ bool ServerConfiguration::deserialize(const QJsonValue &value) // NOLINT(readabi
             if (parsed < 1024)
                 return false;
             result.insert(u"maximumPacketSize"_s, parsed);
+        }
+    }
+
+    // signInTimeout: 0 (no deadline) or >= 15 seconds. A deadline shorter than that would not
+    // tell a peer that is never going to sign in from an honest client whose handshake is still
+    // in flight, which is the case the deadline exists for.
+    {
+        int parsed = 0;
+        if (ob.contains(u"signInTimeout"_s)) {
+            if (!parseNonNegativeInt(ob.value(u"signInTimeout"_s), &parsed))
+                return false;
+            if (parsed != 0 && parsed < 15)
+                return false;
+            result.insert(u"signInTimeout"_s, parsed);
         }
     }
 

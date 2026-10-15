@@ -36,6 +36,7 @@ private slots:
         QCOMPARE(c.playerNumPerRoom(), 3);
         QCOMPARE(c.requestTimeout(), 20);
         QCOMPARE(c.maximumPacketSize(), 1024 * 1024);
+        QCOMPARE(c.signInTimeout(), 60);
     }
 
     void QMdmmServerConfigurationsetters()
@@ -51,6 +52,7 @@ private slots:
         c.setPlayerNumPerRoom(8);
         c.setRequestTimeout(30);
         c.setMaximumPacketSize(4096);
+        c.setSignInTimeout(45);
 
         QCOMPARE(c.tcpEnabled(), false);
         QCOMPARE(c.tcpPort(), (uint16_t)7000);
@@ -62,6 +64,7 @@ private slots:
         QCOMPARE(c.playerNumPerRoom(), 8);
         QCOMPARE(c.requestTimeout(), 30);
         QCOMPARE(c.maximumPacketSize(), 4096);
+        QCOMPARE(c.signInTimeout(), 45);
     }
 
     void QMdmmServerConfigurationdeserialize_data()
@@ -80,6 +83,7 @@ private slots:
             {u"playerNumPerRoom"_s, 3}, //
             {u"requestTimeout"_s, 20}, //
             {u"maximumPacketSize"_s, 4096}, //
+            {u"signInTimeout"_s, 60}, //
         };
 
         QTest::newRow("valid") << QJsonValue(validOb) << true;
@@ -181,6 +185,36 @@ private slots:
             ob.insert(u"maximumPacketSize"_s, 4096.5);
             QTest::newRow("fractionalPacketSize") << QJsonValue(ob) << false;
         }
+        // signInTimeout below 15 but not 0.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"signInTimeout"_s, 1);
+            QTest::newRow("signInTimeoutBelowMinimum") << QJsonValue(ob) << false;
+        }
+        // Negative signInTimeout.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"signInTimeout"_s, -1);
+            QTest::newRow("negativeSignInTimeout") << QJsonValue(ob) << false;
+        }
+        // Fractional signInTimeout.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"signInTimeout"_s, 60.5);
+            QTest::newRow("fractionalSignInTimeout") << QJsonValue(ob) << false;
+        }
+        // signInTimeout = 0 (no deadline) is valid.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"signInTimeout"_s, 0);
+            QTest::newRow("signInTimeoutZero") << QJsonValue(ob) << true;
+        }
+        // signInTimeout = 15 (the minimum explicit deadline) is valid.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"signInTimeout"_s, 15);
+            QTest::newRow("signInTimeoutMinimum") << QJsonValue(ob) << true;
+        }
     }
 
     void QMdmmServerConfigurationdeserialize()
@@ -217,6 +251,7 @@ private slots:
         QCOMPARE(conf.playerNumPerRoom(), defaults.playerNumPerRoom());
         QCOMPARE(conf.requestTimeout(), defaults.requestTimeout());
         QCOMPARE(conf.maximumPacketSize(), defaults.maximumPacketSize());
+        QCOMPARE(conf.signInTimeout(), defaults.signInTimeout());
     }
 
     void QMdmmServerConfigurationdeserializeIgnoresUnknownKeys()

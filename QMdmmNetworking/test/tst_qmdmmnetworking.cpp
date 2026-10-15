@@ -77,6 +77,8 @@ private slots:
     void server_givesUpOnAPeerThatNeverEndsAPacket();
     void server_turnsAwayUnusableFramesWithoutDisturbingTheRoom_data();
     void server_turnsAwayUnusableFramesWithoutDisturbingTheRoom();
+    void server_signInDeadlineReapsAPeerThatNeverSignsIn_data();
+    void server_signInDeadlineReapsAPeerThatNeverSignsIn();
 };
 
 // A room that is not full has not started a game yet: a dropped socket removes the player
@@ -2183,6 +2185,117 @@ void tst_QMdmmNetworking::server_turnsAwayUnusableFramesWithoutDisturbingTheRoom
 
     // The collateral: the legitimate client is untouched and still seated.
     QVERIFY2(bystander->isConnected(), "punishing one connection took the legitimate one with it");
+    QVERIFY(bystander->room() != nullptr);
+    QVERIFY(bystander->room()->player(bystander->objectName()) != nullptr);
+}
+
+// A peer that connects and never signs in is not a player yet, so nothing else in the server would
+// ever notice it: without a sign-in deadline the socket (and everything behind it) is held for as
+// long as the peer cares to keep it open. This case pins the deadline down from both sides, one row
+// each -- armed, a socket that never signs in is dropped when it fires; at 0 nothing is armed.
+//
+// The rows do not wait the configured time out: the deadline is a single-shot timer the server
+// parents to the socket it guards, so the case reads the interval it was armed with (which is what
+// shows the value comes from the configuration rather than from a constant) and then fires it, the
+// way server_requestTimeoutDisconnectsASilentClient fires the connections' request timers. The
+// bystander is the other half of the judgement: a connection that *did* sign in outlives the same
+// deadline, since the deadline is about a peer that never became a player, not about silence.
+void tst_QMdmmNetworking::server_signInDeadlineReapsAPeerThatNeverSignsIn_data()
+{
+    QTest::addColumn<int>("signInTimeout");
+    QTest::addColumn<bool>("expectDeadline");
+
+    QTest::newRow("a-deadline-is-armed-and-reaps-an-idle-peer") << 45 << true;
+    QTest::newRow("zero-arms-no-deadline") << 0 << false;
+}
+
+void tst_QMdmmNetworking::server_signInDeadlineReapsAPeerThatNeverSignsIn()
+{
+    QFETCH(int, signInTimeout);
+    QFETCH(bool, expectDeadline);
+
+    LogicConfiguration conf = LogicConfiguration::defaults();
+
+    ServerConfiguration serverConf = ServerConfiguration::defaults();
+    serverConf.setPlayerNumPerRoom(2);
+    serverConf.setTcpPort(16390);
+    serverConf.setLocalEnabled(false);
+    serverConf.setWebsocketEnabled(false);
+    serverConf.setRequestTimeout(0); // not this case's timer: the bystander must not be dropped by it
+    serverConf.setSignInTimeout(signInTimeout);
+
+    Server server(serverConf, conf);
+    QVERIFY(server.listen());
+
+    const QString host = u"qmdmm://localhost:16390"_s;
+
+    // A legitimate client: it signs in, so the deadline has to leave it and its seat alone.
+    auto *bystander = new Client(ClientConfiguration(), &server);
+    QVERIFY(bystander->connectToHost(host, Data::StateOnline));
+    QTRY_VERIFY_WITH_TIMEOUT(bystander->room() != nullptr && bystander->room()->player(bystander->objectName()) != nullptr, 5000);
+
+    // The idle peer: it connects and never says anything, not even a sign-in.
+    auto *peer = new QTcpSocket(&server);
+    peer->connectToHost(QHostAddress::LocalHost, 16390);
+    QVERIFY(peer->waitForConnected(5000));
+
+    bool peerDropped = false;
+    QObject::connect(peer, &QAbstractSocket::disconnected, peer, [&peerDropped]() { peerDropped = true; });
+
+    // The version packet is what the server sends when it introduces a socket, so waiting for it is
+    // how this case knows the server's side of the peer's connection exists -- and with it, whatever
+    // deadline that connection was (or was not) given. (The server accepts the connection from its
+    // own event loop, so this also gives that loop its turn.)
+    QVERIFY2(QTest::qWaitFor([&peer]() { return peer->canReadLine(); }, 5000), "the server never introduced the peer's connection");
+
+    // The deadlines the server armed for its own sockets. A transport creates timers of its own (the
+    // connect timeout, say), and those hang off the transport rather than off the wrapper, so the
+    // parent is what separates them from the sign-in deadline, which the server parents to the
+    // socket it guards.
+    QList<QTimer *> deadlines;
+    for (Socket *socket : server.findChildren<Socket *>()) {
+        for (QTimer *timer : socket->findChildren<QTimer *>()) {
+            if (timer->parent() == socket)
+                deadlines.append(timer);
+        }
+    }
+
+    if (expectDeadline) {
+        // One per accepted socket: the bystander's and the peer's.
+        QCOMPARE(deadlines.size(), 2);
+        for (const QTimer *deadline : deadlines) {
+            QVERIFY(deadline->isSingleShot());
+            QCOMPARE(deadline->interval(), signInTimeout * 1000);
+        }
+    } else {
+        QVERIFY2(deadlines.isEmpty(), "a signInTimeout of 0 armed a deadline anyway");
+    }
+
+    for (QTimer *deadline : deadlines) {
+        deadline->setInterval(0);
+        deadline->start();
+    }
+
+    if (expectDeadline) {
+        QVERIFY2(QTest::qWaitFor([&peerDropped]() { return peerDropped; }, 10000), "the server kept a peer that never signed in");
+
+        // The server records why, on the connection object it was talking over.
+        QList<Socket *> failed;
+        for (Socket *socket : server.findChildren<Socket *>())
+            if (socket->error().has_value())
+                failed.append(socket);
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(failed.first()->error()->code, Socket::ProtocolError);
+        QVERIFY2(failed.first()->error()->errorString.contains(u"did not sign in"_s),
+                 qPrintable(u"expected the recorded reason to say the peer never signed in, got \"%1\""_s.arg(failed.first()->error()->errorString)));
+    } else {
+        QTest::qWait(200);
+        QVERIFY2(!peerDropped, "the server dropped a peer although no deadline was armed");
+        QCOMPARE(peer->state(), QAbstractSocket::ConnectedState);
+    }
+
+    // The collateral: the connection that signed in outlived the deadline and is still seated.
+    QVERIFY2(bystander->isConnected(), "the sign-in deadline took a connection that had signed in");
     QVERIFY(bystander->room() != nullptr);
     QVERIFY(bystander->room()->player(bystander->objectName()) != nullptr);
 }
