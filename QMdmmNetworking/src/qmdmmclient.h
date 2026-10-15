@@ -5,6 +5,7 @@
 
 #include "qmdmmnetworkingglobal.h"
 
+#include <QMdmmData>
 #include <QMdmmRoom>
 
 #include <QMap>
@@ -79,6 +80,14 @@ signals:
     void socketReconnectSucceeded(QPrivateSignal);
 
     void socketErrorDisconnected(const QString &errorString, QPrivateSignal);
+
+    // The state of every agent this client knows about -- its own and one mirror per other player
+    // in the room -- whenever either one changes. Both sources are covered: the agent state
+    // broadcast the server sends, and a change the operation side made itself (a managed flip, see
+    // Agent::setManaged), which arrives here as it is made rather than at the next broadcast. This
+    // is the channel the operation side reads agent states through; the mirror agents' own
+    // Agent::agentStateChangeNotified is not what carries them out of the module.
+    void agentStateChanged(const QString &playerName, QMdmmCore::Data::AgentState agentState, QPrivateSignal);
 
 #ifndef DOXYGEN
 private:

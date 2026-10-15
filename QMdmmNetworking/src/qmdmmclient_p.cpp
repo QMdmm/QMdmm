@@ -111,6 +111,15 @@ void ClientP::initSelfAgent()
     connect(self, &Agent::operated, this, &ClientP::sendOperate);
     connect(self, &Agent::requestGivenUp, this, &ClientP::sendRequestGivenUp);
     connect(self, &Agent::stateChanged, this, &ClientP::sendAgentStateChanged);
+
+    // The same signal is what carries the state out to the operation side, which reads every
+    // agent's state through the client's one signal rather than through a mirror's own notify (see
+    // Client::agentStateChanged). The two connections are independent: the one above tells the
+    // server, this one tells the operation side -- so a state the server sent is reported out here
+    // as well, and a declaration the operation side has just made is seen at once instead of at
+    // the next broadcast. The agent is a child of this object, so the capture cannot outlive it.
+    connect(self, &Agent::stateChanged, this,
+            [this, self](const QMdmmCore::Data::AgentState &agentState) { emit q->agentStateChanged(self->objectName(), agentState, Client::QPrivateSignal()); });
 }
 
 // Qt documentation only mentioned "auto" here
@@ -352,10 +361,12 @@ void ClientP::notifyAgentStateChanged(const QJsonValue &value)
         return;
     QMdmmCore::Data::AgentState agentState = QMdmmCore::Data::AgentState(static_cast<QMdmmCore::Data::AgentState::Int>(vagentState.toInt()));
 
-    // Update the mirror agent's state (the "data" half), then route the change to selfAgent so
-    // the operation side (GUI) observes it via agentStateChangeNotified -- symmetric to how
+    // Update the mirror agent's state (the "data" half): the adoption emits stateChanged, and that
+    // is what the operation side observes, through the client's own signal (see
+    // Client::agentStateChanged). The route to selfAgent below is kept for symmetry with how
     // notifyPlayerAdd / notifyPlayerRemove / notifyAction / notifySpeak route to selfAgent, and
-    // to the server's agentStateChanged broadcast.
+    // with the server's agentStateChanged broadcast -- the GUI reads the state off the client's
+    // signal now, not off this one.
     adoptAgentState(agent, agentState);
     selfAgent->notifyAgentStateChange(playerName, agentState);
     onRet_.dismiss();
@@ -415,6 +426,14 @@ void ClientP::notifyPlayerAdded(const QJsonValue &value)
     agent->setScreenName(screenName);
     adoptAgentState(agent, agentState);
     agents.insert(playerName, agent);
+
+    // Armed only now, after the registration above, and on purpose: the state adopted just above
+    // reached the operation side as part of the notifyPlayerAdd below, and a connection in place
+    // before it would announce the mirror before it is in the room. From here on the mirror's
+    // changes are this client's to report out (see Client::agentStateChanged). The agent is a child
+    // of this object and lives until it is removed from the room, so the capture cannot outlive it.
+    connect(agent, &Agent::stateChanged, this,
+            [this, agent](const QMdmmCore::Data::AgentState &agentState) { emit q->agentStateChanged(agent->objectName(), agentState, Client::QPrivateSignal()); });
 
     selfAgent->notifyPlayerAdd(playerName, screenName, agentState);
     onRet_.dismiss();

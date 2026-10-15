@@ -74,7 +74,10 @@ constexpr AgentSignalDisposition kAgentSignalDispositions[] = {
     {"actionOrderNotified", Disposition::Consumed, ""},
     {"actionOrderRequested", Disposition::Consumed, ""},
     {"actionRequested", Disposition::Consumed, ""},
-    {"agentStateChangeNotified", Disposition::Consumed, ""},
+    // Not consumed any more, and not a silent gap either: the bridge reads agent states through
+    // the client's own signal, which reports the mirrors' states and its own alike (see
+    // QMdmmGameClient::wireClient).
+    {"agentStateChangeNotified", Disposition::Exempt, "the bridge reads agent states through the client's own signal"},
     {"gameOverNotified", Disposition::Consumed, ""},
     {"gameStartNotified", Disposition::Consumed, ""},
     {"logicConfigurationNotified", Disposition::Consumed, ""},
@@ -88,8 +91,9 @@ constexpr AgentSignalDisposition kAgentSignalDispositions[] = {
     {"upgradeNotified", Disposition::Consumed, ""},
     {"upgradeRequested", Disposition::Consumed, ""},
 
-    // The one exemption: the payload is the protocol's unfinished OB functionality, still a
-    // `@todo` (see Protocol::NotifyOperate), so there is no content to put on the screen yet.
+    // The one signal exempt for want of content rather than for want of a reader: its payload is the
+    // protocol's unfinished OB functionality, still a `@todo` (see Protocol::NotifyOperate), so
+    // there is no content to put on the screen yet.
     {"operateNotified", Disposition::Exempt, "the payload is the protocol's unfinished OB functionality"},
 };
 

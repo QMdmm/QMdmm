@@ -48,6 +48,7 @@ private slots:
     void client_giveUpTriggersServerDefaultReply();
     void client_actionOrderYieldAcceptsAssignment();
     void client_routesAgentStateChangeToSelfAgent();
+    void client_reportsAgentStatesThroughOneSignal();
     void client_routesLogicConfigurationToSelfAgent();
     void client_declaresManagedStateToServer();
     void client_withdrawalSurvivesAnUnreadDeclarationBroadcast();
@@ -527,6 +528,82 @@ void tst_QMdmmNetworking::client_routesAgentStateChangeToSelfAgent()
     p2Sock->abort();
 
     QTRY_VERIFY_WITH_TIMEOUT(stateRouted, 5000);
+}
+
+// The one channel the operation side reads agent states on: Client::agentStateChanged reports every
+// agent this client knows about, and both sources of a change reach it -- the agent state broadcast
+// the server owns and sends (another player's declaration included), and a change made on this side,
+// which is reported as it is made rather than at the next broadcast. A mirror is followed only from
+// the moment it is registered: the state it is registered with is playerAddNotified's to carry, and
+// the registration itself is not a change of state.
+void tst_QMdmmNetworking::client_reportsAgentStatesThroughOneSignal()
+{
+    LogicConfiguration conf = LogicConfiguration::defaults();
+
+    ServerConfiguration serverConf = ServerConfiguration::defaults();
+    serverConf.setPlayerNumPerRoom(3); // not full: nothing but the declarations below moves a state
+    serverConf.setTcpPort(16370);
+    serverConf.setLocalEnabled(false);
+    serverConf.setWebsocketEnabled(false);
+    serverConf.setRequestTimeout(60); // bots stay silent without timing out during the test
+
+    Server server(serverConf, conf);
+    QVERIFY(server.listen());
+
+    const QString host = u"qmdmm://localhost:16370"_s;
+
+    auto *p1 = new Client(ClientConfiguration(), &server);
+
+    // Counted per player, and armed before the connection: the sign-in confirm for ourselves is one
+    // of the reports this signal has to carry, and it can land before connectToHost() returns. The
+    // untrusted half is kept apart because it is what an announcement of a mirror's initial
+    // (untrusted) state would land in.
+    QHash<QString, int> reported;
+    QHash<QString, int> reportedUntrusted;
+    connect(p1, &Client::agentStateChanged, &server, [&reported, &reportedUntrusted](const QString &playerName, const Data::AgentState &agentState) {
+        ++reported[playerName];
+        if (!agentState.testFlag(Data::StateMaskTrust))
+            ++reportedUntrusted[playerName];
+    });
+
+    QVERIFY(p1->connectToHost(host, Data::StateOnline));
+    QTRY_VERIFY_WITH_TIMEOUT(p1->room() != nullptr && p1->room()->player(p1->objectName()) != nullptr, 5000);
+
+    // The state we signed in with comes back to us, and it arrives here -- not only in the room's
+    // own view of ourselves.
+    QTRY_VERIFY_WITH_TIMEOUT(reported.value(p1->objectName()) >= 1, 5000);
+    QCOMPARE(reportedUntrusted.value(p1->objectName()), 1);
+
+    auto *p2 = new Client(ClientConfiguration(), &server);
+
+    // The end of this client's own processing of p2 joining, rather than the mirror appearing in the
+    // room: the room's player is added before the mirror is registered, and everything this client
+    // reports out has been reported by the time the notify comes through.
+    bool p2Added = false;
+    connect(p1->agent(), &Agent::playerAddNotified, &server, [&p2Added, p2](const QString &playerName) {
+        if (playerName == p2->objectName())
+            p2Added = true;
+    });
+
+    QVERIFY(p2->connectToHost(host, Data::StateOnlineBot));
+    QTRY_VERIFY_WITH_TIMEOUT(p2Added, 5000);
+
+    // Joining is not a state change: the mirror's initial state travels with the notify above, and
+    // arming the report only after the registration is what keeps it from being announced twice.
+    QCOMPARE(reported.value(p2->objectName()), 0);
+
+    // Declaring is not waiting: our own flag is reported as it is made, so the event loop has not
+    // run between the flip and the reading below, and what is read cannot be the server's echo.
+    const int beforeFlip = reported.value(p1->objectName());
+    p1->agent()->setManaged(true);
+    QCOMPARE(reported.value(p1->objectName()), beforeFlip + 1);
+    QCOMPARE(reportedUntrusted.value(p1->objectName()), 1);
+
+    // The other half is the server's own word: p2 declares, the server applies the flag and
+    // broadcasts it, and the receiving client reports it as a change of p2's state.
+    p2->agent()->setManaged(true);
+    QTRY_COMPARE_WITH_TIMEOUT(reported.value(p2->objectName()) - reportedUntrusted.value(p2->objectName()), 1, 5000);
+    QCOMPARE(reportedUntrusted.value(p2->objectName()), 0);
 }
 
 // The logic configuration is broadcast when a player joins a room, and the receiving client must

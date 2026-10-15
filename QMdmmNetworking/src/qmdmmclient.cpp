@@ -278,6 +278,20 @@ const Agent *Client::agent() const
  * @param errorString the error description
  */
 
+/**
+ * @fn Client::agentStateChanged(const QString &playerName, QMdmmCore::Data::AgentState agentState, QPrivateSignal)
+ * @brief emitted when the state of an agent this client knows about changes
+ * @param playerName the player whose state changed; this client's own name for itself
+ * @param agentState the new state
+ *
+ * Every player in the room is covered, this client's own agent included, and so is every source of
+ * the change: the agent state broadcast the server owns and sends, and the operation side's own
+ * declaration as it is made (see @c Agent::setManaged) -- the latter arrives here at once rather
+ * than at the next broadcast, which is what lets the operation side show what it has just asked
+ * for. Distinct from @c Agent::agentStateChangeNotified, the mirror agents' own notify, which is
+ * not relayed out of this module.
+ */
+
 #ifndef DOXYGEN
 } // namespace v0
 #endif

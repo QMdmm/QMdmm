@@ -130,9 +130,10 @@ Item {
             verticalAlignment: Text.AlignVCenter
         }
 
-        // Handing the player over: the fill shows the flag, the click asks for the opposite of
-        // what is on show, and the card redraws from the state the server broadcasts back -- a
-        // local flip would not survive the next broadcast.
+        // Handing the player over: the fill shows the flag, and the click asks for the opposite of
+        // what is on show. The card redraws from the state the bridge reports, which follows the
+        // click at once -- and the server, which owns the state, writes it again with what it
+        // applied: a value it disagrees with would be what the card redraws from instead.
         Rectangle {
             border.color: card.managed ? "#7c4" : "#888"
             border.width: 1

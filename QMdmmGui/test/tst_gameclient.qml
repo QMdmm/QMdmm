@@ -678,12 +678,12 @@ TestCase {
         compare(bridgeSocketName, serverDefaultSocketName, "the socket a local game runs on has to be the one its server listens on");
     }
 
-    function test_theManagedFlagIsDeclaredAndComesBack() {
-        // The one piece of an agent's state the client sets rather than only reads. The
-        // declaration is not taken as the final word: the server applies the flag and broadcasts
-        // the new state back, and the map the player cards read has to follow the broadcast --
-        // which is why the wait is for the value and not for a local change. The reply is what
-        // makes this the round trip rather than a set and forget.
+    function test_theManagedFlagIsOnTheMapAsSoonAsItIsFlipped() {
+        // The one piece of an agent's state the client sets rather than only reads. The map the
+        // player cards read follows the client's own report of the state, so the flip is on it at
+        // once -- there is no round trip in between, which is what the immediate reading below is
+        // for. The server still owns the state: the value it broadcasts back reaches the same map,
+        // and one it disagrees with would overwrite this.
         game.playerCount = 2;
         game.startLocalGame("Tester");
         tryVerify(function () {
@@ -691,14 +691,10 @@ TestCase {
         }, 15000);
 
         game.setManaged(true);
-        tryVerify(function () {
-            return game.agentStates[game.localName] === 0x18;
-        }, 15000);
+        compare(game.agentStates[game.localName], 0x18, "the flip is on the map at once");
 
         game.setManaged(false);
-        tryVerify(function () {
-            return game.agentStates[game.localName] === 0x10;
-        }, 15000);
+        compare(game.agentStates[game.localName], 0x10, "and off it the same way");
 
         game.disconnectAll();
     }

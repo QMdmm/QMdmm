@@ -130,11 +130,11 @@ TestCase {
     }
 
     function test_theSwitchDeclaresTheFlagToTheServer() {
-        // The whole path, from the click on: the card asks the bridge to declare the flag, the
-        // server applies it and broadcasts the new state back, and both the bridge's map and the
-        // card follow -- which is what is waited for. A click that only changed something inside
-        // the card would leave the map where it was, and the card would go on asking for the flag
-        // it already has.
+        // The whole path, from the click on: the card asks the bridge to declare the flag, and the
+        // map the card reads follows the declaration at once -- the flip is reported to the bridge
+        // as it is made, so what is on the card is what this side has just asked for, read without
+        // waiting for the round trip. The server still settles it: the value it broadcasts back
+        // reaches the same map, and the card would follow that instead.
         game.playerCount = 2;
         game.startLocalGame("Tester");
         tryVerify(function () {
@@ -147,23 +147,15 @@ TestCase {
         verify(!cardUnderTest.managed, "the switch starts off");
 
         mouseClick(findToggle(cardUnderTest));
-        tryVerify(function () {
-            return game.agentStates[game.localName] === 0x18;
-        }, 15000);
-        tryVerify(function () {
-            return cardUnderTest.managed;
-        }, 5000);
+        compare(game.agentStates[game.localName], 0x18, "the map follows the click at once");
+        verify(cardUnderTest.managed, "and the switch is on it");
 
         // And back, on a card that by now reads the flag as on: the same switch has to ask for it
         // off. The wait keeps the second click from being read as a double click on the first one.
         wait(700);
         mouseClick(findToggle(cardUnderTest));
-        tryVerify(function () {
-            return game.agentStates[game.localName] === 0x10;
-        }, 15000);
-        tryVerify(function () {
-            return !cardUnderTest.managed;
-        }, 5000);
+        compare(game.agentStates[game.localName], 0x10, "the map follows the click off at once");
+        verify(!cardUnderTest.managed, "and the switch is off it");
     }
 
     name: "PlayerCard"

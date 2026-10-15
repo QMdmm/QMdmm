@@ -380,12 +380,9 @@ void QMdmmGameClient::wireClient(QMdmmNetworking::Client *client)
         if (m_room != nullptr)
             setLogicConfiguration(m_room->logicConfiguration());
     });
-    // An agent's state changes on the wire: the managed toggle, a drop, a reconnect. The
-    // player cards are the only place it can be read, so the map they read has to follow.
-    connect(agent, &QMdmmNetworking::Agent::agentStateChangeNotified, this, [this](const QString &playerName, const QMdmmCore::Data::AgentState &agentState) {
-        m_agentStates.insert(playerName, agentState);
-        emit agentStatesChanged();
-    });
+    // A player joining is also the one moment a card needs more than the state: the display name
+    // travels with the initial state here, and the room's own signals follow. The state map is
+    // written again by the client's state signal below, with the same value.
     connect(agent, &QMdmmNetworking::Agent::playerAddNotified, this, [this](const QString &playerName, const QString &screenName, const QMdmmCore::Data::AgentState &agentState) {
         m_screenNames.insert(playerName, screenName);
         m_agentStates.insert(playerName, agentState);
@@ -462,6 +459,16 @@ void QMdmmGameClient::wireClient(QMdmmNetworking::Client *client)
     connect(client, &QMdmmNetworking::Client::socketErrorDisconnected, this, [this](const QString &errorString) {
         setStatusMessage(errorString);
         emit errorOccurred(errorString);
+    });
+
+    // The state map the player cards read follows one channel for every player, this one included:
+    // the state the server reports (a drop, a reconnect, the flag it applied) and the state this
+    // side moves itself (see setManaged) both arrive here, the latter as it is made rather than at
+    // the next broadcast. Nothing else writes a state into the map except the two room signals
+    // above, which carry the same values at the moments a player appears or leaves.
+    connect(client, &QMdmmNetworking::Client::agentStateChanged, this, [this](const QString &playerName, const QMdmmCore::Data::AgentState &agentState) {
+        m_agentStates.insert(playerName, agentState);
+        emit agentStatesChanged();
     });
 }
 
@@ -651,11 +658,12 @@ void QMdmmGameClient::setManaged(bool managed)
 {
     // Flipped first and declared with it: the agent's own flag goes on right away (see
     // Agent::setManaged), so the requests that follow are answered for without waiting for the
-    // server to say the same thing back -- which is exactly what requestIsForTheHuman reads. The
-    // server owns the state all the same: it applies the flag and broadcasts its own view, and
-    // that broadcast is what this bridge's map -- and so the player cards -- follows, which is how
-    // a flag the server turns back off ends up off here too. Nothing to flip while there is no
-    // client.
+    // server to say the same thing back -- which is exactly what requestIsForTheHuman reads. The map
+    // the player cards read moves with the same flip (see the client's state signal), so what the
+    // card shows is what this side has just asked for. The server owns the state all the same: it
+    // applies the flag and broadcasts its own view, and that broadcast reaches the same map, which
+    // is how a flag the server turns back off ends up off here too. Nothing to flip while there is
+    // no client.
     if (m_human == nullptr)
         return;
 
