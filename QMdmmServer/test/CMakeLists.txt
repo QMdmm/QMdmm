@@ -46,6 +46,13 @@ target_compile_definitions(tst_qmdmmserver6 PRIVATE
     "QMDMMSERVER_EXECUTABLE=\"$<TARGET_FILE:QMdmmServer6>\""
 )
 
+# The free-slot table the cases hold to the options lives in the executable's own source file,
+# which is not linked into this target. It is read as text, the way QMdmmCore's protocol case
+# reads its page and the header it checks against.
+target_compile_definitions(tst_qmdmmserver6 PRIVATE
+    "QMDMMSERVER_CONFIG_SOURCE=\"${CMAKE_CURRENT_SOURCE_DIR}/../src/config.cpp\""
+)
+
 # What a failing case leaves behind has to be a file. This binary's own output does not reach
 # the CI log on every runner -- the Windows probe writes it nowhere -- while a junit report
 # does. It is the same report the shared test main writes for the other QtTest suites (see

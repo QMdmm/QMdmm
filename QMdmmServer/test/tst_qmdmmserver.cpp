@@ -5,7 +5,9 @@
 #include <QHostAddress>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QRegularExpression>
 #include <QScopeGuard>
+#include <QSet>
 #include <QSettings>
 #include <QString>
 #include <QStringList>
@@ -175,6 +177,24 @@ RunResult runServer(const QStringList &arguments, int timeoutMs = 60000, const Q
     return result;
 }
 
+// Every letter a short option can be spelled with. The free-slot table in config.cpp is a subset
+// of it, so this is what the table has to account for.
+QString shortOptionAlphabet()
+{
+    return u"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"_s;
+}
+
+// @p letters as one stable string, for a failure message that names what drifted.
+QString sortedLetters(const QSet<QChar> &letters)
+{
+    QStringList list;
+    list.reserve(letters.size());
+    for (const QChar letter : letters)
+        list.append(QString(letter));
+    list.sort();
+    return list.join(u", "_s);
+}
+
 } // namespace
 
 class tst_QMdmmServer : public QObject
@@ -183,6 +203,7 @@ class tst_QMdmmServer : public QObject
 
 private slots:
     void help_printsTheUsageAndExitsZero();
+    void freeShortOptions_areTheOnesNoOptionClaims();
     void savingToBothInstances_isRejected();
     void savingPerUserConfiguration_writesTheFileUnderHome();
     void savingPerUserConfiguration_reportsASaveThatCannotReachItsHome();
@@ -222,6 +243,78 @@ void tst_QMdmmServer::help_printsTheUsageAndExitsZero()
     // The usage text is the point of the option, so check that it carries the
     // options too rather than stopping after the first line.
     QVERIFY(result.standardOutput.contains(u"--save-configuration"_s));
+}
+
+// config.cpp carries three short lines above its option list holding the letters that are still
+// free -- a lookup table for whoever adds the next option, so that nobody has to walk the usage
+// text looking for a slot. Nothing keeps it honest but a reader's attention: register an option
+// and forget the table, and the next reader takes a letter that is already spent. This case is
+// that attention written down -- the letters the table holds have to be exactly the ones the
+// options in that same file do not claim.
+//
+// Both halves are read out of config.cpp as text, the way QMdmmCore's protocol case reads its
+// page: the configuration code is not linked into this target, and the table is a comment.
+//
+// The usage text is deliberately not the source of truth. It is a second, hand-written copy of
+// the same list, so a run can register an option and leave it out of that copy -- which is the
+// very mistake this case is here to catch -- and the copy would still agree with a stale table.
+void tst_QMdmmServer::freeShortOptions_areTheOnesNoOptionClaims()
+{
+    QFile source(QString::fromLatin1(QMDMMSERVER_CONFIG_SOURCE));
+    QVERIFY2(source.open(QIODevice::ReadOnly), qPrintable(source.fileName() + u": "_s + source.errorString()));
+
+    const QString text = QString::fromLocal8Bit(source.readAll());
+
+    // Every option the file registers names its short forms first: QCommandLineOption takes a
+    // QStringList, and a one-character entry in it is a short form. An option carrying only a long
+    // name is passed over here, which is right -- it claims no letter.
+    const QRegularExpression declaredShortForm(u"QCommandLineOption\\(QStringList \\{\\s*u\"([A-Za-z0-9])\""_s);
+
+    QSet<QChar> taken;
+    QRegularExpressionMatchIterator declared = declaredShortForm.globalMatch(text);
+    while (declared.hasNext())
+        taken.insert(declared.next().captured(1).at(0));
+
+    QVERIFY2(!taken.isEmpty(), "no short option was read out of the source");
+
+    // v is the one short form the file does not spell out: addVersionOption() owns it. It is why
+    // the table below leaves v out while --version is right there in the usage text.
+    if (text.contains(u"addVersionOption()"_s))
+        taken.insert(u'v');
+
+    // The table itself: what sits between the #if 0 that keeps it out of the build and the
+    // #endif that closes the block.
+    const QRegularExpression blockStart(u"^#if 0\\s*$"_s);
+    const QRegularExpression blockEnd(u"^#endif\\s*$"_s);
+
+    QSet<QChar> listed;
+    bool inBlock = false;
+    const QStringList lines = text.split(u'\n');
+    for (const QString &line : lines) {
+        if (line.contains(blockStart))
+            inBlock = true;
+        else if (line.contains(blockEnd))
+            inBlock = false;
+        else if (inBlock) {
+            for (const QChar character : line) {
+                if (character.isLetterOrNumber())
+                    listed.insert(character);
+            }
+        }
+    }
+
+    QVERIFY2(!listed.isEmpty(), "no letter was read out of the table in the source");
+
+    QSet<QChar> expected;
+    const QString alphabet = shortOptionAlphabet();
+    for (const QChar letter : alphabet) {
+        if (!taken.contains(letter))
+            expected.insert(letter);
+    }
+
+    QString message = u"the free-slot table and the options disagree -- listed but already taken: ["_s + sortedLetters(listed - expected);
+    message += u"]; free but not listed: ["_s + sortedLetters(expected - listed) + u"]"_s;
+    QVERIFY2(listed == expected, qPrintable(message));
 }
 
 // -c and -C name two different destinations for one run's worth of configuration,
