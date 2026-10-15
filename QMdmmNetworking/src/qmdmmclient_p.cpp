@@ -356,8 +356,10 @@ void ClientP::notifyAgentStateChanged(const QJsonValue &value)
     // the operation side (GUI) observes it via agentStateChangeNotified -- symmetric to how
     // notifyPlayerAdd / notifyPlayerRemove / notifyAction / notifySpeak route to selfAgent, and
     // to the server's agentStateChanged broadcast.
-    agent->setState(agentState);
-    selfAgent->notifyAgentStateChange(playerName, agentState);
+    if (agent != selfAgent) {
+        agent->setState(agentState);
+        selfAgent->notifyAgentStateChange(playerName, agentState);
+    }
     onRet_.dismiss();
 }
 
@@ -898,8 +900,8 @@ void ClientP::sendAgentStateChanged(QMdmmCore::Data::AgentState state)
     // identified by the socket, hence no name in the payload.
     if (socket != nullptr) {
         QJsonObject ob;
-        ob.insert(u"managed"_s, state.testFlag(QMdmmCore::Data::StateMaskTrust));
-        emit socket->sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyManagedChanged, ob));
+        ob.insert(u"agentState"_s, (int)state.toInt());
+        emit socket->sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyStateChange, ob));
     }
 }
 

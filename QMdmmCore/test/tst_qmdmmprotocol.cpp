@@ -74,7 +74,7 @@ const ProtocolIdFixture protocolIdFixtures[] = {
     {"NotifyId", "NotifyPingServer", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyPingServer},
     {"NotifyId", "NotifySignIn", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifySignIn},
     {"NotifyId", "NotifyObserve", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyObserve},
-    {"NotifyId", "NotifyManagedChanged", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyManagedChanged},
+    {"NotifyId", "NotifyStateChange", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyStateChange},
     {"NotifyId", "NotifySpeak", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifySpeak},
     {"NotifyId", "NotifyOperate", Protocol::TypeNotify, Protocol::RequestInvalid, Protocol::NotifyOperate},
 

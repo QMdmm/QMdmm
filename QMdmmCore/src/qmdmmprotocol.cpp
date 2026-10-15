@@ -566,7 +566,7 @@ bool isNotifyIdValid(int notifyId)
     case Protocol::NotifyPingServer:
     case Protocol::NotifySignIn:
     case Protocol::NotifyObserve:
-    case Protocol::NotifyManagedChanged:
+    case Protocol::NotifyStateChange:
     case Protocol::NotifySpeak:
     case Protocol::NotifyOperate:
         return true;
