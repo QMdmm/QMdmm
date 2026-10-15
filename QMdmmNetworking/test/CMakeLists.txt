@@ -28,7 +28,10 @@ function(add_qmdmmnetworking_test TEST_SOURCE TEST_TIMEOUT)
     endif()
 endfunction()
 
-# The networked-gameplay suite reads up to 14.22 s.
+# The networked-gameplay suite reads up to 14.22 s across the CI cells. The process-level corpus
+# case the suite also holds drives the server executable and costs about 3 s on top of that (17.2 s
+# for the whole suite in this machine's release tree), so six times the larger reading still rounds
+# up to 120 s.
 add_qmdmmnetworking_test(tst_qmdmmnetworking.cpp 120)
 # The configuration cases read up to 0.16 s and take the floor.
 add_qmdmmnetworking_test(tst_qmdmmserverconfiguration.cpp 60)

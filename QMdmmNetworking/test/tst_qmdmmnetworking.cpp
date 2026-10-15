@@ -16,6 +16,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMetaType>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -79,6 +80,7 @@ private slots:
     void server_turnsAwayUnusableFramesWithoutDisturbingTheRoom();
     void server_signInDeadlineReapsAPeerThatNeverSignsIn_data();
     void server_signInDeadlineReapsAPeerThatNeverSignsIn();
+    void server_survivesTheCorpusInItsOwnProcess();
 };
 
 // A room that is not full has not started a game yet: a dropped socket removes the player
@@ -2064,13 +2066,25 @@ void tst_QMdmmNetworking::server_statusReportsRoomsGamesAndPlayers()
 // The reason is read back from the server-side Socket (the same observable the packet-size bound
 // case uses) rather than from a log line, because the drop path records the parser's own message
 // there and logs nothing at all.
-void tst_QMdmmNetworking::server_turnsAwayUnusableFramesWithoutDisturbingTheRoom_data()
+//
+// The same rows are also fed to the server *executable*, by the case right after this one -- read
+// that one for what a server in its own process adds and what it cannot observe.
+namespace {
+// The corpus as data rather than a row list written straight into the data function, because two
+// cases drive it: the in-process one below, which reads each row's recorded reason off the
+// server-side Socket, and the process-level one after it, which feeds the same frames to the server
+// executable. One list is what makes the second case the same claim rather than a second one.
+struct UnusableFrame
 {
-    QTest::addColumn<QByteArray>("frame");
-    QTest::addColumn<bool>("expectDrop");
-    QTest::addColumn<QString>("expectReason");
-    QTest::addColumn<int>("expectPongs");
+    const char *name;
+    QByteArray frame;
+    bool expectDrop;
+    QString expectReason; // empty where the drop comes with no message of the parser's own
+    int expectPongs;
+};
 
+QList<UnusableFrame> unusableFrameCorpus()
+{
     const auto asFrame = [](const QByteArray &json) {
         QByteArray ret = json;
         ret.append('\n');
@@ -2079,39 +2093,52 @@ void tst_QMdmmNetworking::server_turnsAwayUnusableFramesWithoutDisturbingTheRoom
 
     const QByteArray ping = asFrame(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPingServer, QJsonValue(qint64(1))).serialize());
 
-    // The parser refuses these, and the recorded reason is its own message.
-    QTest::newRow("json-is-unparseable") << "hello, client\n"_ba << true << u"Json error: "_s << 0;
-    QTest::newRow("json-is-truncated") << asFrame(R"json({"type":1,"requestId":2,"notifyId":0)json") << true << u"Json error: "_s << 0;
-    QTest::newRow("json-is-not-an-object") << asFrame("[1,2,3]") << true << u"Document is not object"_s << 0;
-    QTest::newRow("enum-field-is-fractional") << asFrame(R"json({"type":1.5,"requestId":2,"notifyId":0,"value":null})json") << true << u"'type' is not an integer"_s << 0;
-    QTest::newRow("type-is-out-of-range") << asFrame(R"json({"type":99,"requestId":0,"notifyId":0,"value":null})json") << true << u"'type' is out of range"_s << 0;
-    QTest::newRow("request-id-is-out-of-range") << asFrame(R"json({"type":1,"requestId":99,"notifyId":0,"value":null})json") << true << u"'requestId' is out of range"_s << 0;
-    QTest::newRow("notify-id-is-out-of-range") << asFrame(R"json({"type":3,"requestId":0,"notifyId":999,"value":null})json") << true << u"'notifyId' is out of range"_s << 0;
-    QTest::newRow("request-carries-a-notify-id") << asFrame(R"json({"type":1,"requestId":1,"notifyId":4097,"value":null})json") << true
-                                                 << u"'notifyId' should be invalid for a request/reply packet"_s << 0;
-    QTest::newRow("notify-carries-a-request-id") << asFrame(R"json({"type":3,"requestId":1,"notifyId":4097,"value":null})json") << true
-                                                 << u"'requestId' should be invalid for a notify packet"_s << 0;
-    QTest::newRow("value-is-missing") << asFrame(R"json({"type":1,"requestId":2,"notifyId":0})json") << true << u"'value' is non-existent"_s << 0;
-    QTest::newRow("bytes-are-not-utf8") << asFrame(QByteArray(R"json({"type":1,"requestId":2,"notifyId":0,"value":")json") + QByteArray::fromHex("fffe") + QByteArray("\"}"))
-                                        << true << u"Json error: "_s << 0;
-    QTest::newRow("value-is-nested-too-deeply") << asFrame(QByteArray(R"json({"type":1,"requestId":2,"notifyId":0,"value":)json") + QByteArray(4096, '[') + QByteArray(4096, ']')
-                                                           + QByteArray("}"))
-                                                << true << u"Json error: "_s << 0;
+    return {
+        // The parser refuses these, and the recorded reason is its own message.
+        {"json-is-unparseable", "hello, client\n"_ba, true, u"Json error: "_s, 0},
+        {"json-is-truncated", asFrame(R"json({"type":1,"requestId":2,"notifyId":0)json"), true, u"Json error: "_s, 0},
+        {"json-is-not-an-object", asFrame("[1,2,3]"), true, u"Document is not object"_s, 0},
+        {"enum-field-is-fractional", asFrame(R"json({"type":1.5,"requestId":2,"notifyId":0,"value":null})json"), true, u"'type' is not an integer"_s, 0},
+        {"type-is-out-of-range", asFrame(R"json({"type":99,"requestId":0,"notifyId":0,"value":null})json"), true, u"'type' is out of range"_s, 0},
+        {"request-id-is-out-of-range", asFrame(R"json({"type":1,"requestId":99,"notifyId":0,"value":null})json"), true, u"'requestId' is out of range"_s, 0},
+        {"notify-id-is-out-of-range", asFrame(R"json({"type":3,"requestId":0,"notifyId":999,"value":null})json"), true, u"'notifyId' is out of range"_s, 0},
+        {"request-carries-a-notify-id", asFrame(R"json({"type":1,"requestId":1,"notifyId":4097,"value":null})json"), true,
+         u"'notifyId' should be invalid for a request/reply packet"_s, 0},
+        {"notify-carries-a-request-id", asFrame(R"json({"type":3,"requestId":1,"notifyId":4097,"value":null})json"), true, u"'requestId' should be invalid for a notify packet"_s,
+         0},
+        {"value-is-missing", asFrame(R"json({"type":1,"requestId":2,"notifyId":0})json"), true, u"'value' is non-existent"_s, 0},
+        {"bytes-are-not-utf8", asFrame(QByteArray(R"json({"type":1,"requestId":2,"notifyId":0,"value":")json") + QByteArray::fromHex("fffe") + QByteArray("\"}")), true,
+         u"Json error: "_s, 0},
+        {"value-is-nested-too-deeply",
+         asFrame(QByteArray(R"json({"type":1,"requestId":2,"notifyId":0,"value":)json") + QByteArray(4096, '[') + QByteArray(4096, ']') + QByteArray("}")), true, u"Json error: "_s,
+         0},
 
-    // The parser accepts these; the dispatch layer is what turns them away. They carry no parser
-    // message, so the drop itself is the whole observation.
-    QTest::newRow("sign-in-payload-is-not-an-object") << asFrame(R"json({"type":3,"requestId":0,"notifyId":16386,"value":"a string, not the object sign-in needs"})json") << true
-                                                      << QString() << 0;
-    QTest::newRow("observe-before-sign-in") << asFrame(R"json({"type":3,"requestId":0,"notifyId":16387,"value":null})json") << true << QString() << 0;
-    QTest::newRow("managed-changed-before-sign-in") << asFrame(R"json({"type":3,"requestId":0,"notifyId":16388,"value":null})json") << true << QString() << 0;
+        // The parser accepts these; the dispatch layer is what turns them away. They carry no parser
+        // message, so the drop itself is the whole observation.
+        {"sign-in-payload-is-not-an-object", asFrame(R"json({"type":3,"requestId":0,"notifyId":16386,"value":"a string, not the object sign-in needs"})json"), true, QString(), 0},
+        {"observe-before-sign-in", asFrame(R"json({"type":3,"requestId":0,"notifyId":16387,"value":null})json"), true, QString(), 0},
+        {"managed-changed-before-sign-in", asFrame(R"json({"type":3,"requestId":0,"notifyId":16388,"value":null})json"), true, QString(), 0},
 
-    // Legal client-to-server traffic.
-    QTest::newRow("one-ping") << ping << false << QString() << 1;
-    QTest::newRow("two-pings-in-one-write") << ping + ping << false << QString() << 2;
+        // Legal client-to-server traffic.
+        {"one-ping", ping, false, QString(), 1},
+        {"two-pings-in-one-write", ping + ping, false, QString(), 2},
 
-    // Not acted on, and not punished either: the connection is still there afterwards, which the
-    // ping that follows the request proves.
-    QTest::newRow("a-request-before-sign-in-is-ignored") << asFrame(R"json({"type":1,"requestId":1,"notifyId":0,"value":null})json") + ping << false << QString() << 1;
+        // Not acted on, and not punished either: the connection is still there afterwards, which the
+        // ping that follows the request proves.
+        {"a-request-before-sign-in-is-ignored", asFrame(R"json({"type":1,"requestId":1,"notifyId":0,"value":null})json") + ping, false, QString(), 1},
+    };
+}
+} // namespace
+
+void tst_QMdmmNetworking::server_turnsAwayUnusableFramesWithoutDisturbingTheRoom_data()
+{
+    QTest::addColumn<QByteArray>("frame");
+    QTest::addColumn<bool>("expectDrop");
+    QTest::addColumn<QString>("expectReason");
+    QTest::addColumn<int>("expectPongs");
+
+    for (const UnusableFrame &row : unusableFrameCorpus())
+        QTest::newRow(row.name) << row.frame << row.expectDrop << row.expectReason << row.expectPongs;
 }
 
 void tst_QMdmmNetworking::server_turnsAwayUnusableFramesWithoutDisturbingTheRoom()
@@ -2187,6 +2214,132 @@ void tst_QMdmmNetworking::server_turnsAwayUnusableFramesWithoutDisturbingTheRoom
     QVERIFY2(bystander->isConnected(), "punishing one connection took the legitimate one with it");
     QVERIFY(bystander->room() != nullptr);
     QVERIFY(bystander->room()->player(bystander->objectName()) != nullptr);
+}
+
+// The corpus above goes to a Server object living in this process, where every row's outcome can be
+// read off the server-side Socket. One reading stays out of reach that way: whether the *executable*
+// survives the same traffic. An abort in the server's own code would end this test process with the
+// case's verdict still owed, which is not the same thing as watching a server process end on an
+// abort -- so here the server is spawned, the same rows go in over TCP, and the two questions a
+// process can be asked are the two that get asked: it is still running once the last row has been
+// answered or dropped, and SIGTERM then ends it as an ordinary stop (status 0) rather than as a
+// crash.
+//
+// The reason half is not repeated: there is no Socket object in this process to read it from, and
+// the drop itself is the whole of what this case observes. The legitimate client sits in the
+// spawned server's room exactly as in the in-process case, so "one connection's punishment does not
+// reach another" is checked across a process boundary as well.
+void tst_QMdmmNetworking::server_survivesTheCorpusInItsOwnProcess()
+{
+    // The run needs a free port of its own -- the in-process cases take theirs from the 1636x range,
+    // and a server bound to one of those while its case still holds it would be a conflict. Taking a
+    // port from the kernel and handing it back is the shape tst_qmdmmserver.cpp uses.
+    QTcpServer reservation;
+    QVERIFY(reservation.listen(QHostAddress::Any, 0));
+    const quint16 port = reservation.serverPort();
+    reservation.close();
+
+    const QString host = u"qmdmm://localhost:%1"_s.arg(port);
+
+    // Only the transport this case talks to is turned on: the executable's defaults would also bind
+    // the local socket and the WebSocket port, which other cases and other runs have a claim on. The
+    // operation timeout is off for the same reason it is off above -- the legitimate client is
+    // silent and has to stay connected.
+    QProcess server;
+    server.start(QString::fromLatin1(QMDMMSERVER_EXECUTABLE), {u"-t"_s, u"on"_s, u"-p"_s, QString::number(port), u"-l"_s, u"off"_s, u"-w"_s, u"off"_s, u"-o"_s, u"0"_s});
+    QVERIFY2(server.waitForStarted(60000), "the server executable did not start");
+
+    // The executable says nothing when its listener is up -- a release build compiles the debug log
+    // out, and it is not this case's subject anyway -- so readiness is read off the port. An attempt
+    // that is refused means the run has not reached its loop yet, which is a wait rather than a
+    // failure, and each attempt takes a socket of its own: a refused connect leaves nothing to retry.
+    bool listening = false;
+    for (int attempt = 0; attempt < 100 && !listening; ++attempt) {
+        QTcpSocket probe;
+        probe.connectToHost(QHostAddress::LocalHost, port);
+        listening = probe.waitForConnected(500);
+        probe.abort();
+        if (!listening)
+            QTest::qWait(50);
+    }
+    QVERIFY2(listening, "the server executable never started listening");
+
+    // The bystander: a legitimate client, signed in and seated before anything happens.
+    auto *bystander = new Client(ClientConfiguration(), this);
+    QVERIFY(bystander->connectToHost(host, Data::StateOnline));
+    QTRY_VERIFY_WITH_TIMEOUT(bystander->room() != nullptr && bystander->room()->player(bystander->objectName()) != nullptr, 5000);
+
+    // The offender of each row is a socket of its own, and every one of them captures state that
+    // lives as long as the case rather than as long as the iteration: a socket outliving its turn
+    // would otherwise talk to storage that is gone.
+    bool peerDropped = false;
+    int pongs = 0;
+
+    for (const UnusableFrame &row : unusableFrameCorpus()) {
+        const QString name = QString::fromLatin1(row.name);
+
+        peerDropped = false;
+        pongs = 0;
+
+        auto *peer = new QTcpSocket(this);
+        peer->connectToHost(QHostAddress::LocalHost, port);
+        QVERIFY2(peer->waitForConnected(5000), qPrintable(u"%1: the server executable refused a connection"_s.arg(name)));
+
+        QObject::connect(peer, &QAbstractSocket::disconnected, peer, [&peerDropped]() { peerDropped = true; });
+        QObject::connect(peer, &QAbstractSocket::readyRead, peer, [peer, &pongs]() {
+            while (peer->canReadLine()) {
+                const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(peer->readLine());
+                if (packet.type() == QMdmmCore::Protocol::TypeNotify && packet.notifyId() == QMdmmCore::Protocol::NotifyPongServer)
+                    ++pongs;
+            }
+        });
+
+        peer->write(row.frame);
+        peer->flush();
+
+        if (row.expectPongs > 0)
+            QVERIFY2(QTest::qWaitFor([&pongs, &row]() { return pongs >= row.expectPongs; }, 5000), qPrintable(u"%1: the frame went unanswered"_s.arg(name)));
+        else
+            QTest::qWait(200);
+
+        if (row.expectDrop) {
+            QVERIFY2(QTest::qWaitFor([&peerDropped]() { return peerDropped; }, 10000), qPrintable(u"%1: the server kept a peer that sent a frame it could not use"_s.arg(name)));
+        } else {
+            QVERIFY2(!peerDropped, qPrintable(u"%1: the server turned away legal client-to-server traffic"_s.arg(name)));
+            QCOMPARE(peer->state(), QAbstractSocket::ConnectedState);
+        }
+
+        // The socket is done with its turn, and its connections go with it: closing a socket is
+        // itself a disconnect, so a socket left to be destroyed during a later iteration would report
+        // that to that iteration's flag.
+        QObject::disconnect(peer, nullptr, peer, nullptr);
+        peer->deleteLater();
+    }
+
+    // Every row above was answered or dropped, and on its own that only says the server got through
+    // the corpus one row at a time. Here is the reading this case exists for: a process that aborted
+    // is not a process that is running, and an abort on the last row is exactly the one no later row
+    // would have noticed.
+    QTest::qWait(200);
+    QVERIFY2(server.state() == QProcess::Running, "the corpus took the server executable down");
+
+    // The collateral, this time across the process boundary.
+    QVERIFY2(bystander->isConnected(), "punishing one connection took the legitimate one with it");
+    QVERIFY(bystander->room() != nullptr);
+    QVERIFY(bystander->room()->player(bystander->objectName()) != nullptr);
+
+    // And the shape of the ending. The handler for a stop signal is installed on POSIX only, so that
+    // half is read there and the run is simply killed elsewhere -- the same split as
+    // tst_qmdmmserver.cpp's stop-signal case takes, which is where the contract itself lives.
+#ifdef Q_OS_UNIX
+    server.terminate();
+    QVERIFY2(server.waitForFinished(15000), "the server executable did not stop on SIGTERM");
+    QVERIFY(server.exitStatus() == QProcess::NormalExit);
+    QCOMPARE(server.exitCode(), 0);
+#else
+    server.kill();
+    QVERIFY(server.waitForFinished(15000));
+#endif
 }
 
 // A peer that connects and never signs in is not a player yet, so nothing else in the server would

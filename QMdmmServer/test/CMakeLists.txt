@@ -53,6 +53,21 @@ target_compile_definitions(tst_qmdmmserver6 PRIVATE
     "QMDMMSERVER_CONFIG_SOURCE=\"${CMAKE_CURRENT_SOURCE_DIR}/../src/config.cpp\""
 )
 
+# The networking suite drives this executable as well: its inbound-corpus case spawns the server and
+# feeds it the same frames, which is how "the server survived the corpus" becomes a reading about a
+# process rather than about a case's own verdict (see tst_qmdmmnetworking.cpp). The two modules are
+# configured Networking-then-Server, so this dependency cannot be declared next to the case that
+# needs it -- the target it depends on does not exist yet at that point -- and both lines live here
+# instead, where the executable target does. The guard is for a configuration that leaves the
+# networking test out.
+if (TARGET tst_qmdmmnetworking_tst_qmdmmnetworking_cpp6)
+    add_dependencies(tst_qmdmmnetworking_tst_qmdmmnetworking_cpp6 QMdmmServer6)
+
+    target_compile_definitions(tst_qmdmmnetworking_tst_qmdmmnetworking_cpp6 PRIVATE
+        "QMDMMSERVER_EXECUTABLE=\"$<TARGET_FILE:QMdmmServer6>\""
+    )
+endif()
+
 # What a failing case leaves behind has to be a file. This binary's own output does not reach
 # the CI log on every runner -- the Windows probe writes it nowhere -- while a junit report
 # does. It is the same report the shared test main writes for the other QtTest suites (see
