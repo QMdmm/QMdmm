@@ -217,29 +217,28 @@ void ServerP::introduceSocket(Socket *socket) // NOLINT(readability-make-member-
     emit socket->sendPacket(packet);
 
     // A peer that connects and never signs in is not a player yet, so nothing else in this server
-    // would ever notice it: without a deadline the connection (and the memory behind it) is held
-    // for as long as the peer cares to keep the socket open. The deadline is armed here -- the one
+    // would ever notice it: left to itself, the connection (and the memory behind it) is held for
+    // as long as the peer cares to keep the socket open. The deadline is armed here -- the one
     // place every transport's accepted socket passes through -- and judged when it fires: a socket
     // that has become an agent's wire in the meantime has signed in and is left alone, since a
     // signed-in agent that goes quiet is the connection's own request timer's business.
-    if (const int signInTimeout = serverConfiguration.signInTimeout(); signInTimeout > 0) {
-        auto *deadline = new QTimer(socket);
-        deadline->setSingleShot(true);
-        connect(deadline, &QTimer::timeout, socket, [this, socket, deadline, signInTimeout] {
-            deadline->deleteLater();
+    const int signInTimeout = serverConfiguration.signInTimeout();
+    QTimer *deadline = new QTimer(socket);
+    deadline->setSingleShot(true);
+    connect(deadline, &QTimer::timeout, socket, [this, socket, deadline, signInTimeout] {
+        deadline->deleteLater();
 
-            // signIn() builds the connection object that makes a socket an agent's wire. It is a
-            // descendant of this server, and the socket it was handed is the one this deadline
-            // watches, so the presence of that pair is exactly "this socket signed in".
-            for (const p::ServerConnectionP *connection : findChildren<p::ServerConnectionP *>()) {
-                if (connection->socket == socket)
-                    return;
-            }
+        // signIn() builds the connection object that makes a socket an agent's wire. It is a
+        // descendant of this server, and the socket it was handed is the one this deadline
+        // watches, so the presence of that pair is exactly "this socket signed in".
+        for (const p::ServerConnectionP *connection : findChildren<p::ServerConnectionP *>()) {
+            if (connection->socket == socket)
+                return;
+        }
 
-            socket->setError({.code = Socket::ProtocolError, .errorString = u"the peer did not sign in within %1 second(s)"_s.arg(signInTimeout)});
-        });
-        deadline->start(signInTimeout * 1000);
-    }
+        socket->setError({.code = Socket::ProtocolError, .errorString = u"the peer did not sign in within %1 second(s)"_s.arg(signInTimeout)});
+    });
+    deadline->start(signInTimeout * 1000);
 }
 
 QJsonObject ServerP::status() const

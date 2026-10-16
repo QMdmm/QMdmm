@@ -147,6 +147,13 @@ a bot. What the server does own is the flag saying the player is online, which i
 when the connection goes away and restores when it comes back, and the managed flag,
 which a disconnect clears rather than keeps.
 
+A connection that never gets as far as step 3 is not a player's yet, so nothing else
+would notice it. The server gives every accepted connection
+`ServerConfiguration::signInTimeout` to sign in -- 5 seconds by default, configurable
+between 2 and 60 -- and drops one that is still silent when it runs out. The deadline is
+always armed; a connection that did sign in is left alone, since the silence of a
+signed-in agent is the request timer's business instead.
+
 ## Reconnecting
 
 A client that loses its connection may open a new one and sign in again with the same
