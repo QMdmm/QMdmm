@@ -72,6 +72,18 @@ namespace v0 {
  */
 
 /**
+ * @property ServerConfiguration::controlPort
+ * @brief The port the read-only control plane listens on, default 0 (off)
+ *
+ * The control plane is a second, deliberately narrow listener: it speaks HTTP/1.0 on the loopback
+ * address only and serves one path, @c /status, with the same snapshot @c Server::status() returns.
+ * It carries no game traffic and cannot change anything. @c 0 turns it off, which is the default,
+ * so a server that was not asked for one opens no port beyond the transports it was configured
+ * with. Port @c 0 is not "pick one for me": an operator who reads the snapshot has to know where
+ * the endpoint is, so the plane is either at a port that was named or not there at all.
+ */
+
+/**
  * @property ServerConfiguration::playerNumPerRoom
  * @brief The player number per room, default 3
  */
@@ -200,6 +212,18 @@ namespace v0 {
  */
 
 /**
+ * @fn ServerConfiguration::controlPort() const
+ * @brief getter of @c ServerConfiguration::controlPort
+ * @return @c ServerConfiguration::controlPort
+ */
+
+/**
+ * @fn ServerConfiguration::setControlPort(uint16_t controlPort)
+ * @brief setter of @c ServerConfiguration::controlPort
+ * @param controlPort @c ServerConfiguration::controlPort
+ */
+
+/**
  * @fn ServerConfiguration::playerNumPerRoom() const
  * @brief getter of @c ServerConfiguration::playerNumPerRoom
  * @return @c ServerConfiguration::playerNumPerRoom
@@ -262,6 +286,7 @@ const ServerConfiguration &ServerConfiguration::defaults()
         qMakePair(u"websocketEnabled"_s, true),
         qMakePair(u"websocketName"_s, u"QMdmm"_s),
         qMakePair(u"websocketPort"_s, static_cast<int>(6367U)),
+        qMakePair(u"controlPort"_s, 0),
         qMakePair(u"playerNumPerRoom"_s, 3),
         qMakePair(u"requestTimeout"_s, 20),
         qMakePair(u"maximumPacketSize"_s, Socket::DefaultMaximumPacketSize),
@@ -308,6 +333,7 @@ IMPLEMENTATION_CONFIGURATION_SETTER_CONST_REFERENCE(QString, localSocketName, Lo
 IMPLEMENTATION_CONFIGURATION(bool, websocketEnabled, WebsocketEnabled, CONVERTTOTYPEBOOL, )
 IMPLEMENTATION_CONFIGURATION_SETTER_CONST_REFERENCE(QString, websocketName, WebsocketName, CONVERTTOTYPEQSTRING, )
 IMPLEMENTATION_CONFIGURATION(uint16_t, websocketPort, WebsocketPort, CONVERTTOTYPEUINT16T, )
+IMPLEMENTATION_CONFIGURATION(uint16_t, controlPort, ControlPort, CONVERTTOTYPEUINT16T, )
 IMPLEMENTATION_CONFIGURATION(int, playerNumPerRoom, PlayerNumPerRoom, CONVERTTOTYPEINT, )
 IMPLEMENTATION_CONFIGURATION(int, requestTimeout, RequestTimeout, CONVERTTOTYPEINT, )
 IMPLEMENTATION_CONFIGURATION(int, maximumPacketSize, MaximumPacketSize, CONVERTTOTYPEINT, )
@@ -331,6 +357,7 @@ IMPLEMENTATION_CONFIGURATION(int, signInTimeout, SignInTimeout, CONVERTTOTYPEINT
  * @c defaults()), so a partial or empty object is accepted; a present key must still be valid. Boolean
  * fields must be booleans and string fields must be strings; every numeric field must be a whole number
  * (fractions, NaN and negatives are rejected). Ports must be in [1, 65535] (port 0 is reserved);
+ * @c controlPort is either 0 (the plane is off, which is its default) or such a port;
  * @c playerNumPerRoom must be at least 2 (a game needs an opponent for rock-paper-scissors action-order
  * resolution); @c requestTimeout is either 0 (no timeout) or at least 15 seconds;
  * @c maximumPacketSize is at least 1024 bytes; @c signInTimeout is between 2 and 60 seconds.
@@ -400,6 +427,20 @@ bool ServerConfiguration::deserialize(const QJsonValue &value) // NOLINT(readabi
 #undef CONF_BOOL
 #undef CONF_STRING
 
+    // controlPort: 0 (off) or a real port. It cannot go through CONF_PORT, which is about the
+    // transports: a transport with no port is not a transport, so 0 is refused there, while the
+    // control plane has no reason to exist until it is asked for and 0 is exactly how that is said.
+    {
+        int parsed = 0;
+        if (ob.contains(u"controlPort"_s)) {
+            if (!parseNonNegativeInt(ob.value(u"controlPort"_s), &parsed))
+                return false;
+            if (parsed > 65535)
+                return false;
+            result.insert(u"controlPort"_s, parsed);
+        }
+    }
+
     // playerNumPerRoom: whole number >= 2 (a game needs at least two players).
     {
         int parsed = 0;
@@ -465,6 +506,10 @@ bool ServerConfiguration::deserialize(const QJsonValue &value) // NOLINT(readabi
  *
  * The server listens on the configured transports (TCP / local socket / WebSocket) and,
  * once enough players sign in, starts a @c LogicRunner for a complete game.
+ *
+ * It can also open a read-only control plane at @c ServerConfiguration::controlPort: an HTTP/1.0
+ * listener on the loopback address that serves @c status() at @c /status. It is meant for whoever
+ * is running the server, not for players, and is off unless a port is named.
  */
 
 /**
@@ -487,6 +532,10 @@ Server::Server(ServerConfiguration serverConfiguration, QMdmmCore::LogicConfigur
  * @c listenError() with its name and the underlying error string, so the caller can tell which
  * transport failed and why (the aggregate return value alone cannot). The return value is
  * @c false if any enabled transport failed.
+ *
+ * The control plane is started here too, but it is not one of the transports: it is opened only
+ * when a port is configured for it, and it binds the loopback address, so it is reachable from
+ * this machine and from nowhere else. Its name in @c listenError() is @c "control".
  */
 bool Server::listen()
 {
@@ -504,6 +553,11 @@ bool Server::listen()
 
     if (d->serverConfiguration.websocketEnabled() && !d->w->listen(QHostAddress::Any, d->serverConfiguration.websocketPort())) {
         emit listenError(u"websocket"_s, d->w->errorString(), QPrivateSignal());
+        ret = false;
+    }
+
+    if (d->serverConfiguration.controlPort() != 0 && !d->c->listen(QHostAddress::LocalHost, d->serverConfiguration.controlPort())) {
+        emit listenError(u"control"_s, d->c->errorString(), QPrivateSignal());
         ret = false;
     }
 
@@ -525,6 +579,8 @@ void Server::close()
         d->l->close();
     if (d->w != nullptr)
         d->w->close();
+    if (d->c != nullptr)
+        d->c->close();
 }
 
 /**
@@ -537,7 +593,9 @@ void Server::close()
  * online across all rooms, so a player whose connection dropped and who has not reconnected yet is
  * not counted even though the seat is kept for them.
  *
- * The snapshot is read-only and can be taken at any time; it changes nothing.
+ * The snapshot is read-only and can be taken at any time; it changes nothing. It is also what the
+ * control plane serves at @c /status, so the same readings are available to a caller that cannot
+ * link against this library (see @c ServerConfiguration::controlPort).
  */
 QJsonObject Server::status() const
 {
@@ -547,7 +605,8 @@ QJsonObject Server::status() const
 /**
  * @fn Server::listenError(const QString &transportName, const QString &errorString, QPrivateSignal)
  * @brief emitted when a transport fails to start listening in @c listen()
- * @param transportName which transport failed: @c "tcp", @c "local" or @c "websocket"
+ * @param transportName which transport failed: @c "tcp", @c "local" or @c "websocket", or
+ * @c "control" for the read-only control plane
  * @param errorString the transport's own description of the failure
  */
 

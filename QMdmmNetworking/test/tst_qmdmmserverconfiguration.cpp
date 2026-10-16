@@ -33,6 +33,9 @@ private slots:
         QCOMPARE(c.websocketEnabled(), true);
         QCOMPARE(c.websocketName(), u"QMdmm"_s);
         QCOMPARE(c.websocketPort(), (uint16_t)6367);
+        // The control plane is off until a port is named for it: 0 is not a port, it is the
+        // absence of one, so a server that was not asked for a plane opens no port for it.
+        QCOMPARE(c.controlPort(), (uint16_t)0);
         QCOMPARE(c.playerNumPerRoom(), 3);
         QCOMPARE(c.requestTimeout(), 20);
         QCOMPARE(c.maximumPacketSize(), 1024 * 1024);
@@ -49,6 +52,7 @@ private slots:
         c.setWebsocketEnabled(false);
         c.setWebsocketName(u"test-websocket"_s);
         c.setWebsocketPort(8000);
+        c.setControlPort(9000);
         c.setPlayerNumPerRoom(8);
         c.setRequestTimeout(30);
         c.setMaximumPacketSize(4096);
@@ -61,6 +65,7 @@ private slots:
         QCOMPARE(c.websocketEnabled(), false);
         QCOMPARE(c.websocketName(), u"test-websocket"_s);
         QCOMPARE(c.websocketPort(), (uint16_t)8000);
+        QCOMPARE(c.controlPort(), (uint16_t)9000);
         QCOMPARE(c.playerNumPerRoom(), 8);
         QCOMPARE(c.requestTimeout(), 30);
         QCOMPARE(c.maximumPacketSize(), 4096);
@@ -80,6 +85,7 @@ private slots:
             {u"websocketEnabled"_s, true}, //
             {u"websocketName"_s, u"QMdmm"_s}, //
             {u"websocketPort"_s, 6367}, //
+            {u"controlPort"_s, 9000}, //
             {u"playerNumPerRoom"_s, 3}, //
             {u"requestTimeout"_s, 20}, //
             {u"maximumPacketSize"_s, 4096}, //
@@ -124,6 +130,31 @@ private slots:
             QJsonObject ob = validOb;
             ob.insert(u"websocketPort"_s, 70000);
             QTest::newRow("portOverflow") << QJsonValue(ob) << false;
+        }
+        // controlPort = 0 is the control plane being off, which is its default, so unlike a
+        // transport's port it is a value rather than a mistake.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"controlPort"_s, 0);
+            QTest::newRow("controlPortOff") << QJsonValue(ob) << true;
+        }
+        // controlPort out of uint16_t range.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"controlPort"_s, 70000);
+            QTest::newRow("controlPortOverflow") << QJsonValue(ob) << false;
+        }
+        // Fractional controlPort.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"controlPort"_s, 9000.5);
+            QTest::newRow("controlPortFraction") << QJsonValue(ob) << false;
+        }
+        // Negative controlPort.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"controlPort"_s, -1);
+            QTest::newRow("controlPortNegative") << QJsonValue(ob) << false;
         }
         // playerNumPerRoom below the minimum of 2.
         {
@@ -254,6 +285,7 @@ private slots:
         QCOMPARE(conf.websocketEnabled(), defaults.websocketEnabled());
         QCOMPARE(conf.websocketName(), defaults.websocketName());
         QCOMPARE(conf.websocketPort(), defaults.websocketPort());
+        QCOMPARE(conf.controlPort(), defaults.controlPort());
         QCOMPARE(conf.playerNumPerRoom(), defaults.playerNumPerRoom());
         QCOMPARE(conf.requestTimeout(), defaults.requestTimeout());
         QCOMPARE(conf.maximumPacketSize(), defaults.maximumPacketSize());

@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QHostAddress>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
@@ -195,6 +198,84 @@ QString sortedLetters(const QSet<QChar> &letters)
     return list.join(u", "_s);
 }
 
+// A port on the loopback address that this machine is not using, taken by listening on it and
+// handed straight back. A case that needs the run to open a port of its own cannot pick one out of
+// the air -- another process may hold it -- so it asks the kernel and then lets it go.
+quint16 freePort()
+{
+    QTcpServer reservation;
+    if (!reservation.listen(QHostAddress::Any, 0))
+        qFatal("this case could not reserve a port of its own");
+
+    const quint16 port = reservation.serverPort();
+    reservation.close();
+    return port;
+}
+
+// One HTTP/1.0 exchange with the control plane, tried again while the run has not reached its
+// listener yet. A run that is not there yet and a run that is there but says nothing are both
+// silent from here, so what the wait is made of is the answer: it is the reading that says the run
+// was listening, rather than the connect that carried the request.
+//
+// A connect on its own would not say that. Qt reports a successful connection to a port with no
+// listener on this machine as one that was made -- a ConnectedState with a peer port of 0 and no
+// peer address, measured on macOS 27 with Qt 6.12 -- so a wait built on it ends the moment it
+// starts, on a run that has still to call listen(). The peer is read instead: an attempt that ends
+// with the port as its peer is one the run took, and an attempt to nothing is one it did not.
+//
+// The bound is 10 s, the same wait the stop-signal case gives the run to reach its listener, and
+// the pauses between attempts are what it is made of -- an attempt to nothing comes back at once.
+// @p process is watched as well: a run that is refused outright exits instead of listening, and
+// the wait then ends with the reason it printed. Which of the two shapes a failure had -- nothing
+// listening, or a listener that answered nothing -- and the run's own last words, are left in
+// @p diagnosis. Why no answer came back is not: the socket's reason is the same refusal or close
+// for both shapes, and the shapes are the ones a reader can act on.
+QByteArray askControlPlane(QProcess &process, quint16 port, const QByteArray &request, QString *diagnosis)
+{
+    QElapsedTimer timer;
+    timer.start();
+
+    bool reached = false;
+    while (timer.elapsed() < 10000) {
+        if (process.state() == QProcess::NotRunning) {
+            *diagnosis = u"the run exited before it answered: "_s + QString::fromLocal8Bit(process.readAllStandardError());
+            return {};
+        }
+
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, port);
+        const bool connected = socket.waitForConnected(1000) && socket.peerPort() == port;
+        reached = reached || connected;
+
+        if (connected) {
+            socket.write(request);
+            socket.flush();
+
+            // The plane keeps the connection for exactly one answer, so the end of the stream is
+            // what says the answer is complete; the bound inside is there so that a run which holds
+            // the connection open comes back as this case failing rather than as one that never
+            // finishes.
+            QByteArray answer;
+            QElapsedTimer answerTimer;
+            answerTimer.start();
+            while (socket.state() == QAbstractSocket::ConnectedState && answerTimer.elapsed() < 10000) {
+                if (socket.waitForReadyRead(1000))
+                    answer += socket.readAll();
+            }
+            answer += socket.readAll();
+            socket.disconnectFromHost();
+
+            if (!answer.isEmpty())
+                return answer;
+        }
+
+        QTest::qWait(50);
+    }
+
+    *diagnosis = reached ? u"the control plane answered nothing on 127.0.0.1:%1"_s.arg(port) : u"the run never listened on 127.0.0.1:%1"_s.arg(port);
+    return {};
+}
+
 } // namespace
 
 class tst_QMdmmServer : public QObject
@@ -227,6 +308,8 @@ private slots:
     void switchValues_reachThePrintedConfiguration();
     void portThatIsAlreadyTaken_makesTheRunGiveUp();
     void stopSignal_closesTheListenersAndExitsZero();
+    void onlyStatusOverGet_getsTheSnapshot_data();
+    void onlyStatusOverGet_getsTheSnapshot();
 };
 
 // --help is the first option a user reaches for, and it is the only one that
@@ -837,6 +920,81 @@ void tst_QMdmmServer::stopSignal_closesTheListenersAndExitsZero()
 
     QVERIFY2(readResult == 0, qPrintable(u"the peer read the stream as %1 bytes with errno %2 rather than as its end"_s.arg(readResult).arg(errno)));
 #endif
+}
+
+// The control plane is the read-only face of the server's status snapshot: an HTTP GET on
+// /status answers with the same three counts an in-process caller reads from status(). It is
+// asked for with a port of its own -- with no option there is no listener at all -- and it binds
+// the loopback address, so this case reaches it the way an operator with a plain client would.
+//
+// The run it talks to listens on the control plane alone: the three game transports are turned
+// off, which is the smallest run that has a status worth reading and also keeps this case from
+// reaching anything but the plane.
+//
+// The request is sent again until the run answers it, which is also how this case waits for the run
+// to reach its listener -- a run that is not there yet and a plane that says nothing are the same
+// silence from here (see the note on askControlPlane).
+//
+// A path the plane does not serve, and a method it does not serve, are answered as misses rather
+// than as the snapshot, so a mistyped path cannot be read as a healthy server.
+void tst_QMdmmServer::onlyStatusOverGet_getsTheSnapshot_data()
+{
+    QTest::addColumn<QByteArray>("request");
+    QTest::addColumn<int>("statusCode");
+
+    QTest::newRow("status") << QByteArray("GET /status HTTP/1.0\r\n\r\n") << 200;
+    QTest::newRow("unknownPath") << QByteArray("GET /nowhere HTTP/1.0\r\n\r\n") << 404;
+    QTest::newRow("methodNotServed") << QByteArray("POST /status HTTP/1.0\r\n\r\n") << 404;
+}
+
+void tst_QMdmmServer::onlyStatusOverGet_getsTheSnapshot()
+{
+    QFETCH(QByteArray, request);
+    QFETCH(int, statusCode);
+
+    const quint16 controlPort = freePort();
+
+    QProcess process;
+    process.start(QString::fromLatin1(QMDMMSERVER_EXECUTABLE), {u"-t"_s, u"off"_s, u"-l"_s, u"off"_s, u"-w"_s, u"off"_s, u"--control-port"_s, QString::number(controlPort)});
+    if (!process.waitForStarted(60000))
+        qFatal("the executable under test did not start");
+
+    const auto stopProcess [[maybe_unused]] = qScopeGuard([&process] {
+        // Asked to stop rather than killed: the run's own log is buffered, and a killed run takes
+        // whatever it has not written yet with it. The wait is bounded, and a run that outlasts it
+        // is one that no longer exits where this case expects it to: it is killed here so that the
+        // reading this case came for is the one that fails, rather than the suite being left to
+        // hang on this run.
+        process.terminate();
+        if (!process.waitForFinished(60000)) {
+            process.kill();
+            process.waitForFinished();
+        }
+    });
+
+    QString diagnosis;
+    const QByteArray answer = askControlPlane(process, controlPort, request, &diagnosis);
+
+    QVERIFY2(!answer.isEmpty(), qPrintable(diagnosis));
+    QVERIFY2(answer.startsWith(QByteArray("HTTP/1.0 ") + QByteArray::number(statusCode) + ' '), qPrintable(QString::fromLatin1(answer)));
+
+    if (statusCode != 200)
+        return;
+
+    const qsizetype bodyStart = answer.indexOf("\r\n\r\n");
+    QVERIFY2(bodyStart >= 0, qPrintable(QString::fromLatin1(answer)));
+
+    // The answer is the snapshot itself: the three keys status() promises, and nothing else. This
+    // run has nothing going on -- no rooms, no games, nobody signed in -- so all three read as
+    // zero. A plane that answered with a constant would read the same here, so what these three
+    // say is the shape of what the plane serves and that an idle run reads as idle; that the
+    // numbers are the run's own, and move with it, is what the in-process case in the networking
+    // suite watches them do.
+    const QJsonObject snapshot = QJsonDocument::fromJson(answer.mid(bodyStart + 4)).object();
+    QCOMPARE(int(snapshot.size()), 3);
+    QCOMPARE(snapshot.value(u"rooms"_s).toInt(), 0);
+    QCOMPARE(snapshot.value(u"games"_s).toInt(), 0);
+    QCOMPARE(snapshot.value(u"players"_s).toInt(), 0);
 }
 
 QTEST_GUILESS_MAIN(tst_QMdmmServer)

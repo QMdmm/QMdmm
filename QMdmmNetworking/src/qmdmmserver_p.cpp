@@ -8,7 +8,10 @@
 
 #include <QMdmmProtocol>
 
+#include <QJsonDocument>
 #include <QTimer>
+
+#include <memory>
 
 using namespace Qt::StringLiterals;
 
@@ -34,6 +37,7 @@ ServerP::ServerP(ServerConfiguration serverConfiguration_, QMdmmCore::LogicConfi
     , t(nullptr)
     , l(nullptr)
     , w(nullptr)
+    , c(nullptr)
     , current(nullptr)
 {
     // Tcp
@@ -56,6 +60,13 @@ ServerP::ServerP(ServerConfiguration serverConfiguration_, QMdmmCore::LogicConfi
     if (serverConfiguration.websocketEnabled()) {
         w = new QWebSocketServer(serverConfiguration.websocketName(), QWebSocketServer::NonSecureMode, this);
         connect(w, &QWebSocketServer::newConnection, this, &ServerP::websocketServerNewConnection);
+    }
+
+    // Control plane. Unlike the transports above it is not created from an on/off flag: a port of
+    // its own is what asks for it, and 0 -- the default -- is not a port.
+    if (serverConfiguration.controlPort() != 0) {
+        c = new QTcpServer(this);
+        connect(c, &QTcpServer::newConnection, this, &ServerP::controlServerNewConnection);
     }
 }
 
@@ -296,6 +307,84 @@ void ServerP::websocketServerNewConnection()
         Socket *mdmmSocket = new Socket(socket, this);
         introduceSocket(mdmmSocket);
     }
+}
+
+namespace {
+
+// How much of a request the control plane reads before giving up on it. A GET carries no body and
+// the request line is the whole of what this plane looks at, so anything past this is a peer that
+// is not asking a question: it is dropped rather than buffered without bound.
+constexpr qsizetype controlRequestSizeLimit = 8192;
+
+// One HTTP/1.0 response, header and body together. HTTP/1.0 with no keep-alive means a connection
+// carries exactly one exchange and then closes, which is what lets the caller be a bare client
+// that negotiates nothing. The length is what lets it read the body without guessing where it ends.
+QByteArray controlResponse(const QByteArray &statusLine, const QByteArray &contentType, const QByteArray &body)
+{
+    QByteArray response;
+    response += "HTTP/1.0 "_ba;
+    response += statusLine;
+    response += "\r\nContent-Type: "_ba;
+    response += contentType;
+    response += "\r\nContent-Length: "_ba;
+    response += QByteArray::number(static_cast<qlonglong>(body.size()));
+    response += "\r\nConnection: close\r\n\r\n"_ba;
+    response += body;
+    return response;
+}
+
+} // namespace
+
+void ServerP::controlServerNewConnection()
+{
+    while (c->hasPendingConnections())
+        serveControlRequest(c->nextPendingConnection());
+}
+
+void ServerP::serveControlRequest(QTcpSocket *socket)
+{
+    // Both of these are shared with the lambda below rather than owned by it: a request arrives in
+    // as many pieces as the socket cares to deliver it in, so what has been read so far, and
+    // whether it has been answered, have to outlive any single delivery.
+    auto received = std::make_shared<QByteArray>();
+    auto answered = std::make_shared<bool>(false);
+
+    connect(socket, &QTcpSocket::readyRead, socket, [this, socket, received, answered] {
+        if (*answered)
+            return;
+
+        received->append(socket->readAll());
+
+        // The request ends at the blank line that closes its header block. Waiting for that is
+        // what keeps a request split across several reads from being answered twice.
+        const qsizetype headerEnd = received->indexOf("\r\n\r\n"_ba);
+        if (headerEnd < 0) {
+            if (received->size() > controlRequestSizeLimit)
+                socket->disconnectFromHost();
+            return;
+        }
+
+        *answered = true;
+
+        // Only the request line is read -- "GET /status HTTP/1.0". The two words it must carry are
+        // the whole of what this plane serves, and a request that does not have them in that shape
+        // is answered as a miss rather than guessed at.
+        const QList<QByteArray> requestLine = received->left(headerEnd).split('\n').value(0).trimmed().split(' ');
+        const bool asksForTheSnapshot = requestLine.size() >= 2 && requestLine.at(0) == "GET"_ba && requestLine.at(1) == "/status"_ba;
+
+        if (asksForTheSnapshot) {
+            const QByteArray body = QJsonDocument(status()).toJson(QJsonDocument::Compact);
+            socket->write(controlResponse("200 OK"_ba, "application/json"_ba, body));
+        } else {
+            socket->write(controlResponse("404 Not Found"_ba, "text/plain"_ba, "no such resource\n"_ba));
+        }
+
+        // Closing is what tells the caller the answer is complete: there is no chunking and no
+        // keep-alive here for a caller to negotiate.
+        socket->disconnectFromHost();
+    });
+
+    connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
 }
 
 void ServerP::socketPacketReceived(const QMdmmCore::Packet &packet)

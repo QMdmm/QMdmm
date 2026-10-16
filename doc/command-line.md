@@ -77,6 +77,24 @@ use is reported as the server starts, and a transport that cannot listen stops
 the run rather than letting it go on without one: the reason is reported on
 stderr and the run exits with status 3.
 
+### Control plane
+
+A second, deliberately narrow listener can be opened for whoever runs the server
+rather than for players. It speaks HTTP/1.0, it is read-only, and it is off
+unless a port is named -- a value of `0`, which is the default, is not a port but
+the absence of one.
+
+- `--control-port <port>` -- serve a status snapshot on the loopback address at
+  `http://127.0.0.1:<port>/status`. Defaults to off.
+
+That address only: the plane binds `127.0.0.1`, so it is reachable from the
+machine the server runs on and from nowhere else. The answer to `GET /status` is
+the same snapshot an in-process caller reads from the server's `status()` -- a
+JSON object with the keys `rooms`, `games` and `players`, each a count, so a
+server with nothing going on answers with three zeroes. A path other than
+`/status`, and any method other than `GET`, is answered with `404`. Nothing the
+plane is asked can change anything.
+
 ### Room and timeout
 
 - `-n`, `--players <2~>` -- the number of seats in a room. Defaults to 3. Two is

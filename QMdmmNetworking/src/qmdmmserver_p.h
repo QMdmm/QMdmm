@@ -17,6 +17,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QTcpServer>
+#include <QTcpSocket>
 #include <QWebSocketServer>
 
 // NOLINTBEGIN(misc-non-private-member-variables-in-classes): This is private header
@@ -44,12 +45,17 @@ public:
 
     void introduceSocket(Socket *socket);
 
+    // The control plane is not a transport: it never becomes a Socket and never carries protocol
+    // frames. It reads one HTTP request line and answers with status().
+    void serveControlRequest(QTcpSocket *socket);
+
     [[nodiscard]] QJsonObject status() const;
 
 public slots: // NOLINT(readability-redundant-access-specifiers)
     void tcpServerNewConnection();
     void localServerNewConnection();
     void websocketServerNewConnection();
+    void controlServerNewConnection();
     void socketPacketReceived(const QMdmmCore::Packet &packet);
 
     void logicRunnerGameOver();
@@ -62,6 +68,7 @@ public: // NOLINT(readability-redundant-access-specifiers)
     QTcpServer *t;
     QLocalServer *l;
     QWebSocketServer *w;
+    QTcpServer *c;
     LogicRunner *current;
 };
 

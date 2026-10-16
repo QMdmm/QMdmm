@@ -40,6 +40,10 @@ Network transports (each can be enabled or disabled independently):
   -W, --websocket-name <name>        WebSocket name (default: "QMdmm").
   -P, --websocket-port <port>        WebSocket listen port (default: 6367).
 
+Control plane (read-only):
+  --control-port <port>              Serve a read-only status snapshot over HTTP/1.0 on
+                                     127.0.0.1, at /status (default: off).
+
 Room and connection:
   -n, --players <2~>                 Player number per room (default: 3). Nine is the soft cap:
                                      above it rock-paper-scissors ties become more likely.
@@ -179,6 +183,8 @@ Config::Config()
     parser.addOption(QCommandLineOption(QStringList {u"w"_s, u"websocket"_s}, {}, u"on/off"_s));
     parser.addOption(QCommandLineOption(QStringList {u"W"_s, u"websocket-name"_s}, {}, u"name"_s));
     parser.addOption(QCommandLineOption(QStringList {u"P"_s, u"websocket-port"_s}, {}, u"port"_s));
+
+    parser.addOption(QCommandLineOption(QStringList {u"control-port"_s}, {}, u"port"_s));
 
     parser.addOption(QCommandLineOption(QStringList {u"n"_s, u"players"_s}, {}, u"2~"_s));
 
@@ -398,6 +404,7 @@ void Config::read_(QMdmmCore::Settings *setting, QCommandLineParser *parser)
     CONFIG_ITEM(bool, serverConfiguration_, "websocket", stringToBool, WebsocketEnabled, false);
     CONFIG_ITEM(QString, serverConfiguration_, "websocket-name", , WebsocketName, false);
     CONFIG_ITEM(uint16_t, serverConfiguration_, "websocket-port", stringToUint16, WebsocketPort, false);
+    CONFIG_ITEM(uint16_t, serverConfiguration_, "control-port", stringToUint16, ControlPort, false);
     CONFIG_ITEM(int, serverConfiguration_, "timeout", stringToInt, RequestTimeout, false);
 
     {
@@ -541,6 +548,7 @@ int Config::save_(QMdmmCore::Settings *setting, QMdmmCore::Settings::Instance to
     CONFIG_ITEM(bool, serverConfiguration_, "websocket", boolToString, websocketEnabled);
     CONFIG_ITEM(QString, serverConfiguration_, "websocket-name", , websocketName);
     CONFIG_ITEM(uint16_t, serverConfiguration_, "websocket-port", uint16ToString, websocketPort);
+    CONFIG_ITEM(uint16_t, serverConfiguration_, "control-port", uint16ToString, controlPort);
     CONFIG_ITEM(int, serverConfiguration_, "timeout", intToString, requestTimeout);
     CONFIG_ITEM(int, serverConfiguration_, "players", intToString, playerNumPerRoom);
 
