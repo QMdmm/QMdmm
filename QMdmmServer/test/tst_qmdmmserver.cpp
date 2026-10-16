@@ -276,6 +276,34 @@ QByteArray askControlPlane(QProcess &process, quint16 port, const QByteArray &re
     return {};
 }
 
+// Asks a run of the executable under test to stop, and does not come back while it is still
+// there.
+//
+// The run is asked first, rather than killed outright, so that one whose log is buffered writes
+// it out before it goes. What asks it is a stop signal, and that request is POSIX's alone -- the
+// handler is installed there only (see the stop-signal case) -- so elsewhere the run is killed,
+// the same split the networking suite's corpus case takes. Qt's terminate() would not have moved
+// a console run there in any case: it posts WM_CLOSE to the run's top-level windows and to its
+// main thread, and a console run has neither a window to close nor a message loop to read the
+// request from, so the run would have gone on until the wait behind it ran out.
+//
+// Either way the wait is bounded well under the 60 s these cases are bounded at, so that a run
+// which outlasts it -- one that no longer exits where the case expects it to -- is killed here
+// rather than leaving the suite to hang on it.
+void stopRun(QProcess &process)
+{
+#ifdef Q_OS_UNIX
+    process.terminate();
+#else
+    process.kill();
+#endif
+
+    if (!process.waitForFinished(15000)) {
+        process.kill();
+        process.waitForFinished();
+    }
+}
+
 } // namespace
 
 class tst_QMdmmServer : public QObject
@@ -959,18 +987,7 @@ void tst_QMdmmServer::onlyStatusOverGet_getsTheSnapshot()
     if (!process.waitForStarted(60000))
         qFatal("the executable under test did not start");
 
-    const auto stopProcess [[maybe_unused]] = qScopeGuard([&process] {
-        // Asked to stop rather than killed: the run's own log is buffered, and a killed run takes
-        // whatever it has not written yet with it. The wait is bounded, and a run that outlasts it
-        // is one that no longer exits where this case expects it to: it is killed here so that the
-        // reading this case came for is the one that fails, rather than the suite being left to
-        // hang on this run.
-        process.terminate();
-        if (!process.waitForFinished(60000)) {
-            process.kill();
-            process.waitForFinished();
-        }
-    });
+    const auto stopProcess [[maybe_unused]] = qScopeGuard([&process] { stopRun(process); });
 
     QString diagnosis;
     const QByteArray answer = askControlPlane(process, controlPort, request, &diagnosis);
