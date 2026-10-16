@@ -52,6 +52,7 @@ private slots:
     void client_reportsAgentStatesThroughOneSignal();
     void client_routesLogicConfigurationToSelfAgent();
     void client_declaresManagedStateToServer();
+    void client_ignoresABroadcastAboutItsOwnAgent();
     void server_disconnectsOnAbnormalPacket();
     void server_disconnectsOnOutOfRangeReply();
     void server_disconnectsOnOversizedActionOrderReply();
@@ -647,11 +648,13 @@ void tst_QMdmmNetworking::client_routesLogicConfigurationToSelfAgent()
 }
 
 // The runtime managed toggle (D-021): the operation side flips the client's own agent with
-// Agent::setManaged, the client declares the new flag on the wire, and the server -- which owns the
-// agent state -- applies it and reports the result back through the ordinary agent state broadcast.
-// A second player in the same room observes the declaration, which is what makes this a
+// Agent::setManaged, the client declares the state it holds on the wire, and the server -- which
+// owns the agent state -- applies the whole of it and reports the change to the room's other
+// players. A second player in the same room observes the declaration, which is what makes this a
 // synchronized flag rather than a client-local one. Withdrawing it is part of the contract too: the
-// managed state is a toggle, not a one-way grant.
+// managed state is a toggle, not a one-way grant. The declaring client is deliberately not among
+// those told: what it declared is a value it already holds, and handing it back would invite it to
+// declare that value again.
 void tst_QMdmmNetworking::client_declaresManagedStateToServer()
 {
     LogicConfiguration conf = LogicConfiguration::defaults();
@@ -676,11 +679,7 @@ void tst_QMdmmNetworking::client_declaresManagedStateToServer()
     QVERIFY(p2->connectToHost(host, Data::StateOnlineBot));
     QTRY_VERIFY_WITH_TIMEOUT(p2->room() != nullptr && p2->room()->player(p1->objectName()) != nullptr, 5000);
 
-    // The sign-in carried Online without Trust, so nothing is managed before the toggle. The
-    // state is quoted if this fails: the client reaches the managed flag either from a state the
-    // server sent it (notifyPlayerAdded / notifyAgentStateChanged adopt the server's view) or by
-    // declaring it itself (Agent::setManaged), and nothing here declares it before the toggle --
-    // so the number is what tells which of the two happened on a platform where this is red.
+    // The sign-in carried Online without Trust, so nothing is managed before the toggle.
     QVERIFY(p1->agent()->state().testFlag(Data::StateMaskOnline));
     QVERIFY2(!p1->agent()->managed(), qPrintable(u"p1's agent state is 0x%1 before anything declared it managed"_s.arg(static_cast<int>(p1->agent()->state()), 0, 16)));
 
@@ -690,30 +689,38 @@ void tst_QMdmmNetworking::client_declaresManagedStateToServer()
             p2SawManaged = true;
     });
 
-    // The declaring client is told the same way -- the server owns the agent state and reports the
-    // result back (see ClientP::sendAgentStateChanged), which is what the toggle's two halves below
-    // wait for. The unmanaged half is latched only once this half was seen, so an unsolicited
-    // earlier broadcast (the sign-in snapshot) cannot make that wait finish before the withdrawal
-    // has been read: the two halves arrive in this order, so seeing the second one means the first
-    // one is behind us.
-    bool p1SawOwnManaged = false;
-    bool p1SawOwnUnmanaged = false;
-    connect(p1->agent(), &Agent::agentStateChangeNotified, &server, [&p1SawOwnManaged, &p1SawOwnUnmanaged, p1](const QString &playerName, const Data::AgentState &state) {
-        if (playerName != p1->objectName())
-            return;
+    // What the server does with the declaration: it reports the change to the room's other players
+    // and not back to the player that made it (see ClientP::sendAgentStateChanged), so a declaration
+    // cannot come back to its author as news and be declared again. The reading is taken where that
+    // reporting happens -- the server's own agent for p1 -- because a broadcast about itself would
+    // be disregarded on the client side anyway (covered separately by
+    // client_ignoresABroadcastAboutItsOwnAgent), and would therefore be invisible there. The parent
+    // test is what keeps this the server's agent rather than the client's own, which is a child of
+    // the Client above it.
+    Agent *p1OnTheServer = nullptr;
+    for (Agent *agent : server.findChildren<Agent *>()) {
+        if (agent->objectName() == p1->objectName() && qobject_cast<LogicRunner *>(agent->parent()) != nullptr)
+            p1OnTheServer = agent;
+    }
+    QVERIFY(p1OnTheServer != nullptr);
+    QVERIFY(p1OnTheServer != p1->agent());
 
-        if (state.testFlag(Data::StateMaskTrust))
-            p1SawOwnManaged = true;
-        else if (p1SawOwnManaged)
-            p1SawOwnUnmanaged = true;
+    int p1ToldAboutItself = 0;
+    connect(p1OnTheServer, &Agent::agentStateChangeNotified, &server, [&p1ToldAboutItself, p1](const QString &playerName, const Data::AgentState &) {
+        if (playerName == p1->objectName())
+            ++p1ToldAboutItself;
     });
 
+    // Declaring is not waiting: setManaged writes the flag into the agent's own state, so the client
+    // already holds what it declares -- the event loop has not run between the flip and the reading
+    // below, and this is not a value an echo has carried back.
     p1->agent()->setManaged(true);
+    QVERIFY(p1->agent()->managed());
+
     QTRY_VERIFY_WITH_TIMEOUT(p2SawManaged, 5000);
 
-    // The declaring client reflects it as well (applied on the way out, then confirmed by the
-    // broadcast), and the flag is the only thing that moved: the player is still online, and p2's
-    // own state is not touched -- a declaration is about the declaring player only.
+    // The flag is the only thing that moved: the player is still online, and p2's own state is not
+    // touched -- a declaration is about the declaring player only.
     QVERIFY(p1->agent()->managed());
     QVERIFY(p1->agent()->state().testFlag(Data::StateMaskOnline));
     QVERIFY2(!p2->agent()->managed(),
@@ -725,17 +732,87 @@ void tst_QMdmmNetworking::client_declaresManagedStateToServer()
             p2SawUnmanaged = true;
     });
 
+    // The withdrawal is read just as directly: no broadcast about this client is in flight for the
+    // local clear to race, so the value read here is the settled one.
     p1->agent()->setManaged(false);
-    // Both observers wait for the broadcast rather than for the client's own bookkeeping. The two
-    // sockets are read independently, so a wait that only covers p2 leaves the assertion below
-    // racing p1's own socket: it can still be holding the broadcast of the earlier declaration and
-    // read it after the withdrawal has cleared the flag locally, which puts the flag back until the
-    // withdrawal's own broadcast is read behind it. Waiting for p1's echo as well settles that
-    // first, and the state is quoted if this fails, so a red on a platform where the withdrawal
-    // never comes back says which of the two readings it was.
+    QVERIFY(!p1->agent()->managed());
+
     QTRY_VERIFY_WITH_TIMEOUT(p2SawUnmanaged, 5000);
-    QTRY_VERIFY_WITH_TIMEOUT(p1SawOwnUnmanaged, 5000);
-    QVERIFY2(!p1->agent()->managed(), qPrintable(u"p1's agent state is 0x%1 after the withdrawal was broadcast"_s.arg(static_cast<int>(p1->agent()->state()), 0, 16)));
+
+    // Both declarations have gone through by now. A settled pair leaves the count at nothing: the
+    // two broadcasts went to the room, and neither went back to the player that had declared its
+    // state.
+    QTest::qWait(500);
+    QVERIFY2(p1ToldAboutItself == 0,
+             qPrintable(u"the server reported %1 state change(s) about p1 back to p1; a declaration does not come back to its author"_s.arg(p1ToldAboutItself)));
+    QVERIFY2(!p1->agent()->managed(), qPrintable(u"p1's agent state is 0x%1 after the withdrawal was declared"_s.arg(static_cast<int>(p1->agent()->state()), 0, 16)));
+}
+
+// A broadcast about this client's own agent is not applied: the state it holds for itself is the
+// one it declared, so taking the server's word for it would turn a broadcast into a declaration of
+// its own -- the value would go back on the wire it had just come off, and the two sides would hand
+// it back and forth. The server does not report a change to the player that made it (see
+// client_declaresManagedStateToServer), so the case is driven over a bare peer that speaks the
+// handshake and then sends just such a broadcast: what the client does with it is the reading.
+void tst_QMdmmNetworking::client_ignoresABroadcastAboutItsOwnAgent()
+{
+    QTcpServer rawServer;
+    QVERIFY(rawServer.listen(QHostAddress::Any, 16389));
+
+    QByteArray received;
+    QTcpSocket *peer = nullptr;
+    QObject::connect(&rawServer, &QTcpServer::newConnection, &rawServer, [&rawServer, &received, &peer]() {
+        peer = rawServer.nextPendingConnection();
+        QObject::connect(peer, &QTcpSocket::readyRead, peer, [&received, peer]() { received.append(peer->readAll()); });
+        QJsonObject ob;
+        ob.insert(u"versionNumber"_s, QMdmmCore::Global::version().toString());
+        ob.insert(u"protocolVersion"_s, QMdmmCore::Protocol::version());
+        peer->write(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyVersion, ob).serialize().append('\n'));
+        peer->flush();
+    });
+
+    auto *p1 = new Client(ClientConfiguration(), &rawServer);
+
+    // Armed before the connection: a broadcast taken as a change would reach the operation side on
+    // this signal, so the count is one of the readings below.
+    int reported = 0;
+    connect(p1, &Client::agentStateChanged, &rawServer, [&reported](const QString &, const Data::AgentState &) { ++reported; });
+
+    QVERIFY(p1->connectToHost(u"qmdmm://localhost:16389"_s, Data::StateOnline));
+    QTRY_VERIFY_WITH_TIMEOUT(received.contains('\n'), 5000);
+    QVERIFY(peer != nullptr);
+
+    // How many times this client declared a state of its own on the connection. Nothing here should
+    // make it declare at all: the sign-in carries the state it wants, and that is a NotifySignIn.
+    const auto declarationsIn = [](const QByteArray &bytes) {
+        int declarations = 0;
+        for (const QByteArray &line : bytes.split('\n')) {
+            if (line.isEmpty())
+                continue;
+            const Packet packet = Packet::fromJson(line);
+            if (!packet.hasError() && packet.type() == Protocol::TypeNotify && packet.notifyId() == Protocol::NotifyStateChange)
+                ++declarations;
+        }
+        return declarations;
+    };
+    QCOMPARE(declarationsIn(received), 0);
+
+    // A broadcast about ourselves, carrying the flag as set. The peer is the server here and the
+    // name is the one this client signed in with, so what arrives is exactly the message the client
+    // would have to disregard.
+    QJsonObject ob;
+    ob.insert(u"playerName"_s, p1->objectName());
+    ob.insert(u"agentState"_s, static_cast<int>(Data::StateOnlineTrust));
+    peer->write(Packet(Protocol::NotifyAgentStateChanged, ob).serialize().append('\n'));
+    peer->flush();
+
+    // Nothing happens on either side of it: the flag is not taken, it is not reported to the
+    // operation side, and it is not declared back at the peer.
+    QTest::qWait(300);
+    QVERIFY2(!p1->agent()->managed(), qPrintable(u"our own agent state is 0x%1 after a broadcast about ourselves"_s.arg(static_cast<int>(p1->agent()->state()), 0, 16)));
+    QCOMPARE(reported, 0);
+    QCOMPARE(declarationsIn(received), 0);
+    QVERIFY(p1->isConnected());
 }
 
 // A reply carrying a statically checkable invalid value -- here an out-of-range

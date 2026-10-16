@@ -123,9 +123,11 @@ bool Agent::managed() const
  * @param managed @c true to declare the player managed, @c false to withdraw the declaration
  *
  * The runtime counterpart of the @c StateMaskTrust bit a sign-in carries: on the client's own agent
- * this is what the client reports to the server, which owns the state, applies the flag and reports
- * the result back through the ordinary agent state broadcast. Declaring the value the state already
- * has is a no-op -- @c setState only signals an actual change -- so it puts nothing on the wire.
+ * this is what the client reports to the server, which owns the state and applies it in full, this
+ * flag among the rest. What the server then reports is the change, to the room's other players
+ * rather than back to the client that declared it (see @c Protocol::NotifyStateChange). Declaring
+ * the value the state already has is a no-op -- @c setState only signals an actual change -- so it
+ * puts nothing on the wire.
  */
 void Agent::setManaged(bool managed)
 {

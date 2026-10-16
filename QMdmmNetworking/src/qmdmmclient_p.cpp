@@ -361,14 +361,22 @@ void ClientP::notifyAgentStateChanged(const QJsonValue &value)
         return;
     QMdmmCore::Data::AgentState agentState = QMdmmCore::Data::AgentState(static_cast<QMdmmCore::Data::AgentState::Int>(vagentState.toInt()));
 
-    // Update the mirror agent's state (the "data" half): the adoption emits stateChanged, and that
-    // is what the operation side observes, through the client's own signal (see
+    // Update the mirror agent's state (the "data" half): the update emits stateChanged, and that is
+    // what the operation side observes, through the client's own signal (see
     // Client::agentStateChanged). The route to selfAgent below is kept for symmetry with how
     // notifyPlayerAdd / notifyPlayerRemove / notifyAction / notifySpeak route to selfAgent, and
     // with the server's agentStateChanged broadcast -- the GUI reads the state off the client's
     // signal now, not off this one.
-    agent->setState(agentState);
-    selfAgent->notifyAgentStateChange(playerName, agentState);
+    //
+    // A broadcast about this client's own agent is not applied: the server does not report a change
+    // back to the agent that made it (see LogicRunnerP::agentStateChanged), and the client's state
+    // already holds the value it declared. Applying it here would mean adopting a value this client
+    // itself put on the wire, which is exactly the loop the routing rule closes. Note that this is
+    // a property of where the change came from, not of when the two sockets happen to be read.
+    if (agent != selfAgent) {
+        agent->setState(agentState);
+        selfAgent->notifyAgentStateChange(playerName, agentState);
+    }
     onRet_.dismiss();
 }
 
@@ -908,17 +916,20 @@ void ClientP::sendRequestGivenUp()
 // NOLINTNEXTLINE(readability-make-member-function-const)
 void ClientP::sendAgentStateChanged(QMdmmCore::Data::AgentState state)
 {
-    // Declare the managed flag to the server, which owns the agent state: it applies the flag and
-    // reports the result back through the ordinary agent state broadcast, so the client never
-    // treats its own declaration as the final word. Driven by the agent's state signal, which also
-    // carries the server's own view of the flag; that view is what the client's state already
-    // holds, so the declaration it produces repeats a value the server has -- the server's own
-    // "only an actual change" guard settles it there and nothing oscillates. The player is
-    // identified by the socket, hence no name in the payload.
+    // Declare this player's state to the server, which owns the agent state: the client's own view
+    // of itself goes out as it stands, and the server applies it in full. Driven by the agent's
+    // state signal, which the operation side's own flips and the server's state snapshots both
+    // reach; a snapshot carries a value the client's state already holds (it was just applied), so
+    // the declaration it produces repeats a value the server has -- the server's own "only an
+    // actual change" guard settles it there. Nothing oscillates, and not because of when the
+    // sockets are read: the server reports a change to the room's other players rather than back to
+    // the player that made it (see LogicRunnerP::agentStateChanged), so a declaration cannot come
+    // back to its author as news and be declared again. The player is identified by the socket,
+    // hence no name in the payload.
     if (socket != nullptr) {
         QJsonObject ob;
-        ob.insert(u"managed"_s, state.testFlag(QMdmmCore::Data::StateMaskTrust));
-        emit socket->sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyManagedChanged, ob));
+        ob.insert(u"agentState"_s, static_cast<int>(state.toInt()));
+        emit socket->sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyStateChange, ob));
     }
 }
 

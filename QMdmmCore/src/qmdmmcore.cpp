@@ -209,8 +209,9 @@ namespace v0 {
  * @var QMdmmCore::Data::AgentStateEnum Data::StateMaskTrust
  * @brief Mask of the "managed" flag
  *
- * The flag only travels: the operation side declares it, the server owns it and reports it back
- * (see @c Protocol::NotifyManagedChanged). What being managed means below the wire is a
+ * The flag only travels: the operation side declares the state it holds for its player, this bit
+ * among the rest, and the server owns that state and reports a change of it to the room (see
+ * @c Protocol::NotifyStateChange). What being managed means below the wire is a
  * client-side decision: a client that manages its player gives up on that player's requests
  * instead of asking -- answering each with the protocol's give-up marker, a null reply value --
  * so the server answers each one with the default reply it keeps for that kind of request (see

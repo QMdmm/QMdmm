@@ -276,20 +276,24 @@ namespace v0 {
  */
 
 /**
- * @var Protocol::NotifyId Protocol::NotifyManagedChanged
- * @brief A notify to server of the player declaring its managed state
+ * @var Protocol::NotifyId Protocol::NotifyStateChange
+ * @brief A notify to server of the player declaring its own agent state
  *
- * Wire format: @c {"managed": bool}.
+ * Wire format: @c {"agentState": int}.
  *
- * The player is identified by the socket, so no name is carried. Like the sign-in @c agentState
- * (see @c NotifySignIn) this is a self-declaration: the server applies it to the @c StateMaskTrust
- * flag, leaves the remaining flags alone, and reports the result back through the ordinary
- * @c NotifyAgentStateChanged broadcast. It is the runtime counterpart of the managed flag a sign-in
- * carries, for a client UI that toggles being managed while the connection is up.
+ * The player is identified by the socket, so no name is carried. Like the @c agentState a sign-in
+ * carries (see @c NotifySignIn) this is a self-declaration: the server takes the state as the
+ * player's own and applies it in full -- the @c StateMaskTrust flag among the rest, not on its own.
+ * It is the runtime counterpart of that sign-in field, for a client whose UI flips whether it
+ * manages its player while the connection is up.
  *
- * A payload that is not an object, or whose @c managed is not a bool, is a protocol error: the
+ * The change is reported to the room's other players and not back to the one that declared it, so
+ * the declaring client is never handed its own declaration as news: what it declared is a value it
+ * already holds, and reporting it back would invite it to declare that value again.
+ *
+ * A payload that is not an object, or whose @c agentState is not a number, is a protocol error: the
  * server raises @c Socket::ProtocolError and drops the connection rather than ignoring the notify.
- * The same happens on a socket that has not signed in -- there is no player whose flag could be
+ * The same happens on a socket that has not signed in -- there is no player whose state could be
  * applied.
  */
 
@@ -566,7 +570,7 @@ bool isNotifyIdValid(int notifyId)
     case Protocol::NotifyPingServer:
     case Protocol::NotifySignIn:
     case Protocol::NotifyObserve:
-    case Protocol::NotifyManagedChanged:
+    case Protocol::NotifyStateChange:
     case Protocol::NotifySpeak:
     case Protocol::NotifyOperate:
         return true;

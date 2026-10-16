@@ -168,8 +168,9 @@ Agent *LogicRunner::reconnectAgent(Agent *agent)
 
     // Resend the state snapshot to the reconnected client so it can rebuild its room: the logic
     // configuration, then every player (identity + current state). The client treats a duplicate
-    // notifyPlayerAdd as benign (ClientP::notifyPlayerAdded), and the notifyAgentStateChange
-    // broadcast above is dropped by the reconnected client until it has learned the players here.
+    // notifyPlayerAdd as benign (ClientP::notifyPlayerAdded), and the change above does not reach
+    // the reconnected client at all -- it is the agent whose state it was -- so this snapshot is
+    // what tells the returning player where it and everyone else stands.
     agent->notifyLogicConfiguration();
 
     foreach (Agent *a, d->agents)

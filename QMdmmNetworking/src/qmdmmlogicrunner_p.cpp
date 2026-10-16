@@ -57,8 +57,10 @@ void LogicRunnerP::agentStateChanged(const QMdmmCore::Data::AgentState &state)
     if (changedAgent == nullptr)
         return;
 
-    foreach (Agent *agent, agents)
-        agent->notifyAgentStateChange(changedAgent->objectName(), state);
+    foreach (Agent *agent, agents) {
+        if (agent != changedAgent)
+            agent->notifyAgentStateChange(changedAgent->objectName(), state);
+    }
 }
 
 void LogicRunnerP::agentSpoken(const QString &content)

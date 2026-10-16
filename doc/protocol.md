@@ -95,8 +95,8 @@ runs for the players in a room, or at a client.
   configuration, who is in it, and everything that happens during a game. A client that
   has signed in but is not in a game yet still receives the configuration and the
   arrivals and departures.
-- **To the server** -- sent by a client: signing in, declaring itself managed, observing,
-  and the ping.
+- **To the server** -- sent by a client: signing in, declaring the state it holds for
+  itself, observing, and the ping.
 - **To an agent** -- sent by a client to its own agent on the server side, which is how a
   client speaks and, later, operates.
 
@@ -125,7 +125,7 @@ runs for the players in a room, or at a client.
 | `NotifyPingServer` | client to server | `int64` -- an epoch-milliseconds timestamp |
 | `NotifySignIn` | client to server | `{"playerName": string, "screenName": string, "agentState": int, "lastRoundEventSeq": int}` |
 | `NotifyObserve` | client to server | `{"observerName": string, "playerName": string}` -- not defined beyond this yet |
-| `NotifyManagedChanged` | client to server | `{"managed": bool}`. The player is identified by the connection, so no name travels. A payload that is not an object, or whose `managed` is not a boolean, is a protocol error, as is this notify from a connection that has not signed in |
+| `NotifyStateChange` | client to server | `{"agentState": int}`, the state the client declares for its own player. The player is identified by the connection, so no name travels. A payload that is not an object, or whose `agentState` is not a number, is a protocol error, as is this notify from a connection that has not signed in |
 | `NotifySpeak` | client to agent | `string`, base64-encoded UTF-8 content -- keeps a frame on one line whatever was said |
 | `NotifyOperate` | client to agent | not defined yet |
 
@@ -178,7 +178,7 @@ handshake goes on.
 A frame that does not decode, is not an object, carries a key of the wrong type or a
 fractional or out-of-range id, or goes past the size an implementation holds for one
 frame, is refused: the connection it arrived on is closed. A connection is also closed
-when a payload breaks the rules this page gives it -- the `NotifyManagedChanged` cases
+when a payload breaks the rules this page gives it -- the `NotifyStateChange` cases
 above, for instance.
 
 Where this page says a payload is ignored instead, the connection stays up: a key of the
