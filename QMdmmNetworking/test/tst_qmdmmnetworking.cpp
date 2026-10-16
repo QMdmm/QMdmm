@@ -588,8 +588,22 @@ void tst_QMdmmNetworking::client_reportsAgentStatesThroughOneSignal()
             p2Added = true;
     });
 
+    // p2's own sign-in confirm has to have landed before it declares anything, and that is a
+    // separate wait from the one above: what a client declares is the state it holds for itself,
+    // which is the one it was born with until the server's word arrives. A confirm that lands
+    // afterwards puts the state it carries back -- the client applies it and declares the result --
+    // so a declaration made before it is undone instead of announced. Waiting here is what puts the
+    // two declarations in the order the operation side has them in a real game, where the flag is
+    // flipped from a room that is already up.
+    int p2sOwnReports = 0;
+    connect(p2, &Client::agentStateChanged, &server, [&p2sOwnReports, p2](const QString &playerName, const Data::AgentState &) {
+        if (playerName == p2->objectName())
+            ++p2sOwnReports;
+    });
+
     QVERIFY(p2->connectToHost(host, Data::StateOnlineBot));
     QTRY_VERIFY_WITH_TIMEOUT(p2Added, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(p2sOwnReports >= 1, 5000);
 
     // Joining is not a state change: the mirror's initial state travels with the notify above, and
     // arming the report only after the registration is what keeps it from being announced twice.
