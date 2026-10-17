@@ -2171,6 +2171,14 @@ void tst_QMdmmNetworking::server_turnsAwayUnusableFramesWithoutDisturbingTheRoom
     serverConf.setWebsocketEnabled(false);
     serverConf.setRequestTimeout(0); // the bystander stays silent and must stay connected
 
+    // These two are written from lambdas whose context is the socket below, and that socket is a
+    // child of the server: destroying the server deletes the socket, which emits one last
+    // disconnected, which runs the lambda. Declared before the server, they are destroyed after it,
+    // so that last write lands in storage that is still alive; declared where they are used, they
+    // would already be gone (AddressSanitizer calls that stack-use-after-scope).
+    bool peerDropped = false;
+    int pongs = 0;
+
     Server server(serverConf, conf);
     QVERIFY(server.listen());
 
@@ -2186,10 +2194,8 @@ void tst_QMdmmNetworking::server_turnsAwayUnusableFramesWithoutDisturbingTheRoom
     peer->connectToHost(QHostAddress::LocalHost, 16385);
     QVERIFY(peer->waitForConnected(5000));
 
-    bool peerDropped = false;
     QObject::connect(peer, &QAbstractSocket::disconnected, peer, [&peerDropped]() { peerDropped = true; });
 
-    int pongs = 0;
     QObject::connect(peer, &QAbstractSocket::readyRead, peer, [peer, &pongs]() {
         while (peer->canReadLine()) {
             const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(peer->readLine());
