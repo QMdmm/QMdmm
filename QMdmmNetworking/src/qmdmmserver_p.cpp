@@ -346,8 +346,8 @@ void ServerP::serveControlRequest(QTcpSocket *socket)
     // Both of these are shared with the lambda below rather than owned by it: a request arrives in
     // as many pieces as the socket cares to deliver it in, so what has been read so far, and
     // whether it has been answered, have to outlive any single delivery.
-    auto received = std::make_shared<QByteArray>();
-    auto answered = std::make_shared<bool>(false);
+    std::shared_ptr<QByteArray> received = std::make_shared<QByteArray>();
+    std::shared_ptr<bool> answered = std::make_shared<bool>(false);
 
     connect(socket, &QTcpSocket::readyRead, socket, [this, socket, received, answered] {
         if (*answered)
