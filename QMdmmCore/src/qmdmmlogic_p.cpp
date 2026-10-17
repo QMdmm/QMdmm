@@ -237,11 +237,16 @@ void LogicP::startActionOrder()
         // rather than being defaulted to whatever is left.
         desiredActionOrders.clear();
         actionOrderRemainingSelections.clear();
-        for (QHash<QString, int>::const_iterator it = strivingActionCount.constBegin(); it != strivingActionCount.constEnd(); ++it)
-            actionOrderRemainingSelections.insert(it.key(), it.value());
+        // Read the names out in name order: which player is asked first is what decides who
+        // takes the lowest available order, and a hash's iteration order belongs to the
+        // process rather than to the match. The branch above sorts for the same reason.
+        QStringList strivingNames = strivingActionCount.keys();
+        strivingNames.sort();
+        for (const QString &name : strivingNames)
+            actionOrderRemainingSelections.insert(name, strivingActionCount.value(name));
         state = Logic::ActionOrder;
-        for (QHash<QString, int>::const_iterator it = strivingActionCount.constBegin(); it != strivingActionCount.constEnd(); ++it)
-            emit q->requestActionOrder(it.key(), remainingActionOrders, static_cast<int>(rpsForActionWinners.length()), it.value(), Logic::QPrivateSignal());
+        for (const QString &name : strivingNames)
+            emit q->requestActionOrder(name, remainingActionOrders, static_cast<int>(rpsForActionWinners.length()), strivingActionCount.value(name), Logic::QPrivateSignal());
     }
 }
 

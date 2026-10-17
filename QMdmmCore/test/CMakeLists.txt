@@ -43,6 +43,11 @@ endfunction()
 
 add_qmdmmcore_test(tst_qmdmmcore.cpp)
 add_qmdmmcore_test(tst_qmdmmlogic.cpp)
+# The last case of this suite runs the binary twice more, so the whole reading is three suite
+# runs instead of one (about 8 s here against the 2.6 s a single run takes). The bound below
+# is provisional until a CI cell reports its own reading, at which point the rule above --
+# six times the slowest reading, rounded up to a whole minute -- applies to that number.
+set_tests_properties("QMdmmCore - tst_qmdmmlogic.cpp - Qt6" PROPERTIES TIMEOUT 300)
 add_qmdmmcore_test(tst_qmdmmplayer.cpp)
 add_qmdmmcore_test(tst_qmdmmroom.cpp)
 add_qmdmmcore_test(tst_qmdmmlogicconfiguration.cpp)

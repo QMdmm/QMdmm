@@ -6,12 +6,16 @@
 
 #include "qmdmmlogic_p.h"
 
+#include <QCoreApplication>
+#include <QProcess>
 #include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include <algorithm>
+#include <cstdio>
 
 using namespace Qt::StringLiterals;
 
@@ -19,6 +23,78 @@ using namespace Qt::StringLiterals;
 // Exempt from clang-tidy by policy; see AGENTS.md.
 
 using namespace QMdmmCore;
+
+namespace {
+// The property sweep can be asked to print the fingerprints it reaches, so that the
+// cross-process case can compare what two independent runs of this same binary arrive at.
+// The variable doubles as the "I am the child" marker: it is what keeps the case that
+// spawns from spawning children of its own.
+constexpr char FINGERPRINT_ENV[] = "QMDMM_LOGIC_FINGERPRINTS";
+constexpr char FINGERPRINT_PREFIX[] = "QMDMM-FINGERPRINT\t";
+
+bool printingFingerprints()
+{
+    return qEnvironmentVariableIsSet(FINGERPRINT_ENV);
+}
+
+QHash<QString, QString> parseFingerprints(const QByteArray &output)
+{
+    const QString prefix = QString::fromLatin1(FINGERPRINT_PREFIX);
+    QHash<QString, QString> fingerprints;
+    for (const QByteArray &line : output.split('\n')) {
+        const QString text = QString::fromUtf8(line);
+        if (!text.startsWith(prefix))
+            continue;
+        const QString rest = text.mid(prefix.size());
+        const int separator = rest.indexOf(QLatin1Char('\t'));
+        if (separator <= 0)
+            continue;
+        fingerprints.insert(rest.left(separator), rest.mid(separator + 1));
+    }
+    return fingerprints;
+}
+
+// Runs this binary once more, in a process of its own, with the fingerprints switched on.
+// `error` stays empty only when that child ran to completion with a zero exit status; the
+// map is what it printed, and an empty map means it printed nothing.
+QHash<QString, QString> fingerprintsOfAnotherProcess(const QString &workingDirectory, QString *error)
+{
+    QProcess child;
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(QString::fromLatin1(FINGERPRINT_ENV), u"1"_s);
+    child.setProcessEnvironment(environment);
+    // Both channels land in one buffer: the fingerprints go to stderr while the test log
+    // goes to stdout, and only the whole of it says what happened.
+    child.setProcessChannelMode(QProcess::MergedChannels);
+    // The child writes a junit report of its own into its working directory, so it gets one
+    // of its own rather than dropping a second copy over the one the harness reads.
+    child.setWorkingDirectory(workingDirectory);
+    child.start(QCoreApplication::applicationFilePath(), {});
+    if (!child.waitForStarted(30000)) {
+        *error = u"a fingerprint child did not start: %1"_s.arg(child.errorString());
+        return {};
+    }
+    if (!child.waitForFinished(90000)) {
+        child.kill();
+        child.waitForFinished(10000);
+        *error = u"a fingerprint child did not finish within 90 seconds"_s;
+        return {};
+    }
+    const QByteArray output = child.readAll();
+    if (child.exitStatus() != QProcess::NormalExit || child.exitCode() != 0) {
+        *error = u"a fingerprint child exited with status %1 / code %2; its last lines were:\n%3"_s.arg(static_cast<int>(child.exitStatus()))
+                     .arg(child.exitCode())
+                     .arg(QString::fromUtf8(output.right(2000)));
+        return {};
+    }
+    QHash<QString, QString> fingerprints = parseFingerprints(output);
+    if (fingerprints.isEmpty()) {
+        *error = u"a fingerprint child printed no fingerprints; its last lines were:\n%1"_s.arg(QString::fromUtf8(output.right(2000)));
+        return {};
+    }
+    return fingerprints;
+}
+} // namespace
 
 class tst_QMdmmLogic : public QObject
 {
@@ -1307,6 +1383,17 @@ private slots:
 
         QCOMPARE(firstPass.size(), 6 * 20);
 
+        // Asked for by the cross-process case below: hand the readings to whoever started
+        // this process. Sorted, so that two processes can be compared by eye as well as by
+        // that case.
+        if (printingFingerprints()) {
+            QStringList keys = firstPass.keys();
+            keys.sort();
+            for (const QString &key : keys)
+                fprintf(stderr, "%s%s\t%s\n", FINGERPRINT_PREFIX, qPrintable(key), qPrintable(firstPass.value(key)));
+            fflush(stderr);
+        }
+
         // Repeatability: the same seed has to walk the same line. This one is within a single
         // process, so it says nothing about the cross-process question #31-9 asks; it is here
         // to catch a driver that reaches for global state or the clock.
@@ -1319,6 +1406,55 @@ private slots:
         if (problems.size() > report.size())
             report << u"... and %1 more"_s.arg(problems.size() - report.size());
         QVERIFY2(problems.isEmpty(), qPrintable(report.join(u"\n"_s)));
+    }
+
+    // O. The #31-9 groundwork experiment: the same input played in two independent processes
+    //    has to reach the same terminal states. The sweep above already shows that a line is
+    //    repeatable inside one process; this case adds the other half, and it is the half the
+    //    record / replay family rests on -- anything that leans on an address, on a hash
+    //    iteration order or on the clock differs between two processes and shows up here as a
+    //    fingerprint that moved.
+    //
+    //    The input is identical by construction: both children are this same binary, so they
+    //    play the same six configurations, the same twenty seeds each, through the same
+    //    driver. What a child prints is what the sweep collected, one line per
+    //    (configuration, players, seed), and the comparison below is over the whole set.
+    void QMdmmLogicfingerprintsAgreeAcrossProcesses()
+    {
+        if (printingFingerprints())
+            QSKIP("this case drives the children, so it does not run inside one of them");
+
+        QTemporaryDir scratch;
+        QVERIFY2(scratch.isValid(), qPrintable(scratch.errorString()));
+
+        // Two separate invocations, not one reused child: a third run would only repeat what
+        // these two say, and a rerun would hide a difference instead of showing it.
+        QString error;
+        const QHash<QString, QString> firstProcess = fingerprintsOfAnotherProcess(scratch.path(), &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        const QHash<QString, QString> secondProcess = fingerprintsOfAnotherProcess(scratch.path(), &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+
+        // The sweep's own size, checked here too so that two empty readings cannot pass by
+        // agreeing with each other.
+        QCOMPARE(firstProcess.size(), 6 * 20);
+        QCOMPARE(secondProcess.size(), firstProcess.size());
+
+        QStringList moved;
+        for (auto it = firstProcess.constBegin(); it != firstProcess.constEnd(); ++it) {
+            const QString other = secondProcess.value(it.key());
+            if (other != it.value())
+                moved << u"%1\n  first process:  %2\n  second process: %3"_s.arg(it.key(), it.value(), other);
+        }
+        for (auto it = secondProcess.constBegin(); it != secondProcess.constEnd(); ++it) {
+            if (!firstProcess.contains(it.key()))
+                moved << u"%1 was played only in the second process"_s.arg(it.key());
+        }
+
+        QStringList report = moved.mid(0, 10);
+        if (moved.size() > report.size())
+            report << u"... and %1 more"_s.arg(moved.size() - report.size());
+        QVERIFY2(moved.isEmpty(), qPrintable(report.join(u"\n"_s)));
     }
 };
 
