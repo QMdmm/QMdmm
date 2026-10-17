@@ -120,6 +120,10 @@ Agent *LogicRunner::addAgent(Agent *agent)
     }
 
     if (full()) {
+        // The room is a game from here on, and one game is one record (see RecorderP): open it
+        // before the opening notifications go out, so the record covers the whole game.
+        d->recorder.open();
+
         foreach (Agent *a, d->agents)
             a->notifyGameStart();
         foreach (Agent *a, d->agents)

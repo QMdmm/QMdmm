@@ -15,7 +15,8 @@ namespace QMdmmNetworking {
 #ifndef DOXYGEN
 namespace p {
 class LogicRunnerP;
-}
+class ServerP;
+} // namespace p
 #endif
 
 #ifndef DOXYGEN
@@ -49,6 +50,9 @@ signals: // NOLINT(readability-redundant-access-specifiers)
 #ifndef DOXYGEN
 private:
     friend class p::LogicRunnerP;
+    // The server owns the server-level configuration, the room does not (see the ctor note), so it
+    // is the server that hands the room its recording target right after construction.
+    friend class p::ServerP;
     // LogicRunnerP is QObject. QPointer can't be used since it is incomplete here
     p::LogicRunnerP *const d;
 #endif

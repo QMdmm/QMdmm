@@ -4,6 +4,7 @@
 #define QMDMMLOGICRUNNER_P
 
 #include "qmdmmlogicrunner.h"
+#include "qmdmmrecorder_p.h"
 #include "qmdmmserverconnection_p.h"
 
 #include "qmdmmagent.h"
@@ -12,6 +13,7 @@
 #include <QMdmmLogic>
 #include <QMdmmRoom>
 
+#include <QJsonObject>
 #include <QPointer>
 #include <QThread>
 #include <QTimer>
@@ -42,6 +44,14 @@ public:
 
     QMdmmCore::LogicConfiguration conf;
     int playerNumPerRoom;
+
+    // The transcript of this game, when one is asked for: see configureRecording(). It is one file
+    // per game and one game per room, so a room that never fills never writes anything.
+    RecorderP recorder;
+
+    // Handed to the room by the server, which is the one holding the server configuration. An empty
+    // directory turns recording off, which is the default.
+    void configureRecording(const QString &directory, const QJsonObject &serverConfiguration);
 
     // No qRegisterMetaType<>() is needed for the queued signals / slots below: their argument
     // types are QMdmmCore::Data enums / flags (auto-registered via Q_ENUM_NS / Q_FLAG_NS) plus

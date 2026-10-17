@@ -14,12 +14,16 @@
 #include <QMdmmSocket>
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaType>
 #include <QProcess>
+#include <QRandomGenerator>
 #include <QRegularExpression>
+#include <QSet>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
 #include <QVariant>
@@ -67,6 +71,7 @@ private slots:
     void client_reportsAVersionNumberMismatchAndSignsIn();
     void server_listenErrorAndClose();
     void server_statusReportsRoomsGamesAndPlayers();
+    void server_writesOneRecordFileForAGame();
     void client_infeasibleUpgradeReplyDoesNotStall();
     void client_disconnectDuringUpgradeStillAdvances();
     void socket_addressSchemeWhitelist();
@@ -2045,6 +2050,242 @@ void tst_QMdmmNetworking::server_statusReportsRoomsGamesAndPlayers()
     QTRY_COMPARE(statusCount(u"players"_s), 2);
     QCOMPARE(statusCount(u"games"_s), 1);
     QCOMPARE(statusCount(u"rooms"_s), 1);
+}
+
+// A game record is read back here rather than trusted from the inside: one file per game, a header
+// that says which build and which configuration the game was played under, and one line per packet
+// the room broadcast, each with a sequence number that only ever goes up. The record is opened when
+// the room fills, so a room that never fills leaves nothing behind.
+void tst_QMdmmNetworking::server_writesOneRecordFileForAGame()
+{
+    LogicConfiguration conf = LogicConfiguration::defaults();
+    // One hit kills and one upgrade per stat, so the match converges in a handful of rounds while
+    // still being real play: the record then covers round events, not a standstill.
+    conf.setInitialMaxHp(1);
+    conf.setMaximumMaxHp(2);
+    conf.setInitialKnifeDamage(1);
+    conf.setMaximumKnifeDamage(2);
+    conf.setInitialHorseDamage(1);
+    conf.setMaximumHorseDamage(2);
+    conf.setPunishHpModifier(0);
+
+    // An auto-player, so the match advances without a human: answer every request the way a
+    // competent player would (buy a knife, slash a co-located enemy, otherwise walk toward one,
+    // spend every earned upgrade point).
+    const auto wireAutoPlayer = [](Client *client) {
+        Agent *agent = client->agent();
+
+        QObject::connect(agent, &Agent::rockPaperScissorsRequested, client, [agent]() {
+            // Random rather than always the same throw: two players throwing the same sign tie, and a
+            // long tie streak stalls the round (the logic gives up on it after ten).
+            agent->rockPaperScissors(static_cast<Data::RockPaperScissors>(QRandomGenerator::global()->generate() % 3));
+        });
+
+        QObject::connect(agent, &Agent::actionOrderRequested, client, [agent](const QList<int> &remainedOrders, int, int selectionNum) {
+            QList<int> orders;
+            for (int i = 0; i < selectionNum && i < remainedOrders.size(); ++i)
+                orders.append(remainedOrders.at(i));
+            agent->actionOrder(orders);
+        });
+
+        QObject::connect(agent, &Agent::actionRequested, client, [client, agent]() {
+            const QString self = client->objectName();
+            Room *room = client->room();
+            Player *me = (room != nullptr) ? room->player(self) : nullptr;
+            if (me == nullptr || !me->alive()) {
+                agent->action(Data::DoNothing, {}, 0);
+                return;
+            }
+
+            if (!me->hasKnife()) {
+                if (me->canBuyKnife()) {
+                    agent->action(Data::BuyKnife, {}, 0);
+                    return;
+                }
+                for (int place = 1; place < room->players().count() + 1; ++place) {
+                    if (me->canMove(place)) {
+                        agent->action(Data::Move, {}, place);
+                        return;
+                    }
+                }
+                agent->action(Data::DoNothing, {}, 0);
+                return;
+            }
+
+            for (Player *other : room->players()) {
+                if (other->alive() && other->objectName() != self && other->place() == me->place()) {
+                    agent->action(Data::Slash, other->objectName(), -1);
+                    return;
+                }
+            }
+
+            for (Player *other : room->players()) {
+                if (other->alive() && other->objectName() != self) {
+                    // Every place is adjacent to the village only, so a move goes through it.
+                    const int destination = (me->place() == Data::Village) ? other->place() : Data::Village;
+                    agent->action(Data::Move, {}, destination);
+                    return;
+                }
+            }
+
+            agent->action(Data::DoNothing, {}, 0);
+        });
+
+        QObject::connect(agent, &Agent::upgradeRequested, client, [client, agent](int remainingTimes) {
+            QList<Data::UpgradeItem> items;
+
+            Room *room = client->room();
+            Player *me = (room != nullptr) ? room->player(client->objectName()) : nullptr;
+            if (me == nullptr) {
+                agent->upgrade(items);
+                return;
+            }
+
+            int knifeLeft = me->upgradeKnifeRemainingTimes();
+            int horseLeft = me->upgradeHorseRemainingTimes();
+            int maxHpLeft = me->upgradeMaxHpRemainingTimes();
+            int budget = remainingTimes;
+            while (budget-- > 0) {
+                if (knifeLeft > 0) {
+                    items << Data::UpgradeKnife;
+                    --knifeLeft;
+                } else if (horseLeft > 0) {
+                    items << Data::UpgradeHorse;
+                    --horseLeft;
+                } else if (maxHpLeft > 0) {
+                    items << Data::UpgradeMaxHp;
+                    --maxHpLeft;
+                } else {
+                    break;
+                }
+            }
+            agent->upgrade(items);
+        });
+    };
+
+    // Plays one match on its own port, with the record directory named (empty = no record), and
+    // reports what ended up in that directory.
+    const auto playAGame = [&conf, &wireAutoPlayer](const QString &recordDirectory, quint16 port, QStringList &filesLeftBehind) {
+        ServerConfiguration serverConf = ServerConfiguration::defaults();
+        serverConf.setPlayerNumPerRoom(2);
+        serverConf.setTcpPort(port);
+        serverConf.setLocalEnabled(false);
+        serverConf.setWebsocketEnabled(false);
+        serverConf.setRecordDirectory(recordDirectory);
+
+        Server server(serverConf, conf);
+        QVERIFY(server.listen());
+
+        const QString host = u"qmdmm://localhost:%1"_s.arg(port);
+
+        QList<Client *> players;
+        for (int i = 0; i < 2; ++i) {
+            auto *client = new Client(ClientConfiguration(), &server);
+            wireAutoPlayer(client);
+            players << client;
+        }
+
+        int gamesOver = 0;
+        QObject::connect(players.first()->agent(), &Agent::gameOverNotified, &server, [&gamesOver]() { ++gamesOver; });
+
+        for (Client *client : players)
+            QVERIFY(client->connectToHost(host, Data::StateOnline));
+
+        QTRY_COMPARE_WITH_TIMEOUT(gamesOver, 1, 30000);
+
+        // The client sees the game over after the server broadcast it and closed the record, so the
+        // file is complete by the time this reads the directory.
+        filesLeftBehind = QDir(recordDirectory).entryList(QDir::Files | QDir::NoDotAndDotDot);
+    };
+
+    QTemporaryDir recorded;
+    QVERIFY(recorded.isValid());
+
+    QStringList recordedFiles;
+    playAGame(recorded.path(), 16391, recordedFiles);
+
+    // One game, one file.
+    QCOMPARE(recordedFiles.count(), 1);
+
+    QFile file(QDir(recorded.path()).filePath(recordedFiles.first()));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+
+    const QList<QByteArray> lines = file.readAll().split('\n');
+    QVERIFY2(lines.count() >= 2, "the record has a header line and at least one event line");
+    QVERIFY2(lines.last().isEmpty(), "the record ends with a newline");
+
+    // The header says what wrote the record and what the game was played under, and the
+    // configuration in it is the one the game actually ran with (the record directory among it).
+    const QJsonObject header = QJsonDocument::fromJson(lines.first()).object();
+    QVERIFY2(!header.isEmpty(), "the header line is not a JSON object");
+    QVERIFY(!header.value(u"build"_s).toString().isEmpty());
+    QVERIFY(header.value(u"recordedAt"_s).isString());
+    QVERIFY(header.value(u"ServerConfiguration"_s).isObject());
+    QVERIFY(header.value(u"LogicConfiguration"_s).isObject());
+    QCOMPARE(header.value(u"ServerConfiguration"_s).toObject().value(u"recordDirectory"_s).toString(), recorded.path());
+    QCOMPARE(header.value(u"LogicConfiguration"_s).toObject().value(u"initialMaxHp"_s).toInt(), 1);
+
+    // Every event line is one packet the room broadcast, numbered from one without gaps, all in the
+    // same direction, and all of them round events -- the four notifications a round is made of.
+    qint64 previousSequence = 0;
+    int events = 0;
+    QSet<int> recordedIds;
+    for (qsizetype i = 1; i < lines.count(); ++i) {
+        if (lines.at(i).isEmpty())
+            continue;
+
+        const QJsonObject line = QJsonDocument::fromJson(lines.at(i)).object();
+        QVERIFY2(!line.isEmpty(), "an event line is not a JSON object");
+
+        const qint64 sequence = line.value(u"seq"_s).toInteger();
+        QCOMPARE(sequence, previousSequence + 1);
+        previousSequence = sequence;
+
+        QCOMPARE(line.value(u"direction"_s).toString(), u"server-to-client"_s);
+
+        const QJsonObject packet = line.value(u"packet"_s).toObject();
+        QVERIFY(!packet.isEmpty());
+
+        recordedIds.insert(packet.value(u"notifyId"_s).toInt());
+        ++events;
+    }
+    QVERIFY2(events > 0, "the record holds no event");
+
+    // A round is four broadcasts, and all four reached the record: each one is recorded at its own
+    // broadcast point, so dropping any single one of them would show up here.
+    QVERIFY(recordedIds.contains(static_cast<int>(Protocol::NotifyRockPaperScissors)));
+    QVERIFY(recordedIds.contains(static_cast<int>(Protocol::NotifyActionOrder)));
+    QVERIFY(recordedIds.contains(static_cast<int>(Protocol::NotifyAction)));
+    QVERIFY(recordedIds.contains(static_cast<int>(Protocol::NotifyUpgrade)));
+    QCOMPARE(recordedIds.count(), 4);
+
+    // The other half of the lifecycle: a room that never fills is not a game, so it writes nothing
+    // even though a record directory is named.
+    QTemporaryDir unfilled;
+    QVERIFY(unfilled.isValid());
+
+    {
+        ServerConfiguration serverConf = ServerConfiguration::defaults();
+        serverConf.setPlayerNumPerRoom(3); // two players leave the room recruiting
+        serverConf.setTcpPort(16392);
+        serverConf.setLocalEnabled(false);
+        serverConf.setWebsocketEnabled(false);
+        serverConf.setRecordDirectory(unfilled.path());
+
+        Server server(serverConf, conf);
+        QVERIFY(server.listen());
+
+        auto *p1 = new Client(ClientConfiguration(), &server);
+        auto *p2 = new Client(ClientConfiguration(), &server);
+        QVERIFY(p1->connectToHost(u"qmdmm://localhost:16392"_s, Data::StateOnline));
+        QVERIFY(p2->connectToHost(u"qmdmm://localhost:16392"_s, Data::StateOnline));
+
+        QTRY_VERIFY_WITH_TIMEOUT(p1->room() != nullptr && p2->room() != nullptr, 5000);
+        // Long enough that a record opened at sign-in would be there, and the room is still
+        // recruiting, so the game has not started.
+        QTest::qWait(300);
+        QVERIFY(QDir(unfilled.path()).entryList(QDir::Files | QDir::NoDotAndDotDot).isEmpty());
+    }
 }
 
 // The inbound path is the only place a peer's bytes are trusted, so a frame the server cannot use

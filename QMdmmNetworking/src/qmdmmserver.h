@@ -44,6 +44,7 @@ struct QMDMMNETWORKING_EXPORT ServerConfiguration final : public QJsonObject
     Q_PROPERTY(int requestTimeout READ requestTimeout WRITE setRequestTimeout DESIGNABLE false FINAL)
     Q_PROPERTY(int maximumPacketSize READ maximumPacketSize WRITE setMaximumPacketSize DESIGNABLE false FINAL)
     Q_PROPERTY(int signInTimeout READ signInTimeout WRITE setSignInTimeout DESIGNABLE false FINAL)
+    Q_PROPERTY(QString recordDirectory READ recordDirectory WRITE setRecordDirectory DESIGNABLE false FINAL)
 
 public:
     // The enclosing class carries QMDMMNETWORKING_EXPORT, which is what exports this one; MSVC rejects the second marking (C2487).
@@ -80,6 +81,8 @@ public:
     void setMaximumPacketSize(int maximumPacketSize);
     [[nodiscard]] int signInTimeout() const;
     void setSignInTimeout(int signInTimeout);
+    [[nodiscard]] QString recordDirectory() const;
+    void setRecordDirectory(const QString &recordDirectory);
 
     bool deserialize(const QJsonValue &value);
 
