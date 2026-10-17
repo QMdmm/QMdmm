@@ -194,6 +194,109 @@ jobs:
           git remote add origin "https://x-access-token:${COVERAGE_TOKEN}@github.com/nemn9852/qmdmm-coverage.git"
           git push -f origin main
 
+  sanitizers:
+    name: Sanitizers (ubuntu-26.04, Debug)
+    #
+    # AddressSanitizer and UndefinedBehaviorSanitizer over the same ctest set, in
+    # one Linux Debug cell. It is a job of its own for the reason the tidy job is
+    # one: these flags belong to this build only, and the build cells exist to
+    # build the product as it ships.
+    #
+    # Nothing in here is continue-on-error. This cell exists in order to turn red
+    # on a report, and a report is a defect in this tree rather than a probe that
+    # may fail quietly: the distribution's Qt carries neither sanitizer, so every
+    # report below comes from this repository's own code or from a header it
+    # instantiates.
+    #
+    # Leak detection is off. Whether storage is still reachable at exit is a
+    # different question from whether it is used after it is gone -- the one this
+    # cell asks -- and on a tree that shares its process with Qt's own statics it
+    # needs a baseline to be read against; that baseline is the suppression list,
+    # not this leg.
+    #
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          path: QMdmm
+
+      - name: Set timezone (Linux)
+        run: |
+          sudo ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+          date
+
+      - name: Install Qt (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qt6-base-dev qt6-websockets-dev qt6-declarative-dev qt6-tools-dev
+
+      - name: Configure
+        id: configure
+        run: |
+          # The flags go through CMAKE_CXX_FLAGS rather than through a build type
+          # of their own because CMake passes them to the link line as well, which
+          # is how the sanitizer runtimes reach the executables.
+          cmake -B build -S QMdmm -G "Unix Makefiles" \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=ON \
+            -DQMDMM_EXPORT_PRIVATE=NO \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+
+      - name: Build
+        id: build
+        run: cmake --build build --parallel
+
+      - name: Test
+        id: test
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          # halt_on_error is what makes a UBSan reading a failure. Without it the
+          # runtime prints the diagnostic, the process carries on and the case
+          # still passes, which is a green that says nothing. print_stacktrace is
+          # there so the report names the line that did it.
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          # The log is kept because the step below counts what is in it, and
+          # --output-on-failure is what puts the sanitizer's own report into it.
+          # The bound is the same second half the build cells use.
+          set -o pipefail
+          ctest --test-dir build --output-on-failure --timeout 360 2>&1 |
+            tee "${RUNNER_TEMP}/sanitizers.log"
+
+      - name: Report the reading
+        if: always()
+        run: |
+          # One line, in the shape the windows cell uses: which of the three steps
+          # carried out, how many cases ran, and what came back -- the sanitizer
+          # reports by name, and the cases that failed. A red cell says that
+          # something failed; it does not say whether the tree has a memory error
+          # or whether one case merely failed, and telling those apart is the whole
+          # reason this leg exists.
+          log="${RUNNER_TEMP}/sanitizers.log"
+          address=0
+          undefined=0
+          total=0
+          failed=0
+          names=none
+          if [ -f "$log" ]; then
+            address=$(grep -c 'ERROR: AddressSanitizer' "$log" || true)
+            undefined=$(grep -c 'runtime error:' "$log" || true)
+            summary=$(grep -E '^[0-9]+% tests passed' "$log" | tail -1 || true)
+            total=$(printf '%s' "$summary" | sed -n 's/.*out of \([0-9][0-9]*\).*$/\1/p')
+            failed=$(printf '%s' "$summary" | sed -n 's/.*, \([0-9][0-9]*\) tests failed.*/\1/p')
+            total=${total:-0}
+            failed=${failed:-0}
+            names=$(awk '/^The following tests FAILED:/ { inside = 1; next }
+                         inside && /^[[:space:]]+[0-9]+ - / { print; next }
+                         inside { exit }' "$log" |
+              sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*(.*$//' |
+              paste -sd ';' - || true)
+            if [ -n "$names" ]; then names="(${names})"; else names=none; fi
+          fi
+          echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} test=${{ steps.test.outcome }} cases=$((total - failed))/${total} failed=${failed} ${names} address-reports=${address} undefined-reports=${undefined}"
+
   build-windows:
     name: Build & test (windows-latest, ${{ matrix.build_type }})
     #
