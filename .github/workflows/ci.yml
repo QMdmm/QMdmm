@@ -195,26 +195,37 @@ jobs:
           git push -f origin main
 
   sanitizers:
-    name: Sanitizers (ubuntu-26.04, Debug)
+    name: Sanitizers (${{ matrix.os }}, Debug)
     #
     # AddressSanitizer and UndefinedBehaviorSanitizer over the same ctest set, in
-    # one Linux Debug cell. It is a job of its own for the reason the tidy job is
-    # one: these flags belong to this build only, and the build cells exist to
-    # build the product as it ships.
+    # a Debug cell per platform. It is a job of its own for the reason the tidy
+    # job is one: these flags belong to this build only, and the build cells exist
+    # to build the product as it ships.
     #
-    # Nothing in here is continue-on-error. This cell exists in order to turn red
+    # Two cells, because the two platforms reach Qt differently: Linux takes the
+    # distribution's packages and macOS takes Homebrew's. The macOS cell is the
+    # one that matters most -- AppleClang against a Homebrew Qt is where a
+    # sanitizer build of this tree behaves least like an ordinary one -- and it is
+    # a cell rather than a note because a run recorded once on somebody's machine
+    # stops describing the tree the moment the tree moves.
+    #
+    # Nothing in here is continue-on-error. These cells exist in order to turn red
     # on a report, and a report is a defect in this tree rather than a probe that
-    # may fail quietly: the distribution's Qt carries neither sanitizer, so every
-    # report below comes from this repository's own code or from a header it
-    # instantiates.
+    # may fail quietly: neither the distribution's Qt nor Homebrew's carries a
+    # sanitizer, so every report below comes from this repository's own code or
+    # from a header it instantiates.
     #
     # Leak detection is off. Whether storage is still reachable at exit is a
-    # different question from whether it is used after it is gone -- the one this
-    # cell asks -- and on a tree that shares its process with Qt's own statics it
+    # different question from whether it is used after it is gone -- the one these
+    # cells ask -- and on a tree that shares its process with Qt's own statics it
     # needs a baseline to be read against; that baseline is the suppression list,
     # not this leg.
     #
-    runs-on: ubuntu-26.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -222,15 +233,30 @@ jobs:
           path: QMdmm
 
       - name: Set timezone (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
           date
 
+      - name: Set timezone (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sudo systemsetup -settimezone Asia/Shanghai ||
+            sudo ln -sf /var/db/timezone/zoneinfo/Asia/Shanghai /etc/localtime
+          date
+
       - name: Install Qt (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             qt6-base-dev qt6-websockets-dev qt6-declarative-dev qt6-tools-dev
+
+      - name: Install Qt (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install qt
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt)" >> "$GITHUB_ENV"
 
       - name: Configure
         id: configure
@@ -238,11 +264,15 @@ jobs:
           # The flags go through CMAKE_CXX_FLAGS rather than through a build type
           # of their own because CMake passes them to the link line as well, which
           # is how the sanitizer runtimes reach the executables.
-          cmake -B build -S QMdmm -G "Unix Makefiles" \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DBUILD_TESTING=ON \
-            -DQMDMM_EXPORT_PRIVATE=NO \
-            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          cmake_args=(-B build -S QMdmm -G "Unix Makefiles"
+            -DCMAKE_BUILD_TYPE=Debug
+            -DBUILD_TESTING=ON
+            -DQMDMM_EXPORT_PRIVATE=NO
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer")
+          if [ -n "${CMAKE_PREFIX_PATH:-}" ]; then
+            cmake_args+=(-DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH")
+          fi
+          cmake "${cmake_args[@]}"
 
       - name: Build
         id: build
