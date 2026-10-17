@@ -106,15 +106,16 @@ jobs:
           # printed before the run: a case that has to be killed says which number it ran
           # under, and a case that lost its bound shows up here as "no bound" rather than as a
           # hang that eats the job's budget. --timeout below is the second half of the same
-          # guard: it is the longest bound any case has, so a case that goes without one still
-          # cannot outlast the longest-bounded case.
+          # guard: it is the longest bound any case has -- the logic suite's, set from its
+          # slowest cell -- so a case that goes without one still cannot outlast the
+          # longest-bounded case. Raise it whenever that bound moves.
           ctest --test-dir build --show-only=json-v1 | python3 -c '
           import json, sys
           for case in json.load(sys.stdin)["tests"]:
               bound = next((p["value"] for p in case["properties"] if p["name"] == "TIMEOUT"), None)
               print("%s: TIMEOUT %s" % (case["name"], bound if bound else "not set"))
           '
-          ctest --test-dir build --output-on-failure --timeout 360
+          ctest --test-dir build --output-on-failure --timeout 1020
 
       - name: Test the system-wide configuration path
         run: |
@@ -292,7 +293,7 @@ jobs:
           # --output-on-failure is what puts the sanitizer's own report into it.
           # The bound is the same second half the build cells use.
           set -o pipefail
-          ctest --test-dir build --output-on-failure --timeout 360 2>&1 |
+          ctest --test-dir build --output-on-failure --timeout 1020 2>&1 |
             tee "${RUNNER_TEMP}/sanitizers.log"
 
       - name: Report the reading

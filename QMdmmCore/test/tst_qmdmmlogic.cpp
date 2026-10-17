@@ -32,6 +32,14 @@ namespace {
 constexpr char FINGERPRINT_ENV[] = "QMDMM_LOGIC_FINGERPRINTS";
 constexpr char FINGERPRINT_PREFIX[] = "QMDMM-FINGERPRINT\t";
 
+// How long one child of the cross-process case may take. It runs the whole suite once, and
+// the suite is three runs of it -- the sweep itself, then that case starting two children in
+// turn -- so a child is about a third of the suite's own reading: 169.55 s on the slowest CI
+// cell makes it about 57 s. Six times that, rounded up to a whole minute, is 360 s, which is
+// the rule the suite's bound in CMakeLists.txt follows as well. Two children still finish
+// inside that bound (720 s against its 1020 s), so the suite is what hangs the job, not this.
+constexpr int FINGERPRINT_CHILD_TIMEOUT_MS = 360000;
+
 bool printingFingerprints()
 {
     return qEnvironmentVariableIsSet(FINGERPRINT_ENV);
@@ -74,10 +82,10 @@ QHash<QString, QString> fingerprintsOfAnotherProcess(const QString &workingDirec
         *error = u"a fingerprint child did not start: %1"_s.arg(child.errorString());
         return {};
     }
-    if (!child.waitForFinished(90000)) {
+    if (!child.waitForFinished(FINGERPRINT_CHILD_TIMEOUT_MS)) {
         child.kill();
         child.waitForFinished(10000);
-        *error = u"a fingerprint child did not finish within 90 seconds"_s;
+        *error = u"a fingerprint child did not finish within %1 seconds"_s.arg(FINGERPRINT_CHILD_TIMEOUT_MS / 1000);
         return {};
     }
     const QByteArray output = child.readAll();
