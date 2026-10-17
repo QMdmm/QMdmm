@@ -291,7 +291,8 @@ jobs:
         run: |
           # The log is kept because the step below counts what is in it, and
           # --output-on-failure is what puts the sanitizer's own report into it.
-          # The bound is the same second half the build cells use.
+          # The bound is the same second half the ubuntu and macOS build cells use; the
+          # windows cell passes none, so there the per-case bounds are the only ones.
           set -o pipefail
           ctest --test-dir build --output-on-failure --timeout 1020 2>&1 |
             tee "${RUNNER_TEMP}/sanitizers.log"
