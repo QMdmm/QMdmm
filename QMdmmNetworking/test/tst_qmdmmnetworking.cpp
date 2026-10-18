@@ -13,6 +13,7 @@
 #include <QMdmmServer>
 #include <QMdmmSocket>
 
+#include <QElapsedTimer>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMetaType>
@@ -2339,14 +2340,31 @@ void tst_QMdmmNetworking::server_survivesTheCorpusInItsOwnProcess()
     QVERIFY2(server.waitForStarted(60000), "the server executable did not start");
 
     // The executable says nothing when its listener is up -- a release build compiles the debug log
-    // out, and it is not this case's subject anyway -- so readiness is read off the port. An attempt
-    // that is refused means the run has not reached its loop yet, which is a wait rather than a
-    // failure, and each attempt takes a socket of its own: a refused connect leaves nothing to retry.
+    // out, and it is not this case's subject anyway -- so readiness is read off the port. What says
+    // the run is listening is the version packet it sends on every socket it accepts: a run that has
+    // not reached its loop sends nothing, and a socket of this case's own has no other reason to
+    // hear from a server.
+    //
+    // The connect is not that reading. Measured on this machine (macOS 27, Qt 6.12): a
+    // waitForConnected() to a port with no listener comes back true, in ConnectedState, with a null
+    // peer address and a peer port of 0 -- so a wait made of the connect alone ends on its first
+    // attempt whatever the run is doing, and the wait it was meant to be never happens. The peer is
+    // read instead: an attempt that hears the version packet is one the run took, and an attempt
+    // that hears nothing is one it did not. An attempt takes a socket of its own, since a refused
+    // connect leaves nothing to retry.
     bool listening = false;
-    for (int attempt = 0; attempt < 100 && !listening; ++attempt) {
+    QElapsedTimer readiness;
+    readiness.start();
+    while (!listening && readiness.elapsed() < 10000) {
         QTcpSocket probe;
         probe.connectToHost(QHostAddress::LocalHost, port);
-        listening = probe.waitForConnected(500);
+        if (probe.waitForConnected(500) && probe.peerPort() == port && probe.waitForReadyRead(1000)) {
+            while (probe.canReadLine()) {
+                const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(probe.readLine());
+                if (packet.type() == QMdmmCore::Protocol::TypeNotify && packet.notifyId() == QMdmmCore::Protocol::NotifyVersion)
+                    listening = true;
+            }
+        }
         probe.abort();
         if (!listening)
             QTest::qWait(50);
@@ -2372,7 +2390,9 @@ void tst_QMdmmNetworking::server_survivesTheCorpusInItsOwnProcess()
 
         auto *peer = new QTcpSocket(this);
         peer->connectToHost(QHostAddress::LocalHost, port);
-        QVERIFY2(peer->waitForConnected(5000), qPrintable(u"%1: the server executable refused a connection"_s.arg(name)));
+        // A connect counts only when it carries the peer: the same reading as above, and the reason
+        // this assertion can fail at all.
+        QVERIFY2(peer->waitForConnected(5000) && peer->peerPort() == port, qPrintable(u"%1: the server executable refused a connection"_s.arg(name)));
 
         QObject::connect(peer, &QAbstractSocket::disconnected, peer, [&peerDropped]() { peerDropped = true; });
         QObject::connect(peer, &QAbstractSocket::readyRead, peer, [peer, &pongs]() {
