@@ -40,8 +40,6 @@ private slots:
         QCOMPARE(c.requestTimeout(), 20);
         QCOMPARE(c.maximumPacketSize(), 1024 * 1024);
         QCOMPARE(c.signInTimeout(), 5);
-        // No record directory named, so no game is recorded anywhere.
-        QCOMPARE(c.recordDirectory(), QString());
     }
 
     void QMdmmServerConfigurationsetters()
@@ -72,8 +70,6 @@ private slots:
         QCOMPARE(c.requestTimeout(), 30);
         QCOMPARE(c.maximumPacketSize(), 4096);
         QCOMPARE(c.signInTimeout(), 45);
-        c.setRecordDirectory(u"test-record"_s);
-        QCOMPARE(c.recordDirectory(), u"test-record"_s);
     }
 
     void QMdmmServerConfigurationdeserialize_data()
@@ -94,7 +90,6 @@ private slots:
             {u"requestTimeout"_s, 20}, //
             {u"maximumPacketSize"_s, 4096}, //
             {u"signInTimeout"_s, 60}, //
-            {u"recordDirectory"_s, u"test-record"_s}, //
         };
 
         QTest::newRow("valid") << QJsonValue(validOb) << true;
@@ -257,12 +252,6 @@ private slots:
             ob.insert(u"signInTimeout"_s, 61);
             QTest::newRow("signInTimeoutAboveMaximum") << QJsonValue(ob) << false;
         }
-        // recordDirectory holding a number rather than a path.
-        {
-            QJsonObject ob = validOb;
-            ob.insert(u"recordDirectory"_s, 123);
-            QTest::newRow("recordDirectoryWrongType") << QJsonValue(ob) << false;
-        }
     }
 
     void QMdmmServerConfigurationdeserialize()
@@ -301,7 +290,6 @@ private slots:
         QCOMPARE(conf.requestTimeout(), defaults.requestTimeout());
         QCOMPARE(conf.maximumPacketSize(), defaults.maximumPacketSize());
         QCOMPARE(conf.signInTimeout(), defaults.signInTimeout());
-        QCOMPARE(conf.recordDirectory(), defaults.recordDirectory());
     }
 
     void QMdmmServerConfigurationdeserializeIgnoresUnknownKeys()

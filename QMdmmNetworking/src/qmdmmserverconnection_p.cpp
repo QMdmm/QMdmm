@@ -2,8 +2,6 @@
 
 #include "qmdmmserverconnection_p.h"
 
-#include "qmdmmnotify_p.h"
-
 #include <QMdmmProtocol>
 
 #include <QJsonArray>
@@ -510,7 +508,11 @@ void ServerConnectionP::sendAgentStateChangeNotified(const QString &playerName, 
 
 void ServerConnectionP::sendPlayerAddNotified(const QString &playerName, const QString &screenName, const QMdmmCore::Data::AgentState &agentState)
 {
-    emit sendPacket(p::playerAddedNotified(playerName, screenName, agentState));
+    QJsonObject ob;
+    ob.insert(u"playerName"_s, playerName);
+    ob.insert(u"screenName"_s, screenName);
+    ob.insert(u"agentState"_s, static_cast<int>(agentState.toInt()));
+    emit sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPlayerAdded, ob));
 }
 
 void ServerConnectionP::sendPlayerRemoveNotified(const QString &playerName)
@@ -522,43 +524,79 @@ void ServerConnectionP::sendPlayerRemoveNotified(const QString &playerName)
 
 void ServerConnectionP::sendGameStartNotified()
 {
-    emit sendPacket(p::gameStartNotified());
+    emit sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyGameStart, {}));
 }
 
 void ServerConnectionP::sendRoundStartNotified()
 {
-    emit sendPacket(p::roundStartNotified());
+    emit sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyRoundStart, {}));
 }
 
 void ServerConnectionP::sendRockPaperScissorsNotified(const QHash<QString, QMdmmCore::Data::RockPaperScissors> &replies)
 {
-    QMdmmCore::Packet packet = p::rockPaperScissorsNotified(replies);
+    QJsonObject ob;
+    for (QHash<QString, QMdmmCore::Data::RockPaperScissors>::const_iterator it = replies.constBegin(); it != replies.constEnd(); ++it)
+        ob.insert(it.key(), static_cast<int>(it.value()));
+    QMdmmCore::Packet packet(QMdmmCore::Protocol::NotifyRockPaperScissors, ob);
     roundEventLog.append(packet);
     emit sendPacket(packet);
 }
 
 void ServerConnectionP::sendActionOrderNotified(const QStringList &result)
 {
-    QMdmmCore::Packet packet = p::actionOrderNotified(result);
+    QJsonArray arr;
+    for (const QString &playerName : result)
+        arr.append(playerName);
+    QMdmmCore::Packet packet(QMdmmCore::Protocol::NotifyActionOrder, arr);
     roundEventLog.append(packet);
     emit sendPacket(packet);
 }
 
 void ServerConnectionP::sendActionNotified(const QString &playerName, QMdmmCore::Data::Action action, const QString &toPlayer, int toPlace)
 {
-    QMdmmCore::Packet packet = p::actionNotified(playerName, action, toPlayer, toPlace);
+    QJsonObject ob;
+    ob.insert(u"playerName"_s, playerName);
+    ob.insert(u"action"_s, static_cast<int>(action));
+
+    switch (action) {
+    case QMdmmCore::Data::Slash:
+    case QMdmmCore::Data::Kick:
+    case QMdmmCore::Data::LetMove:
+        ob.insert(u"toPlayer"_s, toPlayer);
+        break;
+    default:
+        break;
+    }
+
+    switch (action) {
+    case QMdmmCore::Data::Move:
+    case QMdmmCore::Data::LetMove:
+        ob.insert(u"toPlace"_s, toPlace);
+        break;
+    default:
+        break;
+    }
+
+    QMdmmCore::Packet packet(QMdmmCore::Protocol::NotifyAction, ob);
     roundEventLog.append(packet);
     emit sendPacket(packet);
 }
 
 void ServerConnectionP::sendRoundOverNotified()
 {
-    emit sendPacket(p::roundOverNotified());
+    emit sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyRoundOver, {}));
 }
 
 void ServerConnectionP::sendUpgradeNotified(const QHash<QString, QList<QMdmmCore::Data::UpgradeItem>> &upgrades)
 {
-    QMdmmCore::Packet packet = p::upgradeNotified(upgrades);
+    QJsonObject ob;
+    for (QHash<QString, QList<QMdmmCore::Data::UpgradeItem>>::const_iterator it = upgrades.constBegin(); it != upgrades.constEnd(); ++it) {
+        QJsonArray arr;
+        foreach (QMdmmCore::Data::UpgradeItem up, it.value())
+            arr.append(static_cast<int>(up));
+        ob.insert(it.key(), arr);
+    }
+    QMdmmCore::Packet packet(QMdmmCore::Protocol::NotifyUpgrade, ob);
     roundEventLog.append(packet);
     emit sendPacket(packet);
 }
@@ -593,7 +631,7 @@ void ServerConnectionP::reconnect(Socket *_socket, int lastRoundEventSeq)
 
 void ServerConnectionP::sendGameOverNotified(const QStringList &playerNames)
 {
-    emit sendPacket(p::gameOverNotified(playerNames));
+    emit sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyGameOver, QJsonArray::fromStringList(playerNames)));
 }
 
 void ServerConnectionP::sendSpeakNotified(const QString &playerName, const QString &content)

@@ -128,18 +128,6 @@ namespace v0 {
  */
 
 /**
- * @property ServerConfiguration::recordDirectory
- * @brief The directory a game record is written into, default empty (no record)
- *
- * When a directory is named, one file per game is written there: a first line describing the run
- * (the build version and the configuration the game was played under) and then one line per packet
- * the room broadcast, each with a sequence number. The file is opened when the room fills up and
- * closed when the game is over, so a room that never fills writes nothing. The directory is created
- * if it does not exist; a directory that cannot be written turns recording off for that game rather
- * than failing it, and the failure is reported once on the log.
- */
-
-/**
  * @fn ServerConfiguration::tcpEnabled() const
  * @brief getter of @c ServerConfiguration::tcpEnabled
  * @return @c ServerConfiguration::tcpEnabled
@@ -284,18 +272,6 @@ namespace v0 {
  */
 
 /**
- * @fn ServerConfiguration::recordDirectory() const
- * @brief getter of @c ServerConfiguration::recordDirectory
- * @return @c ServerConfiguration::recordDirectory
- */
-
-/**
- * @fn ServerConfiguration::setRecordDirectory(const QString &recordDirectory)
- * @brief setter of @c ServerConfiguration::recordDirectory
- * @param recordDirectory @c ServerConfiguration::recordDirectory
- */
-
-/**
  * @brief Get default values of configuration
  * @return default configuration
  */
@@ -315,7 +291,6 @@ const ServerConfiguration &ServerConfiguration::defaults()
         qMakePair(u"requestTimeout"_s, 20),
         qMakePair(u"maximumPacketSize"_s, Socket::DefaultMaximumPacketSize),
         qMakePair(u"signInTimeout"_s, 5),
-        qMakePair(u"recordDirectory"_s, QString()),
     };
     // clang-format on
 
@@ -363,7 +338,6 @@ IMPLEMENTATION_CONFIGURATION(int, playerNumPerRoom, PlayerNumPerRoom, CONVERTTOT
 IMPLEMENTATION_CONFIGURATION(int, requestTimeout, RequestTimeout, CONVERTTOTYPEINT, )
 IMPLEMENTATION_CONFIGURATION(int, maximumPacketSize, MaximumPacketSize, CONVERTTOTYPEINT, )
 IMPLEMENTATION_CONFIGURATION(int, signInTimeout, SignInTimeout, CONVERTTOTYPEINT, )
-IMPLEMENTATION_CONFIGURATION_SETTER_CONST_REFERENCE(QString, recordDirectory, RecordDirectory, CONVERTTOTYPEQSTRING, )
 
 #undef IMPLEMENTATION_CONFIGURATION_SETTER_CONST_REFERENCE
 #undef IMPLEMENTATION_CONFIGURATION
@@ -448,7 +422,6 @@ bool ServerConfiguration::deserialize(const QJsonValue &value) // NOLINT(readabi
     CONF_STRING(localSocketName);
     CONF_BOOL(websocketEnabled);
     CONF_STRING(websocketName);
-    CONF_STRING(recordDirectory);
     CONF_PORT(websocketPort);
 
 #undef CONF_BOOL

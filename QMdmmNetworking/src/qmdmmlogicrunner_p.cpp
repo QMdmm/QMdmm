@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 #include "qmdmmlogicrunner_p.h"
-#include "qmdmmnotify_p.h"
 #include "qmdmmserverconnection_p.h"
 
-#include <QMdmmGlobal>
 #include <QMdmmLogicConfiguration>
-
-#include <QDateTime>
-#include <QJsonDocument>
-
-using namespace Qt::StringLiterals;
 
 namespace QMdmmNetworking {
 namespace p {
@@ -56,22 +49,6 @@ LogicRunnerP::LogicRunnerP(QMdmmCore::LogicConfiguration logicConfiguration, int
 
 #undef CONNECTLOGICTORUNNER
     // NOLINTEND(cppcoreguidelines-macro-usage)
-}
-
-void LogicRunnerP::configureRecording(const QString &directory, const QJsonObject &serverConfiguration)
-{
-    if (directory.isEmpty())
-        return;
-
-    // The header repeats what the server's -d dumps (the two configuration objects) and adds the
-    // two things that dump cannot know: which build wrote the record, and when the game was played.
-    QJsonObject header;
-    header.insert(u"build"_s, QMdmmCore::Global::version().toString());
-    header.insert(u"recordedAt"_s, QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
-    header.insert(u"ServerConfiguration"_s, serverConfiguration);
-    header.insert(u"LogicConfiguration"_s, static_cast<QJsonObject>(conf));
-
-    recorder.setTarget(directory, QJsonDocument(header).toJson(QJsonDocument::Compact));
 }
 
 void LogicRunnerP::agentStateChanged(const QMdmmCore::Data::AgentState &state)
@@ -166,12 +143,8 @@ void LogicRunnerP::agentDisconnected(Agent *disconnectedAgent)
             }
         }
 
-        if (allDisconnected) {
-            // No one is left to play, so this game is over too: end its record the same way a
-            // played-out one is ended, rather than leaving the file open until the room is deleted.
-            recorder.close();
+        if (allDisconnected)
             emit q->gameOver(LogicRunner::QPrivateSignal());
-        }
     } else {
         // case 2: room is not full, so game hasn't started
         // Agent should be deleted.
@@ -219,11 +192,6 @@ void LogicRunnerP::rpsResult(const QHash<QString, QMdmmCore::Data::RockPaperScis
     // ServerConnectionP::sendRockPaperScissorsNotified), for the per-agent reconnect catch-up.
     foreach (Agent *agent, agents)
         agent->notifyRockPaperScissors(replies);
-
-    // The game record gets the broadcast once, not once per player: every connection builds the
-    // same packet, so the recorder takes the one shape that went down the wires (see qmdmmnotify_p.h).
-    if (recorder.isOpen())
-        recorder.record(p::rockPaperScissorsNotified(replies));
 }
 
 // NOLINTNEXTLINE(readability-make-member-function-const)
@@ -245,9 +213,6 @@ void LogicRunnerP::actionOrderResult(const QHash<int, QString> &result)
 
     foreach (Agent *agent, agents)
         agent->notifyActionOrder(order);
-
-    if (recorder.isOpen())
-        recorder.record(p::actionOrderNotified(order));
 }
 
 // NOLINTNEXTLINE(readability-make-member-function-const)
@@ -271,9 +236,6 @@ void LogicRunnerP::actionResult(const QString &playerName, QMdmmCore::Data::Acti
 {
     foreach (Agent *agent, agents)
         agent->notifyAction(playerName, action, toPlayer, toPlace);
-
-    if (recorder.isOpen())
-        recorder.record(p::actionNotified(playerName, action, toPlayer, toPlace));
 }
 
 // NOLINTNEXTLINE(readability-make-member-function-const)
@@ -306,18 +268,12 @@ void LogicRunnerP::upgradeResult(const QHash<QString, QList<QMdmmCore::Data::Upg
     foreach (Agent *agent, agents)
         agent->notifyUpgrade(upgrades);
 
-    if (recorder.isOpen())
-        recorder.record(p::upgradeNotified(upgrades));
-
     // The upgrade phase finished without a game over. Advance to the next round.
     // This mirrors the initial kick-off in addAgent(): announce the new round to
     // every agent (so clients reset their local room via notifyRoundStart) and
     // then start it. Without this, the match stalls after the very first round.
     foreach (Agent *agent, agents)
         agent->notifyRoundStart();
-
-    if (recorder.isOpen())
-        recorder.record(p::roundStartNotified());
 
     // A new round begins: drop the previous round's events so the next round's log restarts empty
     // (the client resets its per-round event counter on notifyRoundStart, mirroring this).
@@ -337,22 +293,12 @@ void LogicRunnerP::roundOver()
 
     foreach (Agent *agent, agents)
         agent->notifyRoundOver();
-
-    if (recorder.isOpen())
-        recorder.record(p::roundOverNotified());
 }
 
 void LogicRunnerP::gameOver(const QStringList &winners)
 {
     foreach (Agent *agent, agents)
         agent->notifyGameOver(winners);
-
-    if (recorder.isOpen())
-        recorder.record(p::gameOverNotified(winners));
-
-    // The game this record belongs to is over: close the file here, so that a reader can tell a
-    // finished record from one whose server was still running.
-    recorder.close();
 
     // A natural game over (a player maxed out all three stats) must tear down the room the same
     // way the round-over abandonment path does: emit LogicRunner::gameOver so the Server resets
