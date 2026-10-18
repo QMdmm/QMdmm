@@ -10,6 +10,35 @@ using namespace Qt::StringLiterals;
 namespace QMdmmNetworking {
 namespace p {
 
+QMdmmCore::Packet playerAddedNotified(const QString &playerName, const QString &screenName, const QMdmmCore::Data::AgentState &agentState)
+{
+    QJsonObject ob;
+    ob.insert(u"playerName"_s, playerName);
+    ob.insert(u"screenName"_s, screenName);
+    ob.insert(u"agentState"_s, static_cast<int>(agentState.toInt()));
+    return {QMdmmCore::Protocol::NotifyPlayerAdded, ob};
+}
+
+QMdmmCore::Packet gameStartNotified()
+{
+    return {QMdmmCore::Protocol::NotifyGameStart, {}};
+}
+
+QMdmmCore::Packet roundStartNotified()
+{
+    return {QMdmmCore::Protocol::NotifyRoundStart, {}};
+}
+
+QMdmmCore::Packet roundOverNotified()
+{
+    return {QMdmmCore::Protocol::NotifyRoundOver, {}};
+}
+
+QMdmmCore::Packet gameOverNotified(const QStringList &playerNames)
+{
+    return {QMdmmCore::Protocol::NotifyGameOver, QJsonArray::fromStringList(playerNames)};
+}
+
 QMdmmCore::Packet rockPaperScissorsNotified(const QHash<QString, QMdmmCore::Data::RockPaperScissors> &replies)
 {
     QJsonObject ob;
