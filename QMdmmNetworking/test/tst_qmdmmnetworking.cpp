@@ -23,6 +23,7 @@
 #include <QTest>
 #include <QTimer>
 #include <QVariant>
+#include <QWebSocket>
 
 // NOLINTBEGIN
 // Exempt from clang-tidy by policy; see AGENTS.md.
@@ -76,6 +77,7 @@ private slots:
     void server_requestTimeoutDisconnectsASilentClient();
     void server_zeroRequestTimeoutNeverArmsTheTimer();
     void server_givesUpOnAPeerThatNeverEndsAPacket();
+    void server_givesUpOnAnOversizedWebSocketMessage();
     void server_turnsAwayUnusableFramesWithoutDisturbingTheRoom_data();
     void server_turnsAwayUnusableFramesWithoutDisturbingTheRoom();
     void server_signInDeadlineReapsAPeerThatNeverSignsIn();
@@ -1987,6 +1989,73 @@ void tst_QMdmmNetworking::server_givesUpOnAPeerThatNeverEndsAPacket()
     const auto serverError = serverSockets.first()->error();
     QVERIFY2(serverError.has_value(), "the server dropped the connection without recording a reason");
     QCOMPARE(serverError->code, Socket::ProtocolError);
+}
+
+// The bound above is about the transport holding no more than one packet's worth of data, and a
+// WebSocket does not frame packets with newlines: it delivers one message per packet. So the bound
+// has nowhere to go unless it is handed to the WebSocket layer itself -- left alone, a peer can make
+// the server assemble a message of any size, and the packet layer only gets a say once the whole
+// message is already in memory.
+//
+// The control is a normal packet over the same connection, answered: that says the connection speaks
+// the protocol, so what turns the flood away below is the bound and not a server unable to talk. The
+// flood is a packet the packet layer would otherwise accept -- a well-formed ping whose size comes
+// from its padding -- so a run that lost the bound fails on the answer it should never have given,
+// not only on a connection that stays open.
+void tst_QMdmmNetworking::server_givesUpOnAnOversizedWebSocketMessage()
+{
+    LogicConfiguration conf = LogicConfiguration::defaults();
+
+    const int packetSizeBound = 64 * 1024;
+
+    ServerConfiguration serverConf = ServerConfiguration::defaults();
+    serverConf.setTcpEnabled(false);
+    serverConf.setLocalEnabled(false);
+    serverConf.setWebsocketEnabled(true);
+    serverConf.setWebsocketPort(16393);
+    serverConf.setRequestTimeout(0); // nothing but the framing bound may end this connection
+    serverConf.setSignInTimeout(60); // the peer stays a bare connection on purpose
+    serverConf.setMaximumPacketSize(packetSizeBound);
+
+    Server server(serverConf, conf);
+    QVERIFY(server.listen());
+
+    QWebSocket peer;
+
+    int pongs = 0;
+    QObject::connect(&peer, &QWebSocket::binaryMessageReceived, &peer, [&pongs](const QByteArray &arr) {
+        const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(arr);
+        if (packet.type() == Protocol::TypeNotify && packet.notifyId() == Protocol::NotifyPongServer)
+            ++pongs;
+    });
+
+    bool connected = false;
+    QObject::connect(&peer, &QWebSocket::connected, &peer, [&connected]() { connected = true; });
+
+    peer.open(QUrl(u"ws://localhost:16393"_s));
+    QVERIFY2(QTest::qWaitFor([&connected]() { return connected; }, 5000), "the peer never reached the server");
+
+    peer.sendBinaryMessage(QMdmmCore::Packet(Protocol::NotifyPingServer, QJsonValue(qint64(1))).serialize());
+    QVERIFY2(QTest::qWaitFor([&pongs]() { return pongs >= 1; }, 5000), "the server never answered a normal packet, so this connection was not usable to begin with");
+
+    // Well over the bound, and a packet in every other respect: the padding is an unknown key, which
+    // decoding preserves and otherwise ignores.
+    QJsonObject padding;
+    padding.insert(u"padding"_s, QString(packetSizeBound, QLatin1Char('x')));
+    const QByteArray flood = QMdmmCore::Packet(Protocol::NotifyPingServer, padding).serialize();
+    QVERIFY2(flood.size() > packetSizeBound, "the flood did not outgrow the bound, so this case would not test it");
+
+    bool dropped = false;
+    QObject::connect(&peer, &QWebSocket::disconnected, &peer, [&dropped]() { dropped = true; });
+
+    peer.sendBinaryMessage(flood);
+
+    QVERIFY2(QTest::qWaitFor([&dropped]() { return dropped; }, 10000),
+             "the server kept a peer whose message outgrew the bound connected, so it was assembling a message without a bound");
+
+    // The flood never became a packet: the transport dropped it before the packet layer could answer
+    // it, which is the difference between a bound and a peer that simply went away.
+    QCOMPARE(pongs, 1);
 }
 
 // The read-only status snapshot reports how many rooms exist, how many of them are running a game,

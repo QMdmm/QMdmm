@@ -165,13 +165,13 @@ int Socket::maximumPacketSize() const
  * @brief Set the largest packet this socket is willing to receive.
  * @param maximumPacketSize the bound in bytes; a non-positive value means no bound
  *
- * A packet is one line, so a peer that has sent this many bytes without ending a line is not
- * speaking the protocol: the socket records a @c ProtocolError and disconnects instead of
- * buffering data that can never become a packet. The bound also caps the transport's own read
- * buffer, so the peer cannot make the process grow past it.
- *
- * The transports that frame packets by lines (TCP socket, local socket) apply the bound; a
- * WebSocket delivers whole messages instead, and an unusable one is rejected by the packet layer.
+ * A packet arrives as one line over the line-framed transports and as one message over a
+ * WebSocket. Both shapes apply the bound: a peer that has sent this many bytes without ending a
+ * line is not speaking the protocol, so the socket records a @c ProtocolError and disconnects
+ * instead of buffering data that can never become a packet, and a WebSocket peer whose message
+ * outgrows the bound is dropped while that message is still being read, before it could become a
+ * packet. Either way the transport holds no more than the bound for one packet, so the peer cannot
+ * make the process grow past it.
  */
 void Socket::setMaximumPacketSize(int maximumPacketSize)
 {

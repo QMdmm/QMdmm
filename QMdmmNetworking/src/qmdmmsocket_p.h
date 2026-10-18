@@ -127,6 +127,9 @@ public:
     QPointer<QWebSocket> socket;
     void setupSocket();
 
+protected:
+    void applyMaximumPacketSize() override;
+
 public slots: // NOLINT(readability-redundant-access-specifiers)
     void sendPacket(QMdmmCore::Packet packet) override;
     void errorOccurredWebSocket(QAbstractSocket::SocketError e);

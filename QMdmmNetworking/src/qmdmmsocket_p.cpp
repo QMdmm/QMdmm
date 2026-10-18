@@ -336,6 +336,23 @@ void SocketP_QWebSocket::setupSocket()
     connect(socket, &QWebSocket::errorOccurred, this, &SocketP_QWebSocket::errorOccurredWebSocket);
     connect(socket, &QWebSocket::disconnected, this, &SocketP_QWebSocket::socketDisconnected);
     connect(socket, &QWebSocket::disconnected, socket, &QWebSocket::deleteLater);
+
+    // Through the class name on purpose: this also runs from the constructor, where an unqualified
+    // call would resolve to the SocketP virtual (the dispatch for an object under construction)
+    // and silently do nothing.
+    SocketP_QWebSocket::applyMaximumPacketSize();
+}
+
+void SocketP_QWebSocket::applyMaximumPacketSize()
+{
+    if (socket == nullptr)
+        return;
+
+    // This transport hands a packet over as one message instead of as one line, so there is no read
+    // buffer to bound here: the bound goes to the framing layer, which stops reading a message that
+    // outgrows it and drops the peer before the data could ever become a packet. A non-positive
+    // bound means "no bound", which for this transport is the largest message it accepts at all.
+    socket->setMaxAllowedIncomingMessageSize(maximumPacketSize > 0 ? static_cast<quint64>(maximumPacketSize) : QWebSocket::maxIncomingMessageSize());
 }
 
 void SocketP_QWebSocket::sendPacket(QMdmmCore::Packet packet)
