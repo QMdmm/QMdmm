@@ -8,12 +8,15 @@
 namespace QMdmmNetworking {
 namespace p {
 
+std::atomic<int> LogicRunnerP::lastId {0};
+
 LogicRunnerP::LogicRunnerP(QMdmmCore::LogicConfiguration logicConfiguration, int playerNumPerRoom, LogicRunner *q)
     : QObject(q)
     , q(q)
     , logicThread(new QThread(this))
     , conf(std::move(logicConfiguration))
     , playerNumPerRoom(playerNumPerRoom)
+    , id(++lastId)
 {
     logic = new QMdmmCore::Logic(conf);
     logic->moveToThread(logicThread);
@@ -49,6 +52,12 @@ LogicRunnerP::LogicRunnerP(QMdmmCore::LogicConfiguration logicConfiguration, int
 
 #undef CONNECTLOGICTORUNNER
     // NOLINTEND(cppcoreguidelines-macro-usage)
+
+    // The round count the status snapshot reports is fed by the one signal that begins a round:
+    // both the opening kick-off in LogicRunner::addAgent() and the advance at the end of
+    // upgradeResult() emit it, so counting its emissions counts the rounds the room actually
+    // announces -- a third way of beginning one cannot come along without passing through here.
+    connect(this, &LogicRunnerP::roundStart, this, [this] { ++rounds; });
 }
 
 void LogicRunnerP::agentStateChanged(const QMdmmCore::Data::AgentState &state)

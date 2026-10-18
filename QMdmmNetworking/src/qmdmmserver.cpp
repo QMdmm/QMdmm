@@ -585,13 +585,21 @@ void Server::close()
 
 /**
  * @brief Read a snapshot of what the server is doing right now
- * @return a @c QJsonObject with the fixed keys @c "rooms", @c "games" and @c "players"
+ * @return a @c QJsonObject with the fixed keys @c "rooms", @c "games", @c "players" and @c "roomList"
  *
  * @c "rooms" counts the rooms that exist right now: both the one still recruiting players and any
  * room whose game is running in the background. @c "games" counts how many of them have started a
  * game -- a room starts one as soon as it fills up. @c "players" counts the players currently
  * online across all rooms, so a player whose connection dropped and who has not reconnected yet is
  * not counted even though the seat is kept for them.
+ *
+ * @c "roomList" is the same rooms one by one, each an object with @c "id", @c "players" and
+ * @c "rounds": the room's @c LogicRunner::id(), how many of its players are online, and how many
+ * rounds it has started (@c LogicRunner::roundCount()). The entries are ordered by id, and their
+ * player counts add up to the top-level @c "players" -- the two readings come from one pass, not
+ * from two. A server with nothing going on answers with an empty array. The three counts are what
+ * this key was added beside rather than in place of: their shape does not change, so a caller that
+ * reads them keeps reading them.
  *
  * The snapshot is read-only and can be taken at any time; it changes nothing. It is also what the
  * control plane serves at @c /status, so the same readings are available to a caller that cannot

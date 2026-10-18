@@ -8,9 +8,11 @@
 
 #include <QMdmmProtocol>
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QTimer>
 
+#include <algorithm>
 #include <memory>
 
 using namespace Qt::StringLiterals;
@@ -259,7 +261,14 @@ QJsonObject ServerP::status() const
     // running in the background while `current` moves on to the next recruiter (see signIn above).
     // A room whose game has started is exactly a full one -- both addAgent() and agentDisconnected()
     // switch on full() to tell "the game is running" from "still recruiting".
-    const QList<LogicRunner *> runners = findChildren<LogicRunner *>();
+    QList<LogicRunner *> runners = findChildren<LogicRunner *>();
+
+    // The per-room entries are ordered by room id, not by whatever order the children happen to be
+    // in: the snapshot is something a caller can diff between readings, and a list that reshuffles
+    // when a room is built would make that impossible.
+    std::ranges::sort(runners, [](const LogicRunner *left, const LogicRunner *right) { return left->id() < right->id(); });
+
+    QJsonArray roomList;
     for (const LogicRunner *runner : runners) {
         ++rooms;
 
@@ -268,17 +277,27 @@ QJsonObject ServerP::status() const
 
         // The agents are children of the runner (signIn parents a network agent to its runner, and
         // a local agent follows the same shape), so a runner's own subtree holds the room's players.
+        // Counted the same way as the top-level total -- online only -- so the entries add up to it.
+        int roomPlayers = 0;
         const QList<Agent *> agents = runner->findChildren<Agent *>();
         for (const Agent *agent : agents) {
             if (agent->state().testFlag(QMdmmCore::Data::StateMaskOnline))
-                ++players;
+                ++roomPlayers;
         }
+        players += roomPlayers;
+
+        QJsonObject room;
+        room.insert(u"id"_s, runner->id());
+        room.insert(u"players"_s, roomPlayers);
+        room.insert(u"rounds"_s, runner->roundCount());
+        roomList.append(room);
     }
 
     QJsonObject ob;
     ob.insert(u"rooms"_s, rooms);
     ob.insert(u"games"_s, games);
     ob.insert(u"players"_s, players);
+    ob.insert(u"roomList"_s, roomList);
     return ob;
 }
 

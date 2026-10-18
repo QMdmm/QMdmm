@@ -43,6 +43,9 @@ public:
 
     [[nodiscard]] bool full() const;
 
+    [[nodiscard]] int id() const;
+    [[nodiscard]] int roundCount() const;
+
 signals: // NOLINT(readability-redundant-access-specifiers)
     void gameOver(QPrivateSignal);
 

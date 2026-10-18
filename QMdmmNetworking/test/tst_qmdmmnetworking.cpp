@@ -69,6 +69,7 @@ private slots:
     void client_reportsAVersionNumberMismatchAndSignsIn();
     void server_listenErrorAndClose();
     void server_statusReportsRoomsGamesAndPlayers();
+    void server_statusListsEachRoom();
     void client_infeasibleUpgradeReplyDoesNotStall();
     void client_disconnectDuringUpgradeStillAdvances();
     void socket_addressSchemeWhitelist();
@@ -2115,6 +2116,96 @@ void tst_QMdmmNetworking::server_statusReportsRoomsGamesAndPlayers()
     QTRY_COMPARE(statusCount(u"players"_s), 2);
     QCOMPARE(statusCount(u"games"_s), 1);
     QCOMPARE(statusCount(u"rooms"_s), 1);
+}
+
+// The per-room half of the snapshot: one entry per room, each carrying the room's own id, how many
+// of its players are online and how many rounds it has started. It is read beside the three counts,
+// not instead of them -- the point of the two cases together is that both readings come from one
+// snapshot: the entries' player counts add up to the top-level total, and the counts keep the shape
+// they had before the list existed.
+//
+// Two rooms are built here on purpose. The first fills up and runs its game in the background while
+// the server recruits for the second, which is exactly the state the list exists to show: the
+// earlier room has a round behind it and the recruiting one has none. Ids come from one counter, so
+// the list is ordered by them, and an id that moved between readings would mean the entry was not
+// describing a room but a position.
+void tst_QMdmmNetworking::server_statusListsEachRoom()
+{
+    LogicConfiguration conf = LogicConfiguration::defaults();
+
+    ServerConfiguration serverConf = ServerConfiguration::defaults();
+    serverConf.setPlayerNumPerRoom(3);
+    serverConf.setTcpPort(16394);
+    serverConf.setLocalEnabled(false);
+    serverConf.setWebsocketEnabled(false);
+    serverConf.setRequestTimeout(0); // the clients stay silent; a 0 timeout leaves them connected
+
+    Server server(serverConf, conf);
+    QVERIFY(server.listen());
+
+    const auto roomEntries = [&server]() { return server.status().value(u"roomList"_s).toArray(); };
+
+    // Nothing has connected yet: the list is there and empty, rather than absent. A key that only
+    // appeared once a room existed would make the first reading of a fresh server a parse error for
+    // whoever reads it strictly.
+    QVERIFY(server.status().value(u"roomList"_s).isArray());
+    QCOMPARE(roomEntries().size(), 0);
+
+    const QString host = u"qmdmm://localhost:16394"_s;
+
+    auto *p1 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p1->connectToHost(host, Data::StateOnline));
+    QTRY_VERIFY_WITH_TIMEOUT(p1->room() != nullptr, 5000);
+
+    auto *p2 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p2->connectToHost(host, Data::StateOnlineBot));
+    QTRY_VERIFY_WITH_TIMEOUT(p2->room() != nullptr && p2->room()->player(p1->objectName()) != nullptr, 5000);
+
+    // One room, still recruiting: two seats taken, no round begun yet.
+    QTRY_COMPARE(roomEntries().size(), 1);
+    const int firstRoomId = roomEntries().at(0).toObject().value(u"id"_s).toInt();
+    QVERIFY2(firstRoomId > 0, "a room was listed without an identity");
+    QCOMPARE(roomEntries().at(0).toObject().value(u"players"_s).toInt(), 2);
+    QCOMPARE(roomEntries().at(0).toObject().value(u"rounds"_s).toInt(), 0);
+
+    // The third sign-in fills the room, which is when its first round begins.
+    auto *p3 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p3->connectToHost(host, Data::StateOnlineBot));
+    QTRY_VERIFY_WITH_TIMEOUT(p3->room() != nullptr, 5000);
+
+    QTRY_COMPARE(roomEntries().size(), 1);
+    QTRY_COMPARE(roomEntries().at(0).toObject().value(u"players"_s).toInt(), 3);
+    QTRY_COMPARE(roomEntries().at(0).toObject().value(u"rounds"_s).toInt(), 1);
+    QCOMPARE(roomEntries().at(0).toObject().value(u"id"_s).toInt(), firstRoomId);
+
+    // A player who drops keeps their seat: the room's online count drops, and nothing else moves --
+    // neither the room's identity nor the rounds it has begun.
+    p3->disconnectFromHost();
+    QTRY_COMPARE(roomEntries().at(0).toObject().value(u"players"_s).toInt(), 2);
+    QCOMPARE(roomEntries().at(0).toObject().value(u"rounds"_s).toInt(), 1);
+    QCOMPARE(roomEntries().at(0).toObject().value(u"id"_s).toInt(), firstRoomId);
+
+    // A fourth player is not seated in the running game: the server is recruiting a second room.
+    // Both are listed, in id order, and their player counts are the same two readings the totals
+    // report.
+    auto *p4 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p4->connectToHost(host, Data::StateOnlineBot));
+    QTRY_VERIFY_WITH_TIMEOUT(p4->room() != nullptr, 5000);
+
+    QTRY_COMPARE(roomEntries().size(), 2);
+    const QJsonObject running = roomEntries().at(0).toObject();
+    const QJsonObject recruiting = roomEntries().at(1).toObject();
+
+    QCOMPARE(running.value(u"id"_s).toInt(), firstRoomId);
+    QVERIFY2(recruiting.value(u"id"_s).toInt() > firstRoomId, "the rooms were not listed in the order their ids were handed out");
+    QCOMPARE(running.value(u"players"_s).toInt(), 2);
+    QCOMPARE(running.value(u"rounds"_s).toInt(), 1);
+    QCOMPARE(recruiting.value(u"players"_s).toInt(), 1);
+    QCOMPARE(recruiting.value(u"rounds"_s).toInt(), 0);
+
+    QCOMPARE(server.status().value(u"players"_s).toInt(), 3);
+    QCOMPARE(server.status().value(u"rooms"_s).toInt(), 2);
+    QCOMPARE(server.status().value(u"games"_s).toInt(), 1);
 }
 
 // The inbound path is the only place a peer's bytes are trusted, so a frame the server cannot use

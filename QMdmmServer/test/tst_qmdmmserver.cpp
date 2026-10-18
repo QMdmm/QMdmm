@@ -4,8 +4,10 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QHostAddress>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QNetworkInterface>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
@@ -426,6 +428,7 @@ private slots:
     void onlyStatusOverGet_getsTheSnapshot_data();
     void onlyStatusOverGet_getsTheSnapshot();
     void controlConnectionThatSaysNothing_isClosed();
+    void controlPlaneIsOnlyReachableOnLoopback();
 };
 
 // --help is the first option a user reaches for, and it is the only one that
@@ -1166,7 +1169,7 @@ void tst_QMdmmServer::stopSignal_closesTheListenersAndExitsZero()
 }
 
 // The control plane is the read-only face of the server's status snapshot: an HTTP GET on
-// /status answers with the same three counts an in-process caller reads from status(). It is
+// /status answers with the same snapshot an in-process caller reads from status(). It is
 // asked for with a port of its own -- with no option there is no listener at all -- and it binds
 // the loopback address, so this case reaches it the way an operator with a plain client would.
 //
@@ -1216,17 +1219,19 @@ void tst_QMdmmServer::onlyStatusOverGet_getsTheSnapshot()
     const qsizetype bodyStart = answer.indexOf("\r\n\r\n");
     QVERIFY2(bodyStart >= 0, qPrintable(QString::fromLatin1(answer)));
 
-    // The answer is the snapshot itself: the three keys status() promises, and nothing else. This
-    // run has nothing going on -- no rooms, no games, nobody signed in -- so all three read as
-    // zero. A plane that answered with a constant would read the same here, so what these three
-    // say is the shape of what the plane serves and that an idle run reads as idle; that the
-    // numbers are the run's own, and move with it, is what the in-process case in the networking
-    // suite watches them do.
+    // The answer is the snapshot itself: the keys status() promises, and nothing else. This run has
+    // nothing going on -- no rooms, no games, nobody signed in -- so the three counts read as zero
+    // and the per-room list as empty. A plane that answered with a constant would read the same
+    // here, so what these say is the shape of what the plane serves and that an idle run reads as
+    // idle; that the numbers are the run's own, and move with it, is what the in-process case in
+    // the networking suite watches them do.
     const QJsonObject snapshot = QJsonDocument::fromJson(answer.mid(bodyStart + 4)).object();
-    QCOMPARE(int(snapshot.size()), 3);
+    QCOMPARE(int(snapshot.size()), 4);
     QCOMPARE(snapshot.value(u"rooms"_s).toInt(), 0);
     QCOMPARE(snapshot.value(u"games"_s).toInt(), 0);
     QCOMPARE(snapshot.value(u"players"_s).toInt(), 0);
+    QVERIFY(snapshot.value(u"roomList"_s).isArray());
+    QCOMPARE(snapshot.value(u"roomList"_s).toArray().size(), 0);
 }
 
 // A control-plane connection that never asks anything is let go of by the run rather than held.
@@ -1282,8 +1287,56 @@ void tst_QMdmmServer::controlConnectionThatSaysNothing_isClosed()
     QVERIFY2(again.startsWith(QByteArray("HTTP/1.0 200 ")), qPrintable(diagnosis));
 }
 
-QTEST_GUILESS_MAIN(tst_QMdmmServer)
+// The plane binds the loopback address rather than every address, so the machine's own number is
+// not a way in. That claim had only ever been checked by opening the plane and reading a socket
+// table by hand -- a check nobody repeats. Here the run is asked over the address the machine has
+// besides loopback, and the answer has to be silence.
+//
+// The address is read off the interface list rather than written down, so what is asked is the
+// machine's own number. A host whose only address is loopback (a container without a network, a
+// machine with its interfaces down) has nothing to ask, and the case skips rather than pass on a
+// check it did not make.
+void tst_QMdmmServer::controlPlaneIsOnlyReachableOnLoopback()
+{
+    QHostAddress elsewhere;
+    const QList<QHostAddress> addresses = QNetworkInterface::allAddresses();
+    for (const QHostAddress &address : addresses) {
+        if (address.isLoopback() || address.protocol() != QAbstractSocket::IPv4Protocol)
+            continue;
+        elsewhere = address;
+        break;
+    }
 
+    if (elsewhere.isNull())
+        QSKIP("this host has no address besides loopback, so there is no second way in to ask about");
+
+    const quint16 controlPort = freePort();
+
+    QProcess process;
+    process.start(QString::fromLatin1(QMDMMSERVER_EXECUTABLE), {u"-t"_s, u"off"_s, u"-l"_s, u"off"_s, u"-w"_s, u"off"_s, u"--control-port"_s, QString::number(controlPort)});
+    if (!process.waitForStarted(60000))
+        qFatal("the executable under test did not start");
+
+    const auto stopProcess [[maybe_unused]] = qScopeGuard([&process] { stopRun(process); });
+
+    // The plane is known to be serving before the other address is tried: a run that had not
+    // reached its listener yet would be silent on every address, which is the reading this case
+    // has to tell apart from a plane that is bound to loopback only.
+    QString diagnosis;
+    const QByteArray answer = askControlPlane(process, controlPort, QByteArray("GET /status HTTP/1.0\r\n\r\n"), &diagnosis);
+    QVERIFY2(answer.startsWith(QByteArray("HTTP/1.0 200 ")), qPrintable(diagnosis));
+
+    QTcpSocket other;
+    other.connectToHost(elsewhere, controlPort);
+
+    // Judged on the port the connection landed on, not on whether the connect call reported
+    // success: Qt reports a connection to a port with no listener as one that was made, with no
+    // peer behind it (see the note on askControlPlane).
+    const bool reached = other.waitForConnected(2000) && other.peerPort() == controlPort;
+    QVERIFY2(!reached, qPrintable(u"the control plane answered on %1, which is not the loopback address"_s.arg(elsewhere.toString())));
+}
+
+QTEST_GUILESS_MAIN(tst_QMdmmServer)
 #include "tst_qmdmmserver.moc"
 
 // NOLINTEND

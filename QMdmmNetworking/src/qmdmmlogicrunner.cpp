@@ -209,6 +209,33 @@ bool LogicRunner::full() const
 }
 
 /**
+ * @brief the room's identifier
+ * @return an identifier unique among the rooms this process has built
+ *
+ * It is handed out when the room is built and never changes, so two readings of the status
+ * snapshot can be told apart by it. It is not a name the room can be reached by, and it carries
+ * nothing across restarts: a room is a game, and a game does not outlive the process running it.
+ *
+ * @see Server::status()
+ */
+int LogicRunner::id() const
+{
+    return d->id;
+}
+
+/**
+ * @brief how many rounds this room has started
+ * @return the number of rounds begun so far: @c 0 while the room is still recruiting players, and
+ * one more each time a round begins
+ *
+ * @see Server::status()
+ */
+int LogicRunner::roundCount() const
+{
+    return d->rounds;
+}
+
+/**
  * @fn LogicRunner::gameOver(QPrivateSignal)
  * @brief emitted when the game is over
  */
