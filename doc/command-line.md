@@ -44,8 +44,12 @@ keeps, so everything about a run that is not a game rule is decided here.
 
 Every value below has a default, and can also come from a stored configuration
 file; an option given on the command line wins over the file. The stored key of
-an option is its long name. [Getting Started](getting-started.md) covers where
-the files live and how a value is looked up.
+an option is its long name. The two sets are the same set: a setting that no
+option names has no stored key either, and the values the file can hold are
+exactly the values listed here. A setting internal enough that no one running a
+server would tune it is documented with the class that declares it instead of
+being listed here. [Getting Started](getting-started.md) covers where the files
+live and how a value is looked up.
 
 ### Help and version
 
@@ -100,7 +104,7 @@ a few seconds is closed rather than held: a client that connects and then says
 nothing cannot pin a socket on the server, which is the same bound the game
 transports put on a peer that never finishes a packet.
 
-### Room and timeout
+### Room, connections and timeouts
 
 - `-n`, `--players <2~>` -- the number of seats in a room. Defaults to 3. Two is
   the floor: the rock-paper-scissors that opens a round needs an opponent.
@@ -116,6 +120,18 @@ transports put on a peer that never finishes a packet.
   and for the network, so an answer later than `--timeout + 60` seconds is
   treated as silence and the connection is dropped. At 0 there is no deadline
   at all -- a silent player is waited on as long as the connection holds.
+- `--maximum-packet-size <1024~>` -- the largest packet a peer may send, in
+  bytes. Defaults to 1048576 (1 MiB). A packet is one line, so a peer that sends
+  that many bytes without ending one is not speaking the protocol and the
+  connection is dropped rather than buffered. The floor of 1024 is what keeps
+  the protocol's own packets inside the bound, and there is no unlimited
+  setting: bytes past the bound are the whole reason it exists.
+- `--sign-in-timeout <2~60>` -- the seconds an accepted connection has to sign
+  in before it is dropped. Defaults to 5. Only a connection that has not signed
+  in yet is on this clock; one that did is the request timeout's business. The
+  ceiling of 60 is what keeps a peer from holding a port, and the memory behind
+  it, for longer than a handshake could plausibly take; the floor only has to
+  outlast the slowest honest one.
 
 ### Game rules
 

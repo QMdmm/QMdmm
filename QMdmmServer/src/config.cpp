@@ -44,13 +44,15 @@ Control plane (read-only):
   --control-port <port>              Serve a read-only status snapshot over HTTP/1.0 on
                                      127.0.0.1, at /status (default: off).
 
-Room and connection:
+Room, connections and timeouts:
   -n, --players <2~>                 Player number per room (default: 3). Nine is the soft cap:
                                      above it rock-paper-scissors ties become more likely.
   -2, -3, -4, -5, -6, -7, -8, -9     Shorthand for --players=<N> (for example -4 is equivalent
                                      to --players=4).
   -o, --timeout <0,15~>              Operation timeout in seconds; 0 disables the timeout
                                      (default: 20).
+  --maximum-packet-size <1024~>      Largest packet a peer may send, in bytes (default: 1048576).
+  --sign-in-timeout <2~60>           Seconds an accepted connection has to sign in (default: 5).
 
 Logic:
   -s, --slash, --knife <1~>          Initial knife (slash) damage (default: 1).
@@ -198,6 +200,8 @@ Config::Config()
     parser.addOption(QCommandLineOption(QStringList {u"9"_s}));
 
     parser.addOption(QCommandLineOption(QStringList {u"o"_s, u"timeout"_s}, {}, u"0,15~"_s));
+    parser.addOption(QCommandLineOption(QStringList {u"maximum-packet-size"_s}, {}, u"1024~"_s));
+    parser.addOption(QCommandLineOption(QStringList {u"sign-in-timeout"_s}, {}, u"2~60"_s));
 
     parser.addOption(QCommandLineOption(QStringList {u"s"_s, u"slash"_s, u"knife"_s}, {}, u"1~"_s));
     parser.addOption(QCommandLineOption(QStringList {u"S"_s, u"maximum-slash"_s, u"maximum-knife"_s}, {}, u"3~"_s));
@@ -406,6 +410,8 @@ void Config::read_(QMdmmCore::Settings *setting, QCommandLineParser *parser)
     CONFIG_ITEM(uint16_t, serverConfiguration_, "websocket-port", stringToUint16, WebsocketPort, false);
     CONFIG_ITEM(uint16_t, serverConfiguration_, "control-port", stringToUint16, ControlPort, false);
     CONFIG_ITEM(int, serverConfiguration_, "timeout", stringToInt, RequestTimeout, false);
+    CONFIG_ITEM(int, serverConfiguration_, "maximum-packet-size", stringToInt, MaximumPacketSize, false);
+    CONFIG_ITEM(int, serverConfiguration_, "sign-in-timeout", stringToInt, SignInTimeout, false);
 
     {
         int players = 0;
@@ -520,6 +526,18 @@ void Config::read_(QMdmmCore::Settings *setting, QCommandLineParser *parser)
     if (timeout != 0 && timeout < 15)
         configError(u"Config item timeout must be 0 or at least 15 (got %1)"_s, timeout);
 
+    // The two connection bounds that used to be reachable only from code. Their ranges are the
+    // ones ServerConfiguration::deserialize() enforces, and they are enforced here for the reason
+    // the floors above are: a run that takes an out-of-range value from a flag and saves the
+    // configuration (-c) would write a file the next startup refuses outright.
+    const int maximumPacketSize = serverConfiguration_.maximumPacketSize();
+    if (maximumPacketSize < 1024)
+        configError(u"Config item maximum-packet-size must be at least 1024 (got %1)"_s, maximumPacketSize);
+
+    const int signInTimeout = serverConfiguration_.signInTimeout();
+    if (signInTimeout < 2 || signInTimeout > 60)
+        configError(u"Config item sign-in-timeout must be between 2 and 60 (got %1)"_s, signInTimeout);
+
     const int punishHpModifier = logicConfiguration_.punishHpModifier();
     if (punishHpModifier != 0 && punishHpModifier < 2)
         configError(u"Config item punish-hp-modifier must be 0 or at least 2 (got %1)"_s, punishHpModifier);
@@ -550,6 +568,8 @@ int Config::save_(QMdmmCore::Settings *setting, QMdmmCore::Settings::Instance to
     CONFIG_ITEM(uint16_t, serverConfiguration_, "websocket-port", uint16ToString, websocketPort);
     CONFIG_ITEM(uint16_t, serverConfiguration_, "control-port", uint16ToString, controlPort);
     CONFIG_ITEM(int, serverConfiguration_, "timeout", intToString, requestTimeout);
+    CONFIG_ITEM(int, serverConfiguration_, "maximum-packet-size", intToString, maximumPacketSize);
+    CONFIG_ITEM(int, serverConfiguration_, "sign-in-timeout", intToString, signInTimeout);
     CONFIG_ITEM(int, serverConfiguration_, "players", intToString, playerNumPerRoom);
 
     setting->endGroup();

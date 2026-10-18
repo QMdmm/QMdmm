@@ -18,6 +18,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <array>
+
 #ifdef Q_OS_UNIX
 #include <arpa/inet.h>
 #include <cerrno>
@@ -198,6 +200,57 @@ QString sortedLetters(const QSet<QChar> &letters)
     return list.join(u", "_s);
 }
 
+// @p words as one stable string, for a failure message that names what drifted.
+QString sortedWords(QSet<QString> words)
+{
+    QStringList list(words.constBegin(), words.constEnd());
+    list.sort();
+    return list.join(u", "_s);
+}
+
+// The stored face of ServerConfiguration: one row per key, naming the property the run prints, the
+// key the configuration file holds and a value that differs from the default so that a reading
+// says which source won. A value is spelled twice because the two faces spell it differently -- the
+// file holds a bare word, the printed JSON holds a quoted string where the property is one.
+//
+// The rows are the subject of two cases that pull in opposite directions: each row is walked by
+// `storedKeys_reachThePrintedConfiguration` (a row whose key the program does not read leaves the
+// printed value at its default, and that case goes red), and the set of rows is held against both
+// the properties the header declares and the keys a save writes by
+// `declaredConfigurationKeys_areTheStoredOnes` and `savedConfiguration_carriesEveryStoredKey` (a
+// property with no row, or a saved key with no row, makes a set differ and a case go red). A key
+// an operator has no business tuning would go in `unexposedServerKeys` with its reason instead of
+// here; there is none today, and the doxygen on ServerConfiguration says what makes a key eligible
+// for either list.
+struct StoredServerKey
+{
+    const char *property;
+    const char *key;
+    const char *value;
+    const char *json;
+};
+
+const std::array<StoredServerKey, 12> &storedServerKeys()
+{
+    // clang-format off
+    static const std::array<StoredServerKey, 12> rows {{
+        {.property = "tcpEnabled",         .key = "tcp",                 .value = "false",          .json = "false"},
+        {.property = "tcpPort",            .key = "tcp-port",            .value = "7001",           .json = "7001"},
+        {.property = "localEnabled",       .key = "local",               .value = "false",          .json = "false"},
+        {.property = "localSocketName",    .key = "local-name",          .value = "gate-local",     .json = "\"gate-local\""},
+        {.property = "websocketEnabled",   .key = "websocket",           .value = "false",          .json = "false"},
+        {.property = "websocketName",      .key = "websocket-name",      .value = "gate-websocket", .json = "\"gate-websocket\""},
+        {.property = "websocketPort",      .key = "websocket-port",      .value = "7002",           .json = "7002"},
+        {.property = "controlPort",        .key = "control-port",        .value = "7003",           .json = "7003"},
+        {.property = "playerNumPerRoom",   .key = "players",             .value = "4",              .json = "4"},
+        {.property = "requestTimeout",     .key = "timeout",             .value = "30",             .json = "30"},
+        {.property = "maximumPacketSize",  .key = "maximum-packet-size", .value = "2048",           .json = "2048"},
+        {.property = "signInTimeout",      .key = "sign-in-timeout",     .value = "30",             .json = "30"},
+    }};
+    // clang-format on
+    return rows;
+}
+
 // A port on the loopback address that this machine is not using, taken by listening on it and
 // handed straight back. A case that needs the run to open a port of its own cannot pick one out of
 // the air -- another process may hold it -- so it asks the kernel and then lets it go.
@@ -319,6 +372,10 @@ private slots:
     void v1Presets_reachThePrintedConfiguration();
     void v1Presets_outrankAStoredLogicSection_data();
     void v1Presets_outrankAStoredLogicSection();
+    void storedKeys_reachThePrintedConfiguration_data();
+    void storedKeys_reachThePrintedConfiguration();
+    void declaredConfigurationKeys_areTheStoredOnes();
+    void savedConfiguration_carriesEveryStoredKey();
     void outOfRangeValue_isRejected();
     void crossedPairs_areRejected_data();
     void crossedPairs_areRejected();
@@ -602,6 +659,140 @@ void tst_QMdmmServer::v1Presets_outrankAStoredLogicSection()
 
     QVERIFY(result.standardOutput.contains(u"\"tcpPort\": 7777"_s));
     QVERIFY(result.standardOutput.contains(printed));
+}
+
+// The stored face of each key, one row at a time: a file naming one key and nothing else, and the
+// printed configuration has to carry that value. The home handling is the same as the case above,
+// and for the same reason -- the file is planted, so it has to be one the run will read.
+void tst_QMdmmServer::storedKeys_reachThePrintedConfiguration_data()
+{
+    QTest::addColumn<QString>("line");
+    QTest::addColumn<QString>("printed");
+
+    for (const StoredServerKey &row : storedServerKeys()) {
+        QTest::newRow(row.key) << QString::fromLatin1(row.key) + u"="_s + QString::fromLatin1(row.value)
+                               << u"\""_s + QString::fromLatin1(row.property) + u"\": "_s + QString::fromLatin1(row.json);
+    }
+}
+
+void tst_QMdmmServer::storedKeys_reachThePrintedConfiguration()
+{
+    QFETCH(QString, line);
+    QFETCH(QString, printed);
+
+    QTemporaryDir scratch;
+    const QString home = perUserCaseHome(scratch);
+    if (home.isEmpty())
+        QSKIP("the home does not follow the environment here and this machine is not one to be thrown away; the stored file would have to be the machine's own");
+
+    const PerUserFileRestore restore(home);
+
+    const QDir perUserDirectory(QDir(home).absoluteFilePath(u".QMdmm/Fsu0413.me"_s));
+    QDir(home).mkpath(u".QMdmm/Fsu0413.me"_s);
+    QVERIFY(perUserDirectory.exists());
+
+    QFile file(perUserConfigurationFile(home));
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QVERIFY(file.write("[server]\n" + line.toUtf8() + "\n") > 0);
+    file.close();
+
+    const RunResult result = runServer({u"-d"_s}, 60000, perUserCaseEnvironment(home));
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 0);
+    QVERIFY2(result.standardOutput.contains(printed), qPrintable(u"the run did not print "_s + printed));
+}
+
+// The other direction, and the reason the table cannot rot: every property the class declares has to
+// be a row above. Declaring a key in ServerConfiguration is all it takes for the key to exist, and a
+// key with no option and no stored key is one nobody can reach -- so the declared set and the table
+// have to be the same set.
+//
+// The header is read as text, the way the free-slot case reads config.cpp, and for the same reason:
+// the class is in another module and is not linked into this target. Two readings, so that neither a
+// property with no row nor a property the pattern fails to see can pass: the properties are declared
+// one per line, and the number the pattern finds has to be the number of Q_PROPERTY() blocks in the
+// file. The sets are compared before the counts, so that the case that is about a key names the key
+// it disagrees about; the counts cover what the sets cannot see, a declaration made twice or one the
+// pattern walks past.
+void tst_QMdmmServer::declaredConfigurationKeys_areTheStoredOnes()
+{
+    QFile header(QString::fromLatin1(QMDMMSERVERCONFIGURATION_HEADER));
+    QVERIFY2(header.open(QIODevice::ReadOnly), qPrintable(header.fileName() + u": "_s + header.errorString()));
+
+    const QString text = QString::fromLocal8Bit(header.readAll());
+
+    const QRegularExpression declaredProperty(u"Q_PROPERTY\\([^\\n]*?\\bREAD\\s+([A-Za-z_][A-Za-z0-9]*)"_s);
+
+    QSet<QString> declared;
+    QRegularExpressionMatchIterator matches = declaredProperty.globalMatch(text);
+    while (matches.hasNext())
+        declared.insert(matches.next().captured(1));
+
+    QVERIFY2(!declared.isEmpty(), "no property was read out of the header");
+
+    QSet<QString> stored;
+    for (const StoredServerKey &row : storedServerKeys())
+        stored.insert(QString::fromLatin1(row.property));
+
+    QString message = u"the declared properties and the stored keys disagree -- declared but not stored: ["_s + sortedWords(declared - stored);
+    message += u"]; stored but not declared: ["_s + sortedWords(stored - declared) + u"]"_s;
+    QVERIFY2(declared == stored, qPrintable(message));
+
+    const qsizetype declaredCount = text.count(u"Q_PROPERTY("_s);
+    QVERIFY2(
+        declared.size() == declaredCount,
+        qPrintable(u"the header declares %1 properties and %2 were read out of it -- a property declared twice, or one whose READ the pattern does not see"_s.arg(declaredCount)
+                       .arg(declared.size())));
+}
+
+// The write side: a key the program reads but does not save would be lost the moment a run replays
+// its configuration through -c, and a file missing a key reads back as that key's default without
+// saying so. One run, one file, and the keys of its [server] section have to be the table's keys --
+// both ways, so a key the file carries but no row names is caught here as well.
+void tst_QMdmmServer::savedConfiguration_carriesEveryStoredKey()
+{
+    QTemporaryDir scratch;
+    const QString home = perUserCaseHome(scratch);
+    if (home.isEmpty())
+        QSKIP("the home does not follow the environment here and this machine is not one to be thrown away; a run would write the machine's own per-user file");
+
+    const PerUserFileRestore restore(home);
+
+    const RunResult result = runServer({u"-c"_s}, 60000, perUserCaseEnvironment(home));
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 0);
+
+    QFile file(perUserConfigurationFile(home));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QString contents = QString::fromUtf8(file.readAll());
+
+    // The [server] section, one key per line up to the next section header.
+    QSet<QString> saved;
+    bool inSection = false;
+    const QStringList lines = contents.split(u'\n');
+    for (const QString &line : lines) {
+        if (line.startsWith(u'[')) {
+            inSection = line == u"[server]"_s;
+            continue;
+        }
+        if (!inSection)
+            continue;
+        const int equals = line.indexOf(u'=');
+        if (equals > 0)
+            saved.insert(line.left(equals));
+    }
+
+    QVERIFY2(!saved.isEmpty(), "the saved file has no [server] section");
+
+    QSet<QString> stored;
+    for (const StoredServerKey &row : storedServerKeys())
+        stored.insert(QString::fromLatin1(row.key));
+
+    QString message = u"the saved keys and the table disagree -- saved but not stored: ["_s + sortedWords(saved - stored);
+    message += u"]; stored but not saved: ["_s + sortedWords(stored - saved) + u"]"_s;
+    QVERIFY2(saved == stored, qPrintable(message));
 }
 
 // Each value the usage text promises a floor for is judged on its own, after the

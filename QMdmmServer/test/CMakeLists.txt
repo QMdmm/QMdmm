@@ -53,6 +53,13 @@ target_compile_definitions(tst_qmdmmserver6 PRIVATE
     "QMDMMSERVER_CONFIG_SOURCE=\"${CMAKE_CURRENT_SOURCE_DIR}/../src/config.cpp\""
 )
 
+# The same treatment for the other end of the key surface: the properties every stored key has to
+# match are declared in the networking module's header, which is not linked into this target either.
+# The case that reads them is why a new key cannot be added without its option and its stored key.
+target_compile_definitions(tst_qmdmmserver6 PRIVATE
+    "QMDMMSERVERCONFIGURATION_HEADER=\"${PROJECT_SOURCE_DIR}/QMdmmNetworking/src/qmdmmserver.h\""
+)
+
 # The networking suite drives this executable as well: its inbound-corpus case spawns the server and
 # feeds it the same frames, which is how "the server survived the corpus" becomes a reading about a
 # process rather than about a case's own verdict (see tst_qmdmmnetworking.cpp). The two modules are
