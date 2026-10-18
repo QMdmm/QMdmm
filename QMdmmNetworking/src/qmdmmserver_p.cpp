@@ -316,6 +316,19 @@ namespace {
 // is not asking a question: it is dropped rather than buffered without bound.
 constexpr qsizetype controlRequestSizeLimit = 8192;
 
+// How long a control-plane connection gets to deliver its request. This plane answers one short
+// request per connection and closes, so a peer that connects and then says nothing has nothing to
+// ask -- and the exit above is one such a peer never reaches, whatever it holds back. Without a
+// deadline it keeps the socket, the buffer behind it and this server's memory for as long as it
+// cares to, which is a resource bound every other accepted socket in this server has (the sign-in
+// deadline, the request timer) and this one did not.
+//
+// Fixed rather than configured: what it bounds is not a policy an operator tunes but a peer that
+// has not spoken at all, and it never cuts a request that has arrived -- the answer closes the
+// connection on its own. Five seconds is orders of magnitude more than a loopback client needs to
+// write a request line.
+constexpr int controlRequestTimeout = 5;
+
 // One HTTP/1.0 response, header and body together. HTTP/1.0 with no keep-alive means a connection
 // carries exactly one exchange and then closes, which is what lets the caller be a bare client
 // that negotiates nothing. The length is what lets it read the body without guessing where it ends.
@@ -349,7 +362,15 @@ void ServerP::serveControlRequest(QTcpSocket *socket)
     std::shared_ptr<QByteArray> received = std::make_shared<QByteArray>();
     std::shared_ptr<bool> answered = std::make_shared<bool>(false);
 
-    connect(socket, &QTcpSocket::readyRead, socket, [this, socket, received, answered] {
+    // Armed at accept rather than at the first byte: what this bounds is a connection that has not
+    // asked anything yet, so waiting for the peer to speak would miss exactly the peer it is for.
+    // It is a child of the socket, so it goes away with it.
+    QTimer *deadline = new QTimer(socket);
+    deadline->setSingleShot(true);
+    connect(deadline, &QTimer::timeout, socket, [socket] { socket->disconnectFromHost(); });
+    deadline->start(controlRequestTimeout * 1000);
+
+    connect(socket, &QTcpSocket::readyRead, socket, [this, socket, received, answered, deadline] {
         if (*answered)
             return;
 
@@ -365,6 +386,10 @@ void ServerP::serveControlRequest(QTcpSocket *socket)
         }
 
         *answered = true;
+
+        // The request arrived in time: what ends this connection from here is the answer, not the
+        // clock, so the deadline stops where the request stops.
+        deadline->stop();
 
         // Only the request line is read -- "GET /status HTTP/1.0". The two words it must carry are
         // the whole of what this plane serves, and a request that does not have them in that shape

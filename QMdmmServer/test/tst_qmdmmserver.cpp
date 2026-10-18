@@ -338,6 +338,7 @@ private slots:
     void stopSignal_closesTheListenersAndExitsZero();
     void onlyStatusOverGet_getsTheSnapshot_data();
     void onlyStatusOverGet_getsTheSnapshot();
+    void controlConnectionThatSaysNothing_isClosed();
 };
 
 // --help is the first option a user reaches for, and it is the only one that
@@ -1012,6 +1013,59 @@ void tst_QMdmmServer::onlyStatusOverGet_getsTheSnapshot()
     QCOMPARE(snapshot.value(u"rooms"_s).toInt(), 0);
     QCOMPARE(snapshot.value(u"games"_s).toInt(), 0);
     QCOMPARE(snapshot.value(u"players"_s).toInt(), 0);
+}
+
+// A control-plane connection that never asks anything is let go of by the run rather than held.
+// This plane answers one request per connection and closes, so its other exit -- a request that
+// grows past the size limit -- is one a peer that sends nothing never reaches. Without a deadline
+// such a peer keeps the socket, the buffer behind it and the run's memory for as long as it cares
+// to, which is a bound every other accepted socket in the run already has.
+//
+// The silence has to be unambiguous for this case to mean anything, so the plane is known to be
+// serving before the connection is opened: the case asks for the snapshot first. A connection to
+// a run that had not reached its listener yet fails outright rather than hanging, and a case that
+// took that for the deadline firing would pass for the wrong reason -- see the note on
+// askControlPlane about a connect that reports success with nothing behind it.
+void tst_QMdmmServer::controlConnectionThatSaysNothing_isClosed()
+{
+    const quint16 controlPort = freePort();
+
+    QProcess process;
+    process.start(QString::fromLatin1(QMDMMSERVER_EXECUTABLE), {u"-t"_s, u"off"_s, u"-l"_s, u"off"_s, u"-w"_s, u"off"_s, u"--control-port"_s, QString::number(controlPort)});
+    if (!process.waitForStarted(60000))
+        qFatal("the executable under test did not start");
+
+    const auto stopProcess [[maybe_unused]] = qScopeGuard([&process] { stopRun(process); });
+
+    QString diagnosis;
+    const QByteArray answer = askControlPlane(process, controlPort, QByteArray("GET /status HTTP/1.0\r\n\r\n"), &diagnosis);
+    QVERIFY2(answer.startsWith(QByteArray("HTTP/1.0 200 ")), qPrintable(diagnosis));
+
+    QTcpSocket silent;
+    silent.connectToHost(QHostAddress::LocalHost, controlPort);
+
+    // The connect is read against the port it landed on, not against its own success, for the
+    // reason askControlPlane spells out: Qt reports a connection to a port with no listener as
+    // one that was made, with no peer.
+    QVERIFY(silent.waitForConnected(5000));
+    QCOMPARE(silent.peerPort(), controlPort);
+    QCOMPARE(silent.state(), QAbstractSocket::ConnectedState);
+
+    // Nothing is written from here on. The wait is well past the run's own deadline, so a
+    // connection still open at the end of it is one the run never let go of.
+    QVERIFY2(silent.waitForDisconnected(20000), "the control plane held a connection that never asked anything");
+    QVERIFY(silent.state() != QAbstractSocket::ConnectedState);
+
+    // And nothing was said to the peer either: what closed the connection is the deadline, not an
+    // answer to a request that was never sent.
+    QCOMPARE(silent.bytesAvailable(), qint64(0));
+
+    // What ended was the connection, not the run: a run that had gone away would close the socket
+    // just as well, so the plane is asked again and has to answer. This is also what says the
+    // deadline is per connection rather than a shutdown of the plane.
+    QCOMPARE(process.state(), QProcess::Running);
+    const QByteArray again = askControlPlane(process, controlPort, QByteArray("GET /status HTTP/1.0\r\n\r\n"), &diagnosis);
+    QVERIFY2(again.startsWith(QByteArray("HTTP/1.0 200 ")), qPrintable(diagnosis));
 }
 
 QTEST_GUILESS_MAIN(tst_QMdmmServer)

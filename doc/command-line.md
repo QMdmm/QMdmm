@@ -95,6 +95,11 @@ server with nothing going on answers with three zeroes. A path other than
 `/status`, and any method other than `GET`, is answered with `404`. Nothing the
 plane is asked can change anything.
 
+One exchange per connection, and a connection that has not asked anything within
+a few seconds is closed rather than held: a client that connects and then says
+nothing cannot pin a socket on the server, which is the same bound the game
+transports put on a peer that never finishes a packet.
+
 ### Room and timeout
 
 - `-n`, `--players <2~>` -- the number of seats in a room. Defaults to 3. Two is
