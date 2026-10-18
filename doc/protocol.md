@@ -173,6 +173,14 @@ a mismatch there is tolerated -- it says nothing about the wire, which is still
 compatible -- where the only trace is the two version numbers on the log, after which the
 handshake goes on.
 
+Version 0, the only one implemented so far, is still being developed against rather than
+released, so its wire is not frozen: the payload of a given id may change in a later
+build without `protocolVersion` moving, and two peers that both announce 0 are not
+thereby compatible. A version 0 peer has to match the build it talks to, not the number.
+A stable wire begins at version 1, which ships together with program version `1.0.0`;
+from there on the payloads of a version do not change, and a change to any of them is a
+new version number.
+
 ## Protocol errors
 
 A frame that does not decode, is not an object, carries a key of the wrong type or a
