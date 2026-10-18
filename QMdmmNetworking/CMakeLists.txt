@@ -18,8 +18,6 @@ set(QMDMMNETWORKING_PRIVATE_HEADERS
     src/qmdmmagent_p.h
     src/qmdmmclient_p.h
     src/qmdmmlogicrunner_p.h
-    src/qmdmmnotify_p.h
-    src/qmdmmrecorder_p.h
     src/qmdmmsocket_p.h
     src/qmdmmserverconnection_p.h
 )
@@ -36,8 +34,6 @@ set(QMDMMNETWORKING_SOURCES
 set(QMDMMNETWORKING_PRIVATE_SOURCES
     src/qmdmmclient_p.cpp
     src/qmdmmlogicrunner_p.cpp
-    src/qmdmmnotify_p.cpp
-    src/qmdmmrecorder_p.cpp
     src/qmdmmserverconnection_p.cpp
     src/qmdmmserver_p.cpp
     src/qmdmmsocket_p.cpp

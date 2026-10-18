@@ -3,7 +3,6 @@
 #include "qmdmmserver_p.h"
 
 #include "qmdmmagent.h"
-#include "qmdmmlogicrunner_p.h"
 #include "qmdmmserverconnection_p.h"
 #include "qmdmmsocket.h"
 
@@ -158,11 +157,6 @@ void ServerP::signIn(Socket *socket, const QJsonValue &packetValue)
         if (current == nullptr || current->full()) {
             current = new LogicRunner(logicConfiguration, serverConfiguration.playerNumPerRoom(), this);
             connect(current, &LogicRunner::gameOver, this, &ServerP::logicRunnerGameOver);
-
-            // A room is not given the server-level configuration (see the LogicRunner ctor note),
-            // so the record target -- one of those settings -- is handed over here, before anyone
-            // joins and therefore before the game can start.
-            current->d->configureRecording(serverConfiguration.recordDirectory(), serverConfiguration);
         }
 
         // Assemble the agent on the operation side (network path): create the agent (identity +
