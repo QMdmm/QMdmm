@@ -208,6 +208,36 @@ QString sortedWords(QSet<QString> words)
     return list.join(u", "_s);
 }
 
+// The keys one section of a stored configuration file holds: the words before the '=' on the lines
+// that follow that section's header, up to the next header.
+//
+// The line endings are the platform's rather than this reader's subject, and the two platforms do
+// not agree on them -- a run on Windows writes a carriage return in front of every newline, so a
+// line read by splitting on '\n' carries one at its end and is equal to neither a header nor a key
+// until it is taken off. The split therefore takes the ending apart at the same time, and the case
+// below reads the same file with both endings so that the difference is a reading on either
+// platform instead of a red entry on one of them.
+QSet<QString> storedSectionKeys(const QString &contents, const QString &header)
+{
+    static const QRegularExpression lineEnding(u"\\r?\\n"_s);
+
+    QSet<QString> keys;
+    bool inSection = false;
+    const QStringList lines = contents.split(lineEnding);
+    for (const QString &line : lines) {
+        if (line.startsWith(u'[')) {
+            inSection = line == header;
+            continue;
+        }
+        if (!inSection)
+            continue;
+        const int equals = line.indexOf(u'=');
+        if (equals > 0)
+            keys.insert(line.left(equals));
+    }
+    return keys;
+}
+
 // The stored face of ServerConfiguration: one row per key, naming the property the run prints, the
 // key the configuration file holds and a value that differs from the default so that a reading
 // says which source won. A value is spelled twice because the two faces spell it differently -- the
@@ -768,23 +798,16 @@ void tst_QMdmmServer::savedConfiguration_carriesEveryStoredKey()
     QVERIFY(file.open(QIODevice::ReadOnly));
     const QString contents = QString::fromUtf8(file.readAll());
 
-    // The [server] section, one key per line up to the next section header.
-    QSet<QString> saved;
-    bool inSection = false;
-    const QStringList lines = contents.split(u'\n');
-    for (const QString &line : lines) {
-        if (line.startsWith(u'[')) {
-            inSection = line == u"[server]"_s;
-            continue;
-        }
-        if (!inSection)
-            continue;
-        const int equals = line.indexOf(u'=');
-        if (equals > 0)
-            saved.insert(line.left(equals));
-    }
-
+    const QSet<QString> saved = storedSectionKeys(contents, u"[server]"_s);
     QVERIFY2(!saved.isEmpty(), "the saved file has no [server] section");
+
+    // The same reading over the file with the ending this platform does not write, so that the
+    // reader is held to both: the run that added this case went red on the Windows entries alone,
+    // where the section header was read back as "[server]\r" and the section came out empty.
+    QString otherEnding = contents;
+    otherEnding.replace(u"\r\n"_s, u"\n"_s);
+    otherEnding.replace(u"\n"_s, u"\r\n"_s);
+    QVERIFY2(storedSectionKeys(otherEnding, u"[server]"_s) == saved, "the reading of the saved file depends on the line endings it was written with");
 
     QSet<QString> stored;
     for (const StoredServerKey &row : storedServerKeys())
