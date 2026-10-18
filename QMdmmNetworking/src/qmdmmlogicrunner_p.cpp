@@ -316,9 +316,6 @@ void LogicRunnerP::upgradeResult(const QHash<QString, QList<QMdmmCore::Data::Upg
     foreach (Agent *agent, agents)
         agent->notifyRoundStart();
 
-    if (recorder.isOpen())
-        recorder.record(p::roundStartNotified());
-
     // A new round begins: drop the previous round's events so the next round's log restarts empty
     // (the client resets its per-round event counter on notifyRoundStart, mirroring this).
     foreach (ServerConnectionP *conn, connections)
@@ -337,18 +334,12 @@ void LogicRunnerP::roundOver()
 
     foreach (Agent *agent, agents)
         agent->notifyRoundOver();
-
-    if (recorder.isOpen())
-        recorder.record(p::roundOverNotified());
 }
 
 void LogicRunnerP::gameOver(const QStringList &winners)
 {
     foreach (Agent *agent, agents)
         agent->notifyGameOver(winners);
-
-    if (recorder.isOpen())
-        recorder.record(p::gameOverNotified(winners));
 
     // The game this record belongs to is over: close the file here, so that a reader can tell a
     // finished record from one whose server was still running.

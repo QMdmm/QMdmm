@@ -2,12 +2,10 @@
 
 #include "qmdmmlogicrunner.h"
 #include "qmdmmlogicrunner_p.h"
-#include "qmdmmnotify_p.h"
 
 #include <QJsonArray>
 #include <QMetaType>
 #include <QRandomGenerator>
-#include <QStringList>
 #include <utility>
 
 /**
@@ -126,29 +124,10 @@ Agent *LogicRunner::addAgent(Agent *agent)
         // before the opening notifications go out, so the record covers the whole game.
         d->recorder.open();
 
-        // The record opens with the roster, then the game start. The roster lines are the packet a
-        // joining client is handed; a client got its own before the game started (the recorder only
-        // opens when the room fills), so they are written here instead -- a replayer can rebuild
-        // the room from those lines alone. Names are sorted rather than taken in the order this
-        // hash happens to iterate: the same room then writes the same opening lines in any process.
-        if (d->recorder.isOpen()) {
-            QStringList roster = d->agents.keys();
-            roster.sort();
-            for (const QString &seatedName : roster) {
-                Agent *seated = d->agents.value(seatedName);
-                d->recorder.record(p::playerAddedNotified(seatedName, seated->screenName(), seated->state()));
-            }
-            d->recorder.record(p::gameStartNotified());
-        }
-
         foreach (Agent *a, d->agents)
             a->notifyGameStart();
         foreach (Agent *a, d->agents)
             a->notifyRoundStart();
-
-        if (d->recorder.isOpen())
-            d->recorder.record(p::roundStartNotified());
-
         emit d->roundStart();
     }
 

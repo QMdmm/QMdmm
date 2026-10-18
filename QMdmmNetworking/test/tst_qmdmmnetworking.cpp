@@ -2225,13 +2225,11 @@ void tst_QMdmmNetworking::server_writesOneRecordFileForAGame()
     QCOMPARE(header.value(u"ServerConfiguration"_s).toObject().value(u"recordDirectory"_s).toString(), recorded.path());
     QCOMPARE(header.value(u"LogicConfiguration"_s).toObject().value(u"initialMaxHp"_s).toInt(), 1);
 
-    // Every event line is one packet of the room's broadcast view, numbered from one without gaps,
-    // all in the same direction.
+    // Every event line is one packet the room broadcast, numbered from one without gaps, all in the
+    // same direction, and all of them round events -- the four notifications a round is made of.
     qint64 previousSequence = 0;
     int events = 0;
-    QHash<int, int> counts; // notify id -> how many lines carry it
-    QList<int> idsInOrder;
-    QStringList rosterInOrder;
+    QSet<int> recordedIds;
     for (qsizetype i = 1; i < lines.count(); ++i) {
         if (lines.at(i).isEmpty())
             continue;
@@ -2248,44 +2246,18 @@ void tst_QMdmmNetworking::server_writesOneRecordFileForAGame()
         const QJsonObject packet = line.value(u"packet"_s).toObject();
         QVERIFY(!packet.isEmpty());
 
-        const int notifyId = packet.value(u"notifyId"_s).toInt();
-        ++counts[notifyId];
-        idsInOrder.append(notifyId);
-        if (notifyId == static_cast<int>(Protocol::NotifyPlayerAdded))
-            rosterInOrder.append(packet.value(u"value"_s).toObject().value(u"playerName"_s).toString());
+        recordedIds.insert(packet.value(u"notifyId"_s).toInt());
         ++events;
     }
     QVERIFY2(events > 0, "the record holds no event");
 
-    // The record says what the game was and how it ended: the roster once per player, one game
-    // start, one game over, and a start / over pair per round. Each is recorded at its own point,
-    // so dropping any single one of them would show up as a zero here.
-    QCOMPARE(counts.value(static_cast<int>(Protocol::NotifyPlayerAdded)), 2);
-    QCOMPARE(counts.value(static_cast<int>(Protocol::NotifyGameStart)), 1);
-    QCOMPARE(counts.value(static_cast<int>(Protocol::NotifyGameOver)), 1);
-    const int rounds = counts.value(static_cast<int>(Protocol::NotifyRoundStart));
-    QVERIFY2(rounds >= 1, "the record holds no round");
-    QCOMPARE(counts.value(static_cast<int>(Protocol::NotifyRoundOver)), rounds);
-
-    // The opening lines are the room a replayer has to rebuild before it can follow anything: both
-    // seats, then the game start, then the first round. The two seats are two different players.
-    QCOMPARE(idsInOrder.value(0), static_cast<int>(Protocol::NotifyPlayerAdded));
-    QCOMPARE(idsInOrder.value(1), static_cast<int>(Protocol::NotifyPlayerAdded));
-    QCOMPARE(idsInOrder.value(2), static_cast<int>(Protocol::NotifyGameStart));
-    QCOMPARE(idsInOrder.value(3), static_cast<int>(Protocol::NotifyRoundStart));
-    QCOMPARE(rosterInOrder.count(), 2);
-    QVERIFY(rosterInOrder.at(0) != rosterInOrder.at(1));
-    QVERIFY(!rosterInOrder.at(0).isEmpty());
-
-    // A round is four broadcasts, and every one of them reached the record at least once: each is
-    // recorded at its own broadcast point, so dropping any single one of them would show up here.
-    // (How many times each appears depends on the rules -- the upgrade phase is skipped in a round
-    // that ends the game -- so only presence is pinned.)
-    QVERIFY(counts.value(static_cast<int>(Protocol::NotifyRockPaperScissors)) >= 1);
-    QVERIFY(counts.value(static_cast<int>(Protocol::NotifyActionOrder)) >= 1);
-    QVERIFY(counts.value(static_cast<int>(Protocol::NotifyAction)) >= 1);
-    QVERIFY(counts.value(static_cast<int>(Protocol::NotifyUpgrade)) >= 1);
-    QCOMPARE(counts.count(), 9);
+    // A round is four broadcasts, and all four reached the record: each one is recorded at its own
+    // broadcast point, so dropping any single one of them would show up here.
+    QVERIFY(recordedIds.contains(static_cast<int>(Protocol::NotifyRockPaperScissors)));
+    QVERIFY(recordedIds.contains(static_cast<int>(Protocol::NotifyActionOrder)));
+    QVERIFY(recordedIds.contains(static_cast<int>(Protocol::NotifyAction)));
+    QVERIFY(recordedIds.contains(static_cast<int>(Protocol::NotifyUpgrade)));
+    QCOMPARE(recordedIds.count(), 4);
 
     // The other half of the lifecycle: a room that never fills is not a game, so it writes nothing
     // even though a record directory is named.

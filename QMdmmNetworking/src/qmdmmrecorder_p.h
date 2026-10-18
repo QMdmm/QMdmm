@@ -16,9 +16,7 @@ namespace p {
 
 // One game, one file. The record is JSON lines: the first line says what the run was (build
 // version plus the configuration the game was played under), and every following line is one
-// packet of the room's broadcast view -- the roster it hands a joining client, the game and round
-// starts, the four round events and the round and game overs -- with a strictly increasing
-// sequence number. A chat line or an operate notice is not part of a game and is not recorded.
+// packet the room broadcast, with a strictly increasing sequence number.
 //
 // The file is opened when the game starts and closed when it is over, so a room that never fills
 // leaves nothing behind. A directory that cannot be written disables recording after one warning:

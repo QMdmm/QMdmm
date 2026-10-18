@@ -510,7 +510,11 @@ void ServerConnectionP::sendAgentStateChangeNotified(const QString &playerName, 
 
 void ServerConnectionP::sendPlayerAddNotified(const QString &playerName, const QString &screenName, const QMdmmCore::Data::AgentState &agentState)
 {
-    emit sendPacket(p::playerAddedNotified(playerName, screenName, agentState));
+    QJsonObject ob;
+    ob.insert(u"playerName"_s, playerName);
+    ob.insert(u"screenName"_s, screenName);
+    ob.insert(u"agentState"_s, static_cast<int>(agentState.toInt()));
+    emit sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPlayerAdded, ob));
 }
 
 void ServerConnectionP::sendPlayerRemoveNotified(const QString &playerName)
@@ -522,12 +526,12 @@ void ServerConnectionP::sendPlayerRemoveNotified(const QString &playerName)
 
 void ServerConnectionP::sendGameStartNotified()
 {
-    emit sendPacket(p::gameStartNotified());
+    emit sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyGameStart, {}));
 }
 
 void ServerConnectionP::sendRoundStartNotified()
 {
-    emit sendPacket(p::roundStartNotified());
+    emit sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyRoundStart, {}));
 }
 
 void ServerConnectionP::sendRockPaperScissorsNotified(const QHash<QString, QMdmmCore::Data::RockPaperScissors> &replies)
@@ -553,7 +557,7 @@ void ServerConnectionP::sendActionNotified(const QString &playerName, QMdmmCore:
 
 void ServerConnectionP::sendRoundOverNotified()
 {
-    emit sendPacket(p::roundOverNotified());
+    emit sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyRoundOver, {}));
 }
 
 void ServerConnectionP::sendUpgradeNotified(const QHash<QString, QList<QMdmmCore::Data::UpgradeItem>> &upgrades)
@@ -593,7 +597,7 @@ void ServerConnectionP::reconnect(Socket *_socket, int lastRoundEventSeq)
 
 void ServerConnectionP::sendGameOverNotified(const QStringList &playerNames)
 {
-    emit sendPacket(p::gameOverNotified(playerNames));
+    emit sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyGameOver, QJsonArray::fromStringList(playerNames)));
 }
 
 void ServerConnectionP::sendSpeakNotified(const QString &playerName, const QString &content)
