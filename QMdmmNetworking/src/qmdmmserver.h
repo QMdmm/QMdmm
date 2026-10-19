@@ -29,20 +29,6 @@ class ServerP;
 namespace v0 {
 #endif
 
-/**
- * @brief The settings a server starts with
- *
- * Every key here is a start-up setting rather than a per-game one, and a key an operator would
- * change at start-up is reachable three ways: a command-line option, a stored key in the
- * configuration file (named after the option), and a row in @c doc/command-line.md. The three go
- * together -- an option with no stored key is a setting that cannot be remembered between runs,
- * and a key with no row is one nobody can find -- and the server's own command-line tests hold
- * the properties declared here to the keys the program stores, so a new key cannot miss them
- * without turning a test red.
- *
- * A key that is internal instead, whose value no operator would tune, gets neither an option nor
- * a stored key: it is documented here and says so. There is no third state.
- */
 struct QMDMMNETWORKING_EXPORT ServerConfiguration final : public QJsonObject
 {
     Q_GADGET
