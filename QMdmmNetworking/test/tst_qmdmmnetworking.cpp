@@ -2163,8 +2163,8 @@ void tst_QMdmmNetworking::server_statusListsEachRoom()
 
     // One room, still recruiting: two seats taken, no round begun yet.
     QTRY_COMPARE(roomEntries().size(), 1);
-    const int firstRoomId = roomEntries().at(0).toObject().value(u"id"_s).toInt();
-    QVERIFY2(firstRoomId > 0, "a room was listed without an identity");
+    const quint32 firstRoomId = static_cast<quint32>(roomEntries().at(0).toObject().value(u"id"_s).toInteger());
+    QVERIFY2(firstRoomId != 0, "a room was listed without an identity");
     QCOMPARE(roomEntries().at(0).toObject().value(u"players"_s).toInt(), 2);
     QCOMPARE(roomEntries().at(0).toObject().value(u"rounds"_s).toInt(), 0);
 
@@ -2176,14 +2176,14 @@ void tst_QMdmmNetworking::server_statusListsEachRoom()
     QTRY_COMPARE(roomEntries().size(), 1);
     QTRY_COMPARE(roomEntries().at(0).toObject().value(u"players"_s).toInt(), 3);
     QTRY_COMPARE(roomEntries().at(0).toObject().value(u"rounds"_s).toInt(), 1);
-    QCOMPARE(roomEntries().at(0).toObject().value(u"id"_s).toInt(), firstRoomId);
+    QCOMPARE(static_cast<quint32>(roomEntries().at(0).toObject().value(u"id"_s).toInteger()), firstRoomId);
 
     // A player who drops keeps their seat: the room's online count drops, and nothing else moves --
     // neither the room's identity nor the rounds it has begun.
     p3->disconnectFromHost();
     QTRY_COMPARE(roomEntries().at(0).toObject().value(u"players"_s).toInt(), 2);
     QCOMPARE(roomEntries().at(0).toObject().value(u"rounds"_s).toInt(), 1);
-    QCOMPARE(roomEntries().at(0).toObject().value(u"id"_s).toInt(), firstRoomId);
+    QCOMPARE(static_cast<quint32>(roomEntries().at(0).toObject().value(u"id"_s).toInteger()), firstRoomId);
 
     // A fourth player is not seated in the running game: the server is recruiting a second room.
     // Both are listed, in id order, and their player counts are the same two readings the totals
@@ -2196,8 +2196,8 @@ void tst_QMdmmNetworking::server_statusListsEachRoom()
     const QJsonObject running = roomEntries().at(0).toObject();
     const QJsonObject recruiting = roomEntries().at(1).toObject();
 
-    QCOMPARE(running.value(u"id"_s).toInt(), firstRoomId);
-    QVERIFY2(recruiting.value(u"id"_s).toInt() > firstRoomId, "the rooms were not listed in the order their ids were handed out");
+    QCOMPARE(static_cast<quint32>(running.value(u"id"_s).toInteger()), firstRoomId);
+    QVERIFY2(static_cast<quint32>(recruiting.value(u"id"_s).toInteger()) > firstRoomId, "the rooms were not listed in the order their ids were handed out");
     QCOMPARE(running.value(u"players"_s).toInt(), 2);
     QCOMPARE(running.value(u"rounds"_s).toInt(), 1);
     QCOMPARE(recruiting.value(u"players"_s).toInt(), 1);

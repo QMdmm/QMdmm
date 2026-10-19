@@ -287,7 +287,9 @@ QJsonObject ServerP::status() const
         players += roomPlayers;
 
         QJsonObject room;
-        room.insert(u"id"_s, runner->id());
+        // The id is unsigned, and QJsonValue has no unsigned constructor: passing it through
+        // qint64 keeps every 32-bit id exact and leaves the constructor overload unambiguous.
+        room.insert(u"id"_s, static_cast<qint64>(runner->id()));
         room.insert(u"players"_s, roomPlayers);
         room.insert(u"rounds"_s, runner->roundCount());
         roomList.append(room);

@@ -97,10 +97,11 @@ the same snapshot an in-process caller reads from the server's `status()` -- a
 JSON object with the keys `rooms`, `games` and `players`, each a count, so a
 server with nothing going on answers with three zeroes. Beside those three,
 `roomList` holds the rooms one at a time: an array of objects with
-`id`, `players` and `rounds` -- the room's identifier, how many of its players
-are online, and how many rounds it has started, `0` while it is still
-recruiting. The entries are ordered by id and their player counts add up to
-`players`, so reading either the total or the breakdown is enough. A path other
+`id`, `players` and `rounds` -- the room's identifier (an unsigned 32-bit
+counter handed out as rooms are built, so it stays put for the room's life), how
+many of its players are online, and how many rounds it has started, `0` while it
+is still recruiting. The entries are ordered by id and their player counts add up
+to `players`, so reading either the total or the breakdown is enough. A path other
 than `/status`, and any method other than `GET`, is answered with `404`. Nothing
 the plane is asked can change anything.
 

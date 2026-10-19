@@ -46,17 +46,19 @@ public:
     int playerNumPerRoom;
 
     // The room's identity and how many rounds it has started, both read by the server's status
-    // snapshot. The id comes from a process-wide counter when the room is built, so it is unique
-    // among the rooms this process has ever had and stable for the room's whole life; it says
-    // nothing across restarts, and is not a name anyone can address the room by. The round count
-    // is kept here rather than read off the logic for one reason: the logic lives on another
-    // thread, and the snapshot is taken on the server's.
-    const int id;
+    // snapshot. The id comes from a process-wide counter when the room is built, so it is stable
+    // for the room's whole life and tells two readings of the snapshot apart; it says nothing
+    // across restarts, and is not a name anyone can address the room by. The counter is unsigned,
+    // so it wraps after 2^32 ids instead of running past the end of the type, and an id is never
+    // negative -- nothing that reads the snapshot has to wonder what a minus sign would mean.
+    // The round count is kept here rather than read off the logic for one reason: the logic lives on
+    // another thread, and the snapshot is taken on the server's.
+    const quint32 id;
     int rounds = 0;
 
     // Where the ids come from. One counter for the process, so two servers in one process cannot
     // hand out the same id to two rooms.
-    static std::atomic<int> lastId;
+    static std::atomic<quint32> lastId;
 
     // No qRegisterMetaType<>() is needed for the queued signals / slots below: their argument
     // types are QMdmmCore::Data enums / flags (auto-registered via Q_ENUM_NS / Q_FLAG_NS) plus

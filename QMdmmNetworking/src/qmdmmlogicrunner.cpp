@@ -210,15 +210,19 @@ bool LogicRunner::full() const
 
 /**
  * @brief the room's identifier
- * @return an identifier unique among the rooms this process has built
+ * @return a value handed out by a process-wide counter when the room is built
  *
- * It is handed out when the room is built and never changes, so two readings of the status
- * snapshot can be told apart by it. It is not a name the room can be reached by, and it carries
- * nothing across restarts: a room is a game, and a game does not outlive the process running it.
+ * It never changes, so two readings of the status snapshot can be told apart by it. The counter is
+ * an unsigned 32-bit one: it starts at 1 for the process and, after 2^32-1 ids, wraps back to 0
+ * instead of running past the end of the type. Unsigned is deliberate -- an id is then never
+ * negative, and the wrap is defined behaviour rather than something a reader has to wonder about.
+ *
+ * The number is not a name the room can be reached by, and it carries nothing across restarts: a
+ * room is a game, and a game does not outlive the process running it.
  *
  * @see Server::status()
  */
-int LogicRunner::id() const
+quint32 LogicRunner::id() const
 {
     return d->id;
 }

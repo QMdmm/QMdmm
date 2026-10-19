@@ -43,7 +43,7 @@ public:
 
     [[nodiscard]] bool full() const;
 
-    [[nodiscard]] int id() const;
+    [[nodiscard]] quint32 id() const;
     [[nodiscard]] int roundCount() const;
 
 signals: // NOLINT(readability-redundant-access-specifiers)

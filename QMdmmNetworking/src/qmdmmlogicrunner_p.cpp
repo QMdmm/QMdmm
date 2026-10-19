@@ -8,7 +8,7 @@
 namespace QMdmmNetworking {
 namespace p {
 
-std::atomic<int> LogicRunnerP::lastId {0};
+std::atomic<quint32> LogicRunnerP::lastId {0};
 
 LogicRunnerP::LogicRunnerP(QMdmmCore::LogicConfiguration logicConfiguration, int playerNumPerRoom, LogicRunner *q)
     : QObject(q)
