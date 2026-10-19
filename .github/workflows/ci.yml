@@ -282,6 +282,10 @@ jobs:
       - name: Test
         id: test
         env:
+          # Leak detection stays off: this leg answers whether the tree reads or
+          # writes memory it should not, not whether it leaks. Turning it on
+          # would first need a suppression baseline for the Qt noise it reports,
+          # so until that exists a green here says nothing about leaks.
           ASAN_OPTIONS: detect_leaks=0
           # halt_on_error is what makes a UBSan reading a failure. Without it the
           # runtime prints the diagnostic, the process carries on and the case
