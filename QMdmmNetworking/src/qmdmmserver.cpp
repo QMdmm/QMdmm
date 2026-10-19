@@ -107,8 +107,14 @@ namespace v0 {
  * client replies or explicitly gives up on its own, so the timer fires only when the
  * client is gone or stuck. The value is in seconds; it is converted to milliseconds
  * when the request timer is armed, and a non-zero value is extended by a grace period
- * before the connection is treated as gone. A value of 0 turns the timer off: the
- * server then never gives up on a silent client.
+ * before the connection is treated as gone. A value of 0 turns the request timer off: a
+ * request then waits for its reply for as long as the client takes.
+ *
+ * Independent of it, every signed-in connection carries a silence deadline of 90 seconds -- three
+ * times the interval at which a client pings. A peer that sends nothing at all for that long is
+ * dropped, and no setting here turns that off. Waiting on a request and keeping a connection alive
+ * are two different questions: a request may be waited on indefinitely, while a connection whose
+ * peer has stopped speaking is gone whatever is being waited for.
  */
 
 /**
@@ -130,12 +136,13 @@ namespace v0 {
  * would ever notice it: left to itself, the connection (and the memory behind it) is held for
  * as long as the peer cares to keep the socket open. Every accepted socket is given this long
  * to sign in, and one that has not done so by then is dropped with a
- * @c Socket::ProtocolError. A connection that did sign in is left alone -- the silence of a
- * signed-in agent is @c requestTimeout's business, not this one's. The deadline is always
- * armed, and a value has to be between 2 and 60 seconds: the upper bound is the one the
- * deadline exists for, keeping a peer that never signs in from holding a port and the memory
- * behind it for longer than a handshake could plausibly take, while the lower bound only has
- * to outlast the slowest honest handshake.
+ * @c Socket::ProtocolError. A connection that did sign in is left alone by this deadline, which
+ * is about a peer that never became a player: what watches a player's connection afterwards is
+ * the silence deadline described under @c requestTimeout, and this key does not set it. This
+ * deadline is always armed, and a value has to be between 2 and 60 seconds: the upper bound is
+ * the one the deadline exists for, keeping a peer that never signs in from holding a port and
+ * the memory behind it for longer than a handshake could plausibly take, while the lower bound
+ * only has to outlast the slowest honest handshake.
  */
 
 /**

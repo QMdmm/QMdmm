@@ -52,6 +52,19 @@ const QHash<QMdmmCore::Protocol::RequestId, void (ServerConnectionP::*)()> &Serv
 // grace only applies to non-zero values (feedback 86).
 int ServerConnectionP::requestTimeoutGracePeriod = 60;
 
+namespace {
+
+// How long a signed-in peer may stay silent before the server gives up on it. A client sends
+// NotifyPingServer every 30 seconds for as long as it holds a connection (ClientP's heartbeat), so
+// this is three of those: one or two missed pings are a busy event loop, three is a peer that is no
+// longer there. Fixed rather than configured, for the same reason the control plane's deadline is
+// (see qmdmmserver_p.cpp): it bounds a peer's behaviour, not a policy an operator tunes, and a dial
+// here alone would be half a dial -- the interval it has to outlast is a constant on the client
+// side, which has no key of its own either.
+constexpr int heartbeatSilenceTimeout = 90;
+
+} // namespace
+
 ServerConnectionP::ServerConnectionP(Agent *agent, const QMdmmCore::LogicConfiguration &logicConfiguration, int requestTimeout, QObject *parent)
     : QObject(parent)
     , agent(agent)
@@ -59,12 +72,20 @@ ServerConnectionP::ServerConnectionP(Agent *agent, const QMdmmCore::LogicConfigu
     , currentRequest(QMdmmCore::Protocol::RequestInvalid)
     , requestTimeoutEnabled(requestTimeout > 0)
     , requestTimer(new QTimer(this))
+    , heartbeatDeadline(new QTimer(this))
 {
     // The interval only matters when the timer is armed at all: at 0 it is never started, so the
     // value set here goes unused.
     requestTimer->setInterval((requestTimeout + requestTimeoutGracePeriod) * 1000);
     requestTimer->setSingleShot(true);
     connect(requestTimer, &QTimer::timeout, this, &ServerConnectionP::requestTimeout);
+
+    heartbeatDeadline->setInterval(heartbeatSilenceTimeout * 1000);
+    heartbeatDeadline->setSingleShot(true);
+    // Named so a reader of the connection's timers can tell the two apart without knowing the
+    // request timeout this one happened to be built with.
+    heartbeatDeadline->setObjectName(u"heartbeatDeadline"_s);
+    connect(heartbeatDeadline, &QTimer::timeout, this, &ServerConnectionP::peerWentSilent);
 
     // Wire the Agent's notification signals to this connection's encode-and-send slots. The
     // Agent forwards a notifyXxx() call as the corresponding xxxNotified signal; this connection
@@ -107,6 +128,11 @@ void ServerConnectionP::setSocket(Socket *_socket)
         // Agent event (see there). The room only ever deals with agents, never sockets.
         connect(socket, &Socket::socketDisconnected, this, &ServerConnectionP::onSocketDisconnected);
         connect(this, &ServerConnectionP::sendPacket, socket, &Socket::sendPacket);
+
+        // A socket is bound when the peer signs in (or signs in again after a drop), so binding one
+        // is the moment the peer last spoke as far as this connection is concerned: the silence
+        // deadline starts over from here.
+        heartbeatDeadline->start(heartbeatSilenceTimeout * 1000);
     }
 }
 
@@ -121,6 +147,10 @@ void ServerConnectionP::onSocketDisconnected()
         socket->deleteLater();
         socket = nullptr;
     }
+
+    // The deadline is about a peer that is holding a socket; with no socket there is nothing left
+    // to give up on. A reconnect arms it again through setSocket().
+    heartbeatDeadline->stop();
 
     QMdmmCore::Data::AgentState state = agent->state();
     state.setFlag(QMdmmCore::Data::StateMaskOnline, false).setFlag(QMdmmCore::Data::StateMaskTrust, false);
@@ -406,6 +436,12 @@ void ServerConnectionP::packetReceived(const QMdmmCore::Packet &packet)
     if (socket == nullptr)
         return;
 
+    // Whatever the packet is -- a ping the connection does not handle itself, a reply, a notify --
+    // a packet is the peer proving it is still there, which is the whole of what the silence
+    // deadline asks. It is restarted before the packet is judged, so a peer that sends something
+    // unusable is dropped for the packet rather than for the silence that follows it.
+    heartbeatDeadline->start(heartbeatSilenceTimeout * 1000);
+
     if (packet.type() == QMdmmCore::Protocol::TypeNotify) {
         // A notify addressed to the agent (speak / operate) is decoded and handed to the Agent.
         if ((packet.notifyId() & QMdmmCore::Protocol::NotifyToAgentMask) != 0) {
@@ -657,6 +693,20 @@ void ServerConnectionP::requestTimeout()
     // left waiting on the gone player.
     if (socket != nullptr)
         socket->setError({.code = Socket::ProtocolError, .errorString = {}});
+    executeDefaultReply();
+}
+
+void ServerConnectionP::peerWentSilent()
+{
+    // The peer has sent nothing for as long as the deadline allows, so it is treated as gone: the
+    // same disconnect path the request timer takes (onSocketDisconnected marks the agent offline and
+    // lets the room preserve the seat or drop the agent), with the reason recorded on the socket so
+    // the drop is not mistaken for a request that timed out. A request that happens to be waiting is
+    // answered here as well, since its own timer may be longer than this deadline or, with
+    // requestTimeout 0, not armed at all.
+    if (socket != nullptr) {
+        socket->setError({.code = Socket::ProtocolError, .errorString = u"the peer has sent nothing for %1 second(s)"_s.arg(heartbeatSilenceTimeout)});
+    }
     executeDefaultReply();
 }
 

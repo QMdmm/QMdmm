@@ -48,10 +48,20 @@ public:
     QJsonValue currentRequestValue;
 
     // Whether the request timer is armed at all. A configured requestTimeout of 0 means "no
-    // timeout": the server never gives up on a client that stays silent, so the timer is left
-    // unarmed. Any non-zero value is backstopped at requestTimeout + the grace period.
+    // timeout": the server never gives up on a waiting request, so the timer is left unarmed. Any
+    // non-zero value is backstopped at requestTimeout + the grace period.
     bool requestTimeoutEnabled;
     QTimer *requestTimer;
+
+    // Watches the connection for silence, and is the one thing that does: the request timer above
+    // only runs while a request is waiting for its reply, so a peer that is idle between requests
+    // -- which is most of a game -- would otherwise be able to hold its seat forever after pulling
+    // the plug. Restarted by every packet the peer sends (a ping, a reply and a notify all count
+    // the same: the deadline is about silence, not about a particular kind of traffic), armed when
+    // a socket is bound, and judged by peerWentSilent(). Independent of requestTimeout: a value of
+    // 0 there turns the request timer off and leaves this one alone, since waiting on a reply
+    // forever is a decision about a request, not about a connection that may already be gone.
+    QTimer *heartbeatDeadline;
 
     // Round-event log: every round-event packet this connection has broadcast (rps / action-order
     // / action / upgrade), in send order. The list index IS the round-event sequence number (events
@@ -125,6 +135,10 @@ public slots: // NOLINT(readability-redundant-access-specifiers)
 
     void requestTimeout();
     void executeDefaultReply();
+
+    // The heartbeat deadline ran out: the peer has sent nothing for as long as the deadline
+    // allows, so it is not there any more and the connection records that and goes away.
+    void peerWentSilent();
 };
 } // namespace p
 } // namespace QMdmmNetworking

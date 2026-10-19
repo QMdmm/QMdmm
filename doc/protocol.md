@@ -150,9 +150,26 @@ which a disconnect clears rather than keeps.
 A connection that never gets as far as step 3 is not a player's yet, so nothing else
 would notice it. The server gives every accepted connection
 `ServerConfiguration::signInTimeout` to sign in -- 5 seconds by default, configurable
-between 2 and 60 -- and drops one that is still silent when it runs out. The deadline is
-always armed; a connection that did sign in is left alone, since the silence of a
-signed-in agent is the request timer's business instead.
+between 2 and 60 -- and drops one that is still silent when it runs out. That deadline is
+about a peer that never became a player: a connection that did sign in is left alone by it,
+and is watched by the silence deadline below instead.
+
+## Silence and the heartbeat
+
+A client that holds a connection pings: `NotifyPingServer` every 30 seconds, answered with
+`NotifyPongServer`. The server watches each signed-in connection for that traffic, and for
+any other -- every packet a peer sends counts, so a client answering requests does not have
+to ping as well, and a client that pings does not have to be in a game. A connection whose
+peer sends nothing at all for 90 seconds -- three ping intervals, so one or two missed ones
+are a busy moment and three are a peer that is no longer there -- is dropped with a
+`Socket::ProtocolError`.
+
+This deadline is not the request timer and is not configured by `requestTimeout`: a server
+may be told to wait on a request for as long as it takes, and a peer that has stopped
+speaking is still gone. Nor is it the sign-in deadline above, which only concerns a
+connection that never signed in. Pulling the plug without closing the socket cleanly is
+exactly the case it exists for, and a seat held by such a peer is released when the deadline
+runs out rather than when the operating system gets around to noticing.
 
 ## Reconnecting
 

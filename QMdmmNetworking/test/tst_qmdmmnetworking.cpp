@@ -83,6 +83,9 @@ private slots:
     void server_turnsAwayUnusableFramesWithoutDisturbingTheRoom_data();
     void server_turnsAwayUnusableFramesWithoutDisturbingTheRoom();
     void server_signInDeadlineReapsAPeerThatNeverSignsIn();
+    void server_reapsASignedInPeerThatGoesSilent_data();
+    void server_reapsASignedInPeerThatGoesSilent();
+    void server_silenceDeadlineStartsOverWithEveryPacket();
     void server_survivesTheCorpusInItsOwnProcess();
 };
 
@@ -1826,19 +1829,24 @@ void tst_QMdmmNetworking::server_requestTimeoutDisconnectsASilentClient()
     // p2 fills the room, the game starts, and the first RPS request goes out to both.
     QTRY_VERIFY_WITH_TIMEOUT(requestsSeen >= 1, 5000);
 
-    // Fire every live connection's timer. The class name is spelled out because the type itself
-    // is private to the library; findChildren still hands over the live objects, and each of them
-    // owns exactly the one request timer.
+    // Fire every live connection's request timer. The class name is spelled out because the type
+    // itself is private to the library; findChildren still hands over the live objects, and each of
+    // them owns the request timer plus the silence deadline, which is the one named here and left
+    // alone -- firing that one would test the heartbeat instead of the timer this case is about.
     int fired = 0;
     const QList<QObject *> children = server.findChildren<QObject *>();
     for (QObject *child : children) {
         if (!QString::fromLatin1(child->metaObject()->className()).endsWith(u"ServerConnectionP"_s))
             continue;
-        const QList<QTimer *> timers = child->findChildren<QTimer *>();
-        QCOMPARE(timers.size(), 1);
+        QTimer *requestTimer = nullptr;
+        for (QTimer *timer : child->findChildren<QTimer *>()) {
+            if (timer->objectName() != u"heartbeatDeadline"_s)
+                requestTimer = timer;
+        }
+        QVERIFY(requestTimer != nullptr);
         ++fired;
-        timers.first()->setInterval(0);
-        timers.first()->start();
+        requestTimer->setInterval(0);
+        requestTimer->start();
     }
     QCOMPARE(fired, 2);
 
@@ -1846,11 +1854,14 @@ void tst_QMdmmNetworking::server_requestTimeoutDisconnectsASilentClient()
     QTRY_VERIFY_WITH_TIMEOUT(p2Lost >= 1, 5000);
 }
 
-// A requestTimeout of 0 means "no timeout": the server must not give up on a player that stays
-// silent, however long the silence lasts (feedback 86). The observable is the request timer
-// itself -- at 0 it is left unarmed, so no silent client can ever be dropped by it. Driven the
-// same way as the sibling case above, through the public Server / Client API with both clients
-// staying silent; the request going out proves the connection walked the normal request path.
+// A requestTimeout of 0 means the request timer is never armed: the server waits on a reply for as
+// long as the client takes, however long its silence lasts (feedback 86). The observable is that
+// timer itself. It is not the whole of the connection's silence handling -- the heartbeat deadline
+// below judges silence independently and stays armed at 0 -- which is why this case reads the
+// request timer out of the two the connection owns rather than whatever timer happens to be there.
+// Driven the same way as the sibling case above, through the public Server / Client API with both
+// clients staying silent; the request going out proves the connection walked the normal request
+// path.
 void tst_QMdmmNetworking::server_zeroRequestTimeoutNeverArmsTheTimer()
 {
     LogicConfiguration conf = LogicConfiguration::defaults();
@@ -1886,17 +1897,22 @@ void tst_QMdmmNetworking::server_zeroRequestTimeoutNeverArmsTheTimer()
     // p2 fills the room, the game starts, and the first RPS request goes out to both.
     QTRY_VERIFY_WITH_TIMEOUT(requestsSeen >= 1, 5000);
 
-    // Every live connection owns exactly one request timer; with the timeout off none of them may
-    // be running. The class name is spelled out because the type itself is private to the library.
+    // With the timeout off the request timer of every live connection must be unarmed -- the
+    // connection still owns the silence deadline, which is named here so it is not mistaken for it.
+    // The class name is spelled out because the type itself is private to the library.
     int connections = 0;
     const QList<QObject *> children = server.findChildren<QObject *>();
     for (QObject *child : children) {
         if (!QString::fromLatin1(child->metaObject()->className()).endsWith(u"ServerConnectionP"_s))
             continue;
-        const QList<QTimer *> timers = child->findChildren<QTimer *>();
-        QCOMPARE(timers.size(), 1);
+        QTimer *requestTimer = nullptr;
+        for (QTimer *timer : child->findChildren<QTimer *>()) {
+            if (timer->objectName() != u"heartbeatDeadline"_s)
+                requestTimer = timer;
+        }
+        QVERIFY(requestTimer != nullptr);
         ++connections;
-        QVERIFY(!timers.first()->isActive());
+        QVERIFY(!requestTimer->isActive());
     }
     QCOMPARE(connections, 2);
 
@@ -2631,6 +2647,206 @@ void tst_QMdmmNetworking::server_signInDeadlineReapsAPeerThatNeverSignsIn()
     QVERIFY2(bystander->isConnected(), "the sign-in deadline took a connection that had signed in");
     QVERIFY(bystander->room() != nullptr);
     QVERIFY(bystander->room()->player(bystander->objectName()) != nullptr);
+}
+
+// A signed-in peer that stops speaking is, as far as the transport knows, still there: the socket
+// stays open on this side until something notices, and until then the peer keeps its seat. That is
+// the case the connection's silence deadline exists for, and this case pins it down -- the interval
+// the server armed is checked, then fired, so the 90 seconds are not waited out.
+//
+// Two rows, one with the request timer armed and one with it off. The pair is the point: a request
+// may be waited on indefinitely while a connection whose peer has stopped speaking is gone, so
+// turning the request timer off must not turn this deadline off with it.
+void tst_QMdmmNetworking::server_reapsASignedInPeerThatGoesSilent_data()
+{
+    QTest::addColumn<int>("requestTimeout");
+
+    QTest::newRow("request timer armed") << 30;
+    QTest::newRow("request timer off") << 0;
+}
+
+void tst_QMdmmNetworking::server_reapsASignedInPeerThatGoesSilent()
+{
+    QFETCH(int, requestTimeout);
+
+    LogicConfiguration conf = LogicConfiguration::defaults();
+
+    ServerConfiguration serverConf = ServerConfiguration::defaults();
+    // Not full with the two players: a dropped player leaves the room rather than keeping its seat,
+    // which is the reading that says its connection is gone rather than merely quiet.
+    serverConf.setPlayerNumPerRoom(3);
+    serverConf.setTcpPort(16391);
+    serverConf.setLocalEnabled(false);
+    serverConf.setWebsocketEnabled(false);
+    serverConf.setRequestTimeout(requestTimeout);
+
+    Server server(serverConf, conf);
+    QVERIFY(server.listen());
+
+    const QString host = u"qmdmm://localhost:16391"_s;
+
+    auto *bystander = new Client(ClientConfiguration(), &server);
+    QVERIFY(bystander->connectToHost(host, Data::StateOnline));
+    QTRY_VERIFY_WITH_TIMEOUT(bystander->room() != nullptr && bystander->room()->player(bystander->objectName()) != nullptr, 5000);
+
+    bool silentRemoved = false;
+    connect(bystander->agent(), &Agent::playerRemoveNotified, &server, [&silentRemoved](const QString &playerName) {
+        if (playerName == u"silent"_s)
+            silentRemoved = true;
+    });
+
+    // The peer: a bare socket, so nothing pings on its behalf. It signs in and then says nothing.
+    auto *peer = new QTcpSocket(&server);
+    peer->connectToHost(QHostAddress::LocalHost, 16391);
+    QVERIFY(peer->waitForConnected(5000));
+
+    QByteArray fromServer;
+    connect(peer, &QTcpSocket::readyRead, peer, [peer, &fromServer]() { fromServer.append(peer->readAll()); });
+
+    QJsonObject signIn;
+    signIn.insert(u"playerName"_s, u"silent"_s);
+    signIn.insert(u"screenName"_s, u"Silent"_s);
+    signIn.insert(u"agentState"_s, static_cast<int>(Data::StateOnline));
+    peer->write(Packet(Protocol::NotifySignIn, signIn).serialize().append('\n'));
+    peer->flush();
+
+    // Seated: the version packet arrives on its own and the room's configuration follows the
+    // sign-in, so two lines mean this peer is a player of that room.
+    QVERIFY2(QTest::qWaitFor([&fromServer]() { return fromServer.count('\n') >= 2; }, 5000), "the server never seated the peer");
+
+    bool peerDropped = false;
+    connect(peer, &QAbstractSocket::disconnected, peer, [&peerDropped]() { peerDropped = true; });
+
+    // Why a connection went away, recorded as it goes: the socket is deleted once the connection lets
+    // go of it, so the reason has to be taken while it is being told.
+    QStringList dropReasons;
+    for (Socket *socket : server.findChildren<Socket *>()) {
+        connect(socket, &Socket::socketDisconnected, &server, [socket, &dropReasons]() {
+            if (socket->error().has_value())
+                dropReasons.append(socket->error()->errorString);
+        });
+    }
+
+    // The silence deadline of each connection. A connection is parented to the agent it serves,
+    // whose name is the player name, so the two are told apart without reaching into the library.
+    QTimer *silentDeadline = nullptr;
+    QTimer *bystanderDeadline = nullptr;
+    const QList<QObject *> connections = server.findChildren<QObject *>();
+    for (QObject *connection : connections) {
+        if (!QString::fromLatin1(connection->metaObject()->className()).endsWith(u"ServerConnectionP"_s))
+            continue;
+        const QString playerName = connection->parent() != nullptr ? connection->parent()->objectName() : QString();
+        for (QTimer *timer : connection->findChildren<QTimer *>()) {
+            if (timer->objectName() != u"heartbeatDeadline"_s)
+                continue;
+            if (playerName == u"silent"_s)
+                silentDeadline = timer;
+            else if (playerName == bystander->objectName())
+                bystanderDeadline = timer;
+        }
+    }
+    QVERIFY2(silentDeadline != nullptr, "the silent peer's connection carries no silence deadline");
+    QVERIFY2(bystanderDeadline != nullptr, "the signed-in client's connection carries no silence deadline");
+
+    // The interval is a fixed constant rather than a configuration key, so it is pinned here: the
+    // client pings every 30 seconds, and this is three of those. Changing the constant is changing
+    // what this case says, and the failure should say so.
+    QCOMPARE(silentDeadline->interval(), 90000);
+    QVERIFY(silentDeadline->isSingleShot());
+    QVERIFY(silentDeadline->isActive());
+    QVERIFY(bystanderDeadline->isActive());
+
+    // Fire the silent peer's deadline only: the other connection has done nothing and must outlive
+    // the same timer.
+    silentDeadline->setInterval(0);
+    silentDeadline->start();
+
+    QVERIFY2(QTest::qWaitFor([&peerDropped]() { return peerDropped; }, 10000), "the server kept a peer that had stopped speaking");
+    QTRY_VERIFY_WITH_TIMEOUT(silentRemoved, 5000);
+
+    // The recorded reason names the silence. The request timer would have dropped it too, with an
+    // empty reason, so this is what tells the two apart.
+    QCOMPARE(dropReasons.size(), 1);
+    QVERIFY2(dropReasons.first().contains(u"sent nothing"_s),
+             qPrintable(u"expected the recorded reason to say the peer had stopped speaking, got \"%1\""_s.arg(dropReasons.first())));
+
+    // The collateral: the client that kept its connection is untouched and still seated.
+    QVERIFY(bystander->isConnected());
+    QVERIFY(bystander->room() != nullptr);
+    QVERIFY(bystander->room()->player(bystander->objectName()) != nullptr);
+}
+
+// The deadline is about silence, so a peer that speaks is not silent: every packet it sends starts
+// the wait over. Read as "the deadline is nearly a whole interval away again" after a wait long
+// enough for a deadline that was not restarted to be clearly shorter -- the packet sent is a ping,
+// which is what a client with nothing else to say sends, and which the server answers itself rather
+// than handing to the connection.
+void tst_QMdmmNetworking::server_silenceDeadlineStartsOverWithEveryPacket()
+{
+    LogicConfiguration conf = LogicConfiguration::defaults();
+
+    ServerConfiguration serverConf = ServerConfiguration::defaults();
+    serverConf.setPlayerNumPerRoom(3);
+    serverConf.setTcpPort(16392);
+    serverConf.setLocalEnabled(false);
+    serverConf.setWebsocketEnabled(false);
+    serverConf.setRequestTimeout(0); // no request timer at all: this case is about the other deadline
+
+    Server server(serverConf, conf);
+    QVERIFY(server.listen());
+
+    auto *peer = new QTcpSocket(&server);
+    peer->connectToHost(QHostAddress::LocalHost, 16392);
+    QVERIFY(peer->waitForConnected(5000));
+
+    QByteArray fromServer;
+    connect(peer, &QTcpSocket::readyRead, peer, [peer, &fromServer]() { fromServer.append(peer->readAll()); });
+
+    QJsonObject signIn;
+    signIn.insert(u"playerName"_s, u"talker"_s);
+    signIn.insert(u"screenName"_s, u"Talker"_s);
+    signIn.insert(u"agentState"_s, static_cast<int>(Data::StateOnline));
+    peer->write(Packet(Protocol::NotifySignIn, signIn).serialize().append('\n'));
+    peer->flush();
+
+    QVERIFY2(QTest::qWaitFor([&fromServer]() { return fromServer.count('\n') >= 2; }, 5000), "the server never seated the peer");
+
+    QTimer *deadline = nullptr;
+    const QList<QObject *> connections = server.findChildren<QObject *>();
+    for (QObject *connection : connections) {
+        if (!QString::fromLatin1(connection->metaObject()->className()).endsWith(u"ServerConnectionP"_s))
+            continue;
+        for (QTimer *timer : connection->findChildren<QTimer *>()) {
+            if (timer->objectName() == u"heartbeatDeadline"_s)
+                deadline = timer;
+        }
+    }
+    QVERIFY2(deadline != nullptr, "the connection carries no silence deadline");
+
+    // Long enough that a deadline which is not restarted has visibly less than its interval left.
+    // The lower bound is what makes the reading mean something: an unarmed deadline reports -1, so a
+    // case that only checked the upper bound would pass whether or not the server had armed anything.
+    QTest::qWait(2000);
+    const qint64 leftBeforePing = deadline->remainingTime();
+    QVERIFY2(leftBeforePing > 80000 && leftBeforePing <= 88500, "the deadline did not start when the peer signed in");
+
+    peer->write(Packet(Protocol::NotifyPingServer, static_cast<qint64>(0)).serialize().append('\n'));
+    peer->flush();
+
+    // It has to be answered -- the pong is the ping having arrived at all -- and the deadline has to
+    // be back near a whole interval, which is what the restart did.
+    const auto pongs = [&fromServer]() {
+        int count = 0;
+        const QList<QByteArray> lines = fromServer.split('\n');
+        for (const QByteArray &line : lines) {
+            const Packet packet = Packet::fromJson(line);
+            if (!packet.hasError() && packet.type() == Protocol::TypeNotify && packet.notifyId() == Protocol::NotifyPongServer)
+                ++count;
+        }
+        return count;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(pongs() >= 1, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(deadline->remainingTime() > leftBeforePing + 1000, 5000);
 }
 
 namespace {
