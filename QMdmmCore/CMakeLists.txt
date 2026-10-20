@@ -260,3 +260,10 @@ if (Qt6_FOUND)
 endif()
 
 add_subdirectory(test)
+
+# The fuzzing harness is not a test case, so it lives in its own directory and
+# comes in only when asked for (see QMDMM_BUILD_FUZZ_TARGET in the top-level
+# CMakeLists.txt).
+if (QMDMM_BUILD_FUZZ_TARGET)
+    add_subdirectory(fuzz)
+endif()

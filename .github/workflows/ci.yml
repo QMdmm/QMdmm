@@ -333,6 +333,123 @@ jobs:
           fi
           echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} test=${{ steps.test.outcome }} cases=$((total - failed))/${total} failed=${failed} ${names} address-reports=${address} undefined-reports=${undefined}"
 
+  fuzz:
+    name: Fuzz (ubuntu-26.04, inbound decoding)
+    #
+    # A time-boxed libFuzzer run over the one decoder that reads bytes nobody in
+    # this project wrote. Packet::fromJson() is what turns a peer's array into the
+    # fields the rest of the program goes on to trust, and hand-written cases only
+    # ever cover the shapes somebody thought of; this leg generates the rest.
+    #
+    # One cell, on Linux. Nothing in the harness reads the platform -- the decoder
+    # is Qt-only code -- so a second cell would spend the same minutes to learn the
+    # same thing. It is not a build cell either: turning the harness on instruments
+    # the whole build, because the thing under test is library code (see
+    # QMDMM_BUILD_FUZZ_TARGET in the top-level CMakeLists.txt), and that is not
+    # what the build cells exist to produce.
+    #
+    # Nothing here is continue-on-error, for the reason the sanitizer cells are
+    # not: a crash in this leg is a defect in this tree, and a gate whose red means
+    # nothing is worse than no gate at all.
+    #
+    # The corpus under QMdmmCore/fuzz/corpus is both the seed set and the
+    # regression set -- every run starts from it, so a shape that once broke the
+    # decoder keeps being tried. What a run adds goes up as an artifact instead of
+    # back into the tree: a job that committed would need a token and a push, and
+    # the interesting half of a corpus is the part a person should read before it
+    # lands.
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          path: QMdmm
+
+      - name: Set timezone (Linux)
+        run: |
+          sudo ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+          date
+
+      - name: Install Qt and clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang qt6-base-dev qt6-websockets-dev qt6-declarative-dev qt6-tools-dev
+          # The fuzzer runtime ships apart from the compiler on Debian and Ubuntu.
+          # Ask for the versionless package first so it matches whatever `clang`
+          # resolved to, and fall back to the number the compiler itself reports
+          # when the archive only carries numbered ones. Not a scan of package
+          # names: that namespace also holds the wasm and windows cross runtimes
+          # (libclang-rt-*-dev-wasm32, -dev-win, ...), and installing one of those
+          # would leave the flag without a runtime this build can link. Which
+          # branch was taken needs no check of its own -- the configure step asks
+          # the toolchain the only question that matters and fails plainly when
+          # the answer is no.
+          sudo apt-get install -y libclang-rt-dev ||
+            sudo apt-get install -y "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev"
+
+      - name: Configure
+        id: configure
+        run: |
+          # BUILD_TESTING stays off: the harness is not one of the cases, so none
+          # of the test frameworks are needed for it.
+          cmake -B build -S QMdmm -G "Unix Makefiles" \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=OFF \
+            -DQMDMM_BUILD_FUZZ_TARGET=ON \
+            -DCMAKE_CXX_COMPILER=clang++
+
+      - name: Build the harness
+        id: build
+        run: cmake --build build --target QMdmm_fuzz_packet --parallel
+
+      - name: Fuzz
+        id: fuzz
+        env:
+          # Leak detection stays off, as in the sanitizer cells: this asks whether
+          # the decoder mishandles what it is handed, not whether the process leaks
+          # at exit, and Qt's own statics would need a suppression baseline first.
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          corpus="${RUNNER_TEMP}/corpus"
+          mkdir -p "$corpus"
+          cp QMdmm/QMdmmCore/fuzz/corpus/*.json "$corpus/"
+          # The bound is on the whole run, not on one input: -max_total_time is the
+          # budget, -timeout is the hang detector inside it (a decoder that stops
+          # answering is a defect too, and without this it would hold the job until
+          # GitHub's own limit). The binary follows CMAKE_RUNTIME_OUTPUT_DIRECTORY,
+          # which is build/bin under the build tree rather than the generator's own.
+          set -o pipefail
+          ./build/build/bin/QMdmm_fuzz_packet \
+            -max_total_time=60 -timeout=25 -print_final_stats=1 -rss_limit_mb=4096 \
+            "$corpus" 2>&1 | tee "${RUNNER_TEMP}/fuzz.log"
+
+      - name: Report the reading
+        if: always()
+        run: |
+          # One line, in the shape the other legs use: which of the three steps
+          # carried out, how many executions the run got through, and what came
+          # back. A red cell says something failed; this line says whether it was
+          # the toolchain, the build, or the decoder.
+          log="${RUNNER_TEMP}/fuzz.log"
+          runs=0
+          crashes=0
+          corpus=0
+          if [ -f "$log" ]; then
+            runs=$(sed -n 's/^stat::number_of_executed_units: *\([0-9][0-9]*\)$/\1/p' "$log" | tail -1)
+            crashes=$(grep -cE 'AddressSanitizer: |runtime error:' "$log" || true)
+            corpus=$(find "${RUNNER_TEMP}/corpus" -type f | wc -l | tr -d ' ')
+          fi
+          echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} fuzz=${{ steps.fuzz.outcome }} runs=${runs:-0} crashes=${crashes:-0} corpus=${corpus:-0}"
+
+      - name: Archive the corpus
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-corpus
+          path: ${{ runner.temp }}/corpus
+          if-no-files-found: warn
+
   build-windows:
     name: Build & test (windows-latest, ${{ matrix.build_type }})
     #

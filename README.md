@@ -134,6 +134,25 @@ cd ../build-QMdmm-Release
 ctest --test-dir . --output-on-failure
 ```
 
+The inbound packet decoder has a libFuzzer harness of its own
+(`QMdmmCore/fuzz/fuzz_packet.cpp`), which is deliberately not one of those cases:
+a fuzz run is a budget spent generating input, not a case that passes or fails.
+It needs a clang whose `-fsanitize=fuzzer` links -- Apple's clang, as shipped
+with the current Xcode, does not provide the runtime, so on macOS the Homebrew
+one is the way in:
+
+```sh
+cd ../build-QMdmm-Release
+cmake ../QMdmm -DCMAKE_BUILD_TYPE=Debug \
+    -DQMDMM_BUILD_FUZZ_TARGET=ON \
+    -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++
+cmake --build . --target QMdmm_fuzz_packet
+./build/bin/QMdmm_fuzz_packet -max_total_time=60 ../QMdmm/QMdmmCore/fuzz/corpus
+```
+
+The directory named last is the seed set, and it is also the regression set: CI
+starts every run from it.
+
 ## Network protocol
 
 The wire protocol is JSON-based. Packets come in three kinds

@@ -94,6 +94,26 @@ endif()
 
 option(BUILD_TESTING "Build test binaries" false)
 
+# The libFuzzer harness for the inbound packet decoder (QMdmmCore/fuzz).
+# Off by default, and not part of BUILD_TESTING: a fuzz run spends a time budget
+# generating input rather than passing or failing a case, so it has no place in
+# ctest, and an ordinary build should not pay for it. Needs a clang whose
+# -fsanitize=fuzzer links -- that flag is what carries libFuzzer's driver and
+# runtime, and the check for it lives beside the target.
+option(QMDMM_BUILD_FUZZ_TARGET "Build the libFuzzer harness for the inbound packet decoder" false)
+
+if (QMDMM_BUILD_FUZZ_TARGET)
+    # A fuzz build instruments the whole tree, not just the harness. The decoder
+    # being hammered is library code: instrument only the harness and neither
+    # libFuzzer's coverage feedback nor the address sanitizer can see inside the
+    # thing under test -- the run then explores the harness's own few branches and
+    # goes nowhere, while still looking like a fuzz run. fuzzer-no-link is the half
+    # that instruments without dragging in a second main(); the harness brings in
+    # the driver itself (QMdmmCore/fuzz/CMakeLists.txt).
+    add_compile_options(-fsanitize=fuzzer-no-link,address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+endif()
+
 option(QMDMM_EXPORT_PRIVATE "Export private symbols, copy headers of private classes" false)
 
 # macOS has two ways of putting this project's programs on a machine, and they
