@@ -149,6 +149,26 @@ namespace v0 {
  */
 
 /**
+ * @property ServerConfiguration::maximumRooms
+ * @brief How many rooms the server runs at once, default 0 (no limit)
+ *
+ * A room holds @c playerNumPerRoom players and, once it is full, plays its game to the end in the
+ * background while the next room starts recruiting. Nothing else bounds how many of them exist at
+ * the same time: a peer that keeps signing in under fresh names can keep building rooms, and each
+ * one holds its players and the game it runs for as long as that game lasts. This key is that
+ * bound. A sign-in that would need one room more is refused with a @c Socket::ProtocolError, the
+ * way a peer that never signs in is given up on -- the room it asked for is not built, so the size
+ * the configuration allows is what the server actually holds.
+ *
+ * The count is of rooms, not of connections: the connection bound an operator might reach for is
+ * derived from this one, since a signed-in peer takes exactly one seat and a room has
+ * @c playerNumPerRoom of them. A player already seated keeps their room, and a player reconnecting
+ * signs back into the room they came from rather than asking for a new one, so this key never locks
+ * a seated player out. @c 0, the default, is no bound at all: as many rooms as players ask for,
+ * which is what the server did before this key existed.
+ */
+
+/**
  * @fn ServerConfiguration::tcpEnabled() const
  * @brief getter of @c ServerConfiguration::tcpEnabled
  * @return @c ServerConfiguration::tcpEnabled
@@ -293,6 +313,18 @@ namespace v0 {
  */
 
 /**
+ * @fn ServerConfiguration::maximumRooms() const
+ * @brief getter of @c ServerConfiguration::maximumRooms
+ * @return @c ServerConfiguration::maximumRooms
+ */
+
+/**
+ * @fn ServerConfiguration::setMaximumRooms(int maximumRooms)
+ * @brief setter of @c ServerConfiguration::maximumRooms
+ * @param maximumRooms @c ServerConfiguration::maximumRooms
+ */
+
+/**
  * @brief Get default values of configuration
  * @return default configuration
  */
@@ -312,6 +344,7 @@ const ServerConfiguration &ServerConfiguration::defaults()
         qMakePair(u"requestTimeout"_s, 20),
         qMakePair(u"maximumPacketSize"_s, Socket::DefaultMaximumPacketSize),
         qMakePair(u"signInTimeout"_s, 5),
+        qMakePair(u"maximumRooms"_s, 0),
     };
     // clang-format on
 
@@ -359,6 +392,7 @@ IMPLEMENTATION_CONFIGURATION(int, playerNumPerRoom, PlayerNumPerRoom, CONVERTTOT
 IMPLEMENTATION_CONFIGURATION(int, requestTimeout, RequestTimeout, CONVERTTOTYPEINT, )
 IMPLEMENTATION_CONFIGURATION(int, maximumPacketSize, MaximumPacketSize, CONVERTTOTYPEINT, )
 IMPLEMENTATION_CONFIGURATION(int, signInTimeout, SignInTimeout, CONVERTTOTYPEINT, )
+IMPLEMENTATION_CONFIGURATION(int, maximumRooms, MaximumRooms, CONVERTTOTYPEINT, )
 
 #undef IMPLEMENTATION_CONFIGURATION_SETTER_CONST_REFERENCE
 #undef IMPLEMENTATION_CONFIGURATION
@@ -381,7 +415,8 @@ IMPLEMENTATION_CONFIGURATION(int, signInTimeout, SignInTimeout, CONVERTTOTYPEINT
  * @c controlPort is either 0 (the plane is off, which is its default) or such a port;
  * @c playerNumPerRoom must be at least 2 (a game needs an opponent for rock-paper-scissors action-order
  * resolution); @c requestTimeout is either 0 (no timeout) or at least 15 seconds;
- * @c maximumPacketSize is at least 1024 bytes; @c signInTimeout is between 2 and 60 seconds.
+ * @c maximumPacketSize is at least 1024 bytes; @c signInTimeout is between 2 and 60 seconds;
+ * @c maximumRooms is 0 (no limit) or any positive number of rooms.
  * Unknown keys are ignored.
  */
 bool ServerConfiguration::deserialize(const QJsonValue &value) // NOLINT(readability-function-cognitive-complexity)
@@ -513,6 +548,18 @@ bool ServerConfiguration::deserialize(const QJsonValue &value) // NOLINT(readabi
             if (parsed < 2 || parsed > 60)
                 return false;
             result.insert(u"signInTimeout"_s, parsed);
+        }
+    }
+
+    // maximumRooms: any non-negative whole number. Unlike the bounds above there is nothing to
+    // floor here -- 0 is "no bound", which is the default, and every other value means exactly
+    // that many rooms -- so the only way to be wrong is not to be a non-negative whole number.
+    {
+        int parsed = 0;
+        if (ob.contains(u"maximumRooms"_s)) {
+            if (!parseNonNegativeInt(ob.value(u"maximumRooms"_s), &parsed))
+                return false;
+            result.insert(u"maximumRooms"_s, parsed);
         }
     }
 

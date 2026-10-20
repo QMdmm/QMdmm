@@ -157,6 +157,17 @@ void ServerP::signIn(Socket *socket, const QJsonValue &packetValue)
         }
 
         if (current == nullptr || current->full()) {
+            // A new room is what this sign-in is asking for, so it is the one place a room bound can
+            // hold: the rooms that exist right now are the ones the reconnect scan above walked and
+            // nothing has been built since. Refusing here rather than in addAgent keeps the count
+            // the operator configured and the count the server holds the same number -- a room that
+            // was built and refused a player would still be a room.
+            const int maximumRooms = serverConfiguration.maximumRooms();
+            if (maximumRooms > 0 && runners.size() >= maximumRooms) {
+                socket->setError({.code = Socket::ProtocolError, .errorString = u"the server is running %1 room(s), its maximum"_s.arg(maximumRooms)});
+                return;
+            }
+
             current = new LogicRunner(logicConfiguration, serverConfiguration.playerNumPerRoom(), this);
             connect(current, &LogicRunner::gameOver, this, &ServerP::logicRunnerGameOver);
         }

@@ -40,6 +40,9 @@ private slots:
         QCOMPARE(c.requestTimeout(), 20);
         QCOMPARE(c.maximumPacketSize(), 1024 * 1024);
         QCOMPARE(c.signInTimeout(), 5);
+        // No bound by default: as many rooms as players ask for, which is what the server did
+        // before the key existed.
+        QCOMPARE(c.maximumRooms(), 0);
     }
 
     void QMdmmServerConfigurationsetters()
@@ -57,6 +60,7 @@ private slots:
         c.setRequestTimeout(30);
         c.setMaximumPacketSize(4096);
         c.setSignInTimeout(45);
+        c.setMaximumRooms(4);
 
         QCOMPARE(c.tcpEnabled(), false);
         QCOMPARE(c.tcpPort(), (uint16_t)7000);
@@ -70,6 +74,7 @@ private slots:
         QCOMPARE(c.requestTimeout(), 30);
         QCOMPARE(c.maximumPacketSize(), 4096);
         QCOMPARE(c.signInTimeout(), 45);
+        QCOMPARE(c.maximumRooms(), 4);
     }
 
     void QMdmmServerConfigurationdeserialize_data()
@@ -90,6 +95,7 @@ private slots:
             {u"requestTimeout"_s, 20}, //
             {u"maximumPacketSize"_s, 4096}, //
             {u"signInTimeout"_s, 60}, //
+            {u"maximumRooms"_s, 4}, //
         };
 
         QTest::newRow("valid") << QJsonValue(validOb) << true;
@@ -252,6 +258,29 @@ private slots:
             ob.insert(u"signInTimeout"_s, 61);
             QTest::newRow("signInTimeoutAboveMaximum") << QJsonValue(ob) << false;
         }
+        // Negative maximumRooms: a count that cannot be held. 0 is "no bound", not this.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"maximumRooms"_s, -1);
+            QTest::newRow("negativeMaximumRooms") << QJsonValue(ob) << false;
+        }
+        // Fractional maximumRooms.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"maximumRooms"_s, 2.5);
+            QTest::newRow("fractionalMaximumRooms") << QJsonValue(ob) << false;
+        }
+        // maximumRooms = 0 (no bound) is valid, and so is the smallest real bound.
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"maximumRooms"_s, 0);
+            QTest::newRow("maximumRoomsZero") << QJsonValue(ob) << true;
+        }
+        {
+            QJsonObject ob = validOb;
+            ob.insert(u"maximumRooms"_s, 1);
+            QTest::newRow("maximumRoomsOne") << QJsonValue(ob) << true;
+        }
     }
 
     void QMdmmServerConfigurationdeserialize()
@@ -290,6 +319,7 @@ private slots:
         QCOMPARE(conf.requestTimeout(), defaults.requestTimeout());
         QCOMPARE(conf.maximumPacketSize(), defaults.maximumPacketSize());
         QCOMPARE(conf.signInTimeout(), defaults.signInTimeout());
+        QCOMPARE(conf.maximumRooms(), defaults.maximumRooms());
     }
 
     void QMdmmServerConfigurationdeserializeIgnoresUnknownKeys()

@@ -83,6 +83,8 @@ private slots:
     void server_turnsAwayUnusableFramesWithoutDisturbingTheRoom_data();
     void server_turnsAwayUnusableFramesWithoutDisturbingTheRoom();
     void server_signInDeadlineReapsAPeerThatNeverSignsIn();
+    void server_roomCapRefusesTheSignInThatWouldBuildOneMoreRoom();
+    void server_noRoomCapLetsTheThirdPlayerBuildASecondRoom();
     void server_reapsASignedInPeerThatGoesSilent_data();
     void server_reapsASignedInPeerThatGoesSilent();
     void server_silenceDeadlineStartsOverWithEveryPacket();
@@ -2847,6 +2849,118 @@ void tst_QMdmmNetworking::server_silenceDeadlineStartsOverWithEveryPacket()
     };
     QTRY_VERIFY_WITH_TIMEOUT(pongs() >= 1, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(deadline->remainingTime() > leftBeforePing + 1000, 5000);
+}
+
+// A room holds playerNumPerRoom players, and a sign-in that finds the recruiting room full builds
+// the next one. Nothing used to bound how many of those exist at once, which is what maximumRooms
+// is for: the sign-in that would need one room more is the one that has to be turned away, since a
+// bound the server only notices after building the room would not be a bound.
+//
+// The value is read from the configuration rather than from a constant inside the server, and the
+// case configures the smallest real bound (1) instead of leaning on the default, which is "no
+// bound" and would pass whether or not the key is read at all.
+void tst_QMdmmNetworking::server_roomCapRefusesTheSignInThatWouldBuildOneMoreRoom()
+{
+    LogicConfiguration conf = LogicConfiguration::defaults();
+
+    ServerConfiguration serverConf = ServerConfiguration::defaults();
+    serverConf.setPlayerNumPerRoom(2);
+    serverConf.setTcpPort(16395);
+    serverConf.setLocalEnabled(false);
+    serverConf.setWebsocketEnabled(false);
+    serverConf.setRequestTimeout(0); // the seated players never answer; that timer is not this case's
+    serverConf.setMaximumRooms(1);
+
+    Server server(serverConf, conf);
+    QVERIFY(server.listen());
+
+    const QString host = u"qmdmm://localhost:16395"_s;
+
+    auto *p1 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p1->connectToHost(host, Data::StateOnline));
+    QTRY_VERIFY_WITH_TIMEOUT(p1->room() != nullptr && p1->room()->player(p1->objectName()) != nullptr, 5000);
+
+    auto *p2 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p2->connectToHost(host, Data::StateOnlineBot));
+    QTRY_VERIFY_WITH_TIMEOUT(p1->room() != nullptr && p1->room()->player(p2->objectName()) != nullptr, 5000);
+
+    // The one room this configuration allows is full, so its game has started.
+    const QJsonObject beforeRefusal = server.status();
+    QCOMPARE(beforeRefusal.value(u"rooms"_s).toInt(), 1);
+    QCOMPARE(beforeRefusal.value(u"players"_s).toInt(), 2);
+    QCOMPARE(beforeRefusal.value(u"games"_s).toInt(), 1);
+
+    // The socket the server turned away, found by the reason it recorded: no other path in this
+    // server writes a message mentioning a maximum number of rooms.
+    const auto refused = [&server]() -> Socket * {
+        for (Socket *socket : server.findChildren<Socket *>()) {
+            if (socket->error().has_value() && socket->error()->errorString.contains(u"its maximum"_s))
+                return socket;
+        }
+        return nullptr;
+    };
+
+    auto *p3 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p3->connectToHost(host, Data::StateOnlineBot));
+
+    QTRY_VERIFY_WITH_TIMEOUT(refused() != nullptr, 5000);
+    QCOMPARE(refused()->error()->code, Socket::ProtocolError);
+
+    // Nothing was built for it: the count the configuration allows is the count the server holds,
+    // and the player that was turned away has no seat.
+    const QJsonObject afterRefusal = server.status();
+    QCOMPARE(afterRefusal.value(u"rooms"_s).toInt(), 1);
+    QCOMPARE(afterRefusal.value(u"players"_s).toInt(), 2);
+    // A client's mirror room exists from construction on (it is empty until something arrives), so
+    // what "no seat" looks like here is the absence of the player in it, not a null room.
+    QVERIFY(p3->room()->player(p3->objectName()) == nullptr);
+
+    // The players that were already seated keep their room. The bound is about the room count, not
+    // about a player who is already in one.
+    QVERIFY(p1->room() != nullptr);
+    QVERIFY(p1->room()->player(p2->objectName()) != nullptr);
+
+    // Out of the way before the case ends: a client that was refused keeps retrying, and every
+    // retry is another sign-in this case has already had its answer from.
+    delete p3;
+}
+
+// The control for the case above: the same three sign-ins without a bound configured, which is
+// what a server that never heard of the key looks like. Left at its default, the key must bound
+// nothing at all -- the third player's room is built exactly as it was before the key existed.
+void tst_QMdmmNetworking::server_noRoomCapLetsTheThirdPlayerBuildASecondRoom()
+{
+    LogicConfiguration conf = LogicConfiguration::defaults();
+
+    ServerConfiguration serverConf = ServerConfiguration::defaults();
+    serverConf.setPlayerNumPerRoom(2);
+    serverConf.setTcpPort(16396);
+    serverConf.setLocalEnabled(false);
+    serverConf.setWebsocketEnabled(false);
+    serverConf.setRequestTimeout(0); // the seated players never answer; that timer is not this case's
+
+    Server server(serverConf, conf);
+    QVERIFY(server.listen());
+
+    const QString host = u"qmdmm://localhost:16396"_s;
+
+    auto *p1 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p1->connectToHost(host, Data::StateOnline));
+    QTRY_VERIFY_WITH_TIMEOUT(p1->room() != nullptr && p1->room()->player(p1->objectName()) != nullptr, 5000);
+
+    auto *p2 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p2->connectToHost(host, Data::StateOnlineBot));
+    QTRY_VERIFY_WITH_TIMEOUT(p1->room() != nullptr && p1->room()->player(p2->objectName()) != nullptr, 5000);
+
+    auto *p3 = new Client(ClientConfiguration(), &server);
+    QVERIFY(p3->connectToHost(host, Data::StateOnlineBot));
+    QTRY_VERIFY_WITH_TIMEOUT(p3->room() != nullptr && p3->room()->player(p3->objectName()) != nullptr, 5000);
+
+    // Two rooms, three players, and only the first room has started its game.
+    const QJsonObject ob = server.status();
+    QCOMPARE(ob.value(u"rooms"_s).toInt(), 2);
+    QCOMPARE(ob.value(u"players"_s).toInt(), 3);
+    QCOMPARE(ob.value(u"games"_s).toInt(), 1);
 }
 
 namespace {

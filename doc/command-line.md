@@ -138,6 +138,17 @@ transports put on a peer that never finishes a packet.
   ceiling of 60 is what keeps a peer from holding a port, and the memory behind
   it, for longer than a handshake could plausibly take; the floor only has to
   outlast the slowest honest one.
+- `--maximum-rooms <0~>` -- how many rooms the server runs at once. Defaults to
+  0, which is no limit. A room holds `--players` players and, once full, plays
+  its game to the end in the background while the next room starts recruiting;
+  this is what bounds how many are alive at the same time. A sign-in that would
+  need one room more is refused and the connection dropped, the way a peer that
+  never signs in is given up on. There is no connection limit to set alongside
+  it: a signed-in peer takes one seat, so the connections the server can hold
+  are this many rooms times the players in each. A seated player keeps their
+  room either way, and a reconnect goes back to the room the player came from
+  rather than asking for a new one, so the bound never locks a seated player
+  out.
 
 ### Game rules
 

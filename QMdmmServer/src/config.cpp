@@ -53,6 +53,7 @@ Room, connections and timeouts:
                                      (default: 20).
   --maximum-packet-size <1024~>      Largest packet a peer may send, in bytes (default: 1048576).
   --sign-in-timeout <2~60>           Seconds an accepted connection has to sign in (default: 5).
+  --maximum-rooms <0~>               How many rooms to run at once; 0 is no limit (default: 0).
 
 Logic:
   -s, --slash, --knife <1~>          Initial knife (slash) damage (default: 1).
@@ -202,6 +203,7 @@ Config::Config()
     parser.addOption(QCommandLineOption(QStringList {u"o"_s, u"timeout"_s}, {}, u"0,15~"_s));
     parser.addOption(QCommandLineOption(QStringList {u"maximum-packet-size"_s}, {}, u"1024~"_s));
     parser.addOption(QCommandLineOption(QStringList {u"sign-in-timeout"_s}, {}, u"2~60"_s));
+    parser.addOption(QCommandLineOption(QStringList {u"maximum-rooms"_s}, {}, u"0~"_s));
 
     parser.addOption(QCommandLineOption(QStringList {u"s"_s, u"slash"_s, u"knife"_s}, {}, u"1~"_s));
     parser.addOption(QCommandLineOption(QStringList {u"S"_s, u"maximum-slash"_s, u"maximum-knife"_s}, {}, u"3~"_s));
@@ -412,6 +414,7 @@ void Config::read_(QMdmmCore::Settings *setting, QCommandLineParser *parser)
     CONFIG_ITEM(int, serverConfiguration_, "timeout", stringToInt, RequestTimeout, false);
     CONFIG_ITEM(int, serverConfiguration_, "maximum-packet-size", stringToInt, MaximumPacketSize, false);
     CONFIG_ITEM(int, serverConfiguration_, "sign-in-timeout", stringToInt, SignInTimeout, false);
+    CONFIG_ITEM(int, serverConfiguration_, "maximum-rooms", stringToInt, MaximumRooms, false);
 
     {
         int players = 0;
@@ -538,6 +541,12 @@ void Config::read_(QMdmmCore::Settings *setting, QCommandLineParser *parser)
     if (signInTimeout < 2 || signInTimeout > 60)
         configError(u"Config item sign-in-timeout must be between 2 and 60 (got %1)"_s, signInTimeout);
 
+    // 0 is "no bound", so this one has a floor and no ceiling; a negative count is the only way to
+    // be out of range, and it would be written out by -c and refused by the next startup.
+    const int maximumRooms = serverConfiguration_.maximumRooms();
+    if (maximumRooms < 0)
+        configError(u"Config item maximum-rooms must not be negative (got %1)"_s, maximumRooms);
+
     const int punishHpModifier = logicConfiguration_.punishHpModifier();
     if (punishHpModifier != 0 && punishHpModifier < 2)
         configError(u"Config item punish-hp-modifier must be 0 or at least 2 (got %1)"_s, punishHpModifier);
@@ -570,6 +579,7 @@ int Config::save_(QMdmmCore::Settings *setting, QMdmmCore::Settings::Instance to
     CONFIG_ITEM(int, serverConfiguration_, "timeout", intToString, requestTimeout);
     CONFIG_ITEM(int, serverConfiguration_, "maximum-packet-size", intToString, maximumPacketSize);
     CONFIG_ITEM(int, serverConfiguration_, "sign-in-timeout", intToString, signInTimeout);
+    CONFIG_ITEM(int, serverConfiguration_, "maximum-rooms", intToString, maximumRooms);
     CONFIG_ITEM(int, serverConfiguration_, "players", intToString, playerNumPerRoom);
 
     setting->endGroup();

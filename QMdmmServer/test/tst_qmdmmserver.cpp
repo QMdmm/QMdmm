@@ -262,10 +262,10 @@ struct StoredServerKey
     const char *json;
 };
 
-const std::array<StoredServerKey, 12> &storedServerKeys()
+const std::array<StoredServerKey, 13> &storedServerKeys()
 {
     // clang-format off
-    static const std::array<StoredServerKey, 12> rows {{
+    static const std::array<StoredServerKey, 13> rows {{
         {.property = "tcpEnabled",         .key = "tcp",                 .value = "false",          .json = "false"},
         {.property = "tcpPort",            .key = "tcp-port",            .value = "7001",           .json = "7001"},
         {.property = "localEnabled",       .key = "local",               .value = "false",          .json = "false"},
@@ -278,6 +278,7 @@ const std::array<StoredServerKey, 12> &storedServerKeys()
         {.property = "requestTimeout",     .key = "timeout",             .value = "30",             .json = "30"},
         {.property = "maximumPacketSize",  .key = "maximum-packet-size", .value = "2048",           .json = "2048"},
         {.property = "signInTimeout",      .key = "sign-in-timeout",     .value = "30",             .json = "30"},
+        {.property = "maximumRooms",       .key = "maximum-rooms",       .value = "2",              .json = "2"},
     }};
     // clang-format on
     return rows;
