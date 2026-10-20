@@ -43,8 +43,11 @@ namespace v0 {
  * the properties declared here to the keys the program stores, so a new key cannot miss them
  * without turning a test red.
  *
- * A key that is internal instead, whose value no operator would tune, gets neither an option nor
- * a stored key: it is documented here and says so. There is no third state.
+ * There is one shape today and no second one: every property declared here is a start-up setting
+ * an operator would tune, so it carries all three faces. A key whose value no operator would tune
+ * therefore has nowhere to go while the gate stands as it does -- the properties declared here and
+ * the keys the program stores are held equal, with nothing subtracted on either side -- so adding
+ * one means changing that gate in the same commit, not only declaring the property.
  */
 
 /**

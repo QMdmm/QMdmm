@@ -251,9 +251,9 @@ QSet<QString> storedSectionKeys(const QString &contents, const QString &header)
 // the properties the header declares and the keys a save writes by
 // `declaredConfigurationKeys_areTheStoredOnes` and `savedConfiguration_carriesEveryStoredKey` (a
 // property with no row, or a saved key with no row, makes a set differ and a case go red). A key
-// an operator has no business tuning would go in `unexposedServerKeys` with its reason instead of
-// here; there is none today, and the doxygen on ServerConfiguration says what makes a key eligible
-// for either list.
+// an operator has no business tuning cannot simply be left off this table either: the two sets are
+// held equal with nothing subtracted on either side, so such a key means teaching these cases an
+// exception in the same commit -- which is what the doxygen on ServerConfiguration says, too.
 struct StoredServerKey
 {
     const char *property;
