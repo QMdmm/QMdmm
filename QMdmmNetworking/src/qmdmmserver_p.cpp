@@ -230,8 +230,10 @@ void ServerP::introduceSocket(Socket *socket) // NOLINT(readability-make-member-
     // would ever notice it: left to itself, the connection (and the memory behind it) is held for
     // as long as the peer cares to keep the socket open. The deadline is armed here -- the one
     // place every transport's accepted socket passes through -- and judged when it fires: a socket
-    // that has become an agent's wire in the meantime has signed in and is left alone, since a
-    // signed-in agent that goes quiet is the connection's own request timer's business.
+    // that has become an agent's wire in the meantime has signed in and is left alone. That is the
+    // end of this deadline's business, not of the peer's: what watches a signed-in player that goes
+    // quiet is the connection's own silence deadline, not the request timer, which is free to wait
+    // on a reply for as long as the configuration says.
     const int signInTimeout = serverConfiguration.signInTimeout();
     QTimer *deadline = new QTimer(socket);
     deadline->setSingleShot(true);

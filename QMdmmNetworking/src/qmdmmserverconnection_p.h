@@ -14,11 +14,12 @@
 namespace QMdmmNetworking {
 namespace p {
 
-// The server-side plumbing for one connected player: the socket, the request timer, the current
-// request state, the protocol dispatch tables, and the round-event log. It is a *companion* to an
-// Agent (composition, not inheritance): the Agent owns the player identity (name / screen name /
-// state), while the ServerConnectionP owns everything tied to the wire. This split lets a
-// socket-less local agent exist later without dragging socket machinery into the Agent type.
+// The server-side plumbing for one connected player: the socket, the request timer, the silence
+// deadline, the current request state, the protocol dispatch tables, and the round-event log. It is
+// a *companion* to an Agent (composition, not inheritance): the Agent owns the player identity
+// (name / screen name / state), while the ServerConnectionP owns everything tied to the wire. This
+// split lets a socket-less local agent exist later without dragging socket machinery into the
+// Agent type.
 class QMDMMNETWORKING_PRIVATE_EXPORT ServerConnectionP : public QObject
 {
     Q_OBJECT

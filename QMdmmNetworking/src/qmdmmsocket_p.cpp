@@ -70,8 +70,9 @@ void SocketP::setMaximumPacketSize(int _maximumPacketSize)
 
 void SocketP::applyMaximumPacketSize()
 {
-    // Nothing to cap by default: only the transports that frame packets by lines have a buffer
-    // that a peer can grow.
+    // Nothing to cap on the base class: each transport applies the bound where its own framing puts
+    // the buffer a peer can grow -- a read buffer for the line-framed ones, the message size limit
+    // for the WebSocket one.
 }
 
 // NOLINTNEXTLINE(readability-make-member-function-const)

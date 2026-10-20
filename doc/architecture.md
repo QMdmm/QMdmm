@@ -66,7 +66,9 @@ which is what makes it unit-testable with no network involved.
 - **`Agent`** — the server's record of one player: name, screen name,
   `AgentState`.
 - **`ServerConnection`** — the wire side of one player: the `Socket`, the
-  request timer, and the protocol dispatch. Paired one-to-one with an `Agent`.
+  request timer, the silence deadline that gives up on a peer which stops
+  sending anything, and the protocol dispatch. Paired one-to-one with an
+  `Agent`.
 - **`Socket`** — a thin wrapper over `QTcpSocket` / `QLocalSocket` /
   `QWebSocket` that serializes and deserializes `Packet`s. One class, three
   transports.
