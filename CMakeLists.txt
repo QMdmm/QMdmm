@@ -236,6 +236,7 @@ add_subdirectory(QMdmmCore)
 add_subdirectory(QMdmmNetworking)
 add_subdirectory(QMdmmServer)
 add_subdirectory(QMdmmBot)
+add_subdirectory(QMdmmCtl)
 # QMdmmGui comes after every directory whose programs are installed inside its
 # bundle: the deploy step signs the bundle once it is in place, and a file
 # added afterwards leaves the signature sealing a bundle it does not describe.

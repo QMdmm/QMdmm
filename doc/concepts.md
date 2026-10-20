@@ -49,7 +49,7 @@ Two properties of that seam matter when you build on it:
   only source of truth; everything on the client side is a mirror that exists to
   be rendered, and that is rebuilt by replaying what it missed.
 
-## The three programs
+## The four programs
 
 The programs add no layer of their own -- each is a thin `main()` around the
 libraries:
@@ -63,6 +63,9 @@ libraries:
 - **`QMdmmBot`** is a `Client` with an auto-player on top. It takes a seat,
   decides each request with a bot strategy, and answers through the same reply
   slots any other client would use.
+- **`QMdmmCtl`** is for whoever runs a server rather than plays on one: it asks
+  a running `QMdmmServer` for the snapshot its control plane serves and prints
+  it. Nothing of its own goes into what it reports, and it changes nothing.
 
 If you want to write a player of your own, `QMdmmBot` and the smoke test's
 auto-player (`QMdmmNetworking/test/tst_smoke_main.cpp`) are the two worked

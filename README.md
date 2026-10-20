@@ -55,6 +55,7 @@ config-gated (`enableLetMove`).
 | `QMdmmServer` | Standalone server program | Runs; full CLI configuration |
 | `QMdmmGui` | Graphical client (QML) | Playable: a local game (a spawned `QMdmmServer` process + `QMdmmBot` processes) or an online one |
 | `QMdmmBot` | Scripted client that plays automatically via a bot strategy | Runs; `knifePreferred` / `horsePreferred` implemented, `rl` not implemented (exits at startup) |
+| `QMdmmCtl` | Operator tool (asks a running server for its status) | Runs; `status` implemented, service management not implemented |
 
 In other words: the GUI plays full games now. A local game starts a `QMdmmServer`
 process of its own and joins it over a local socket, and fills the other seats by
@@ -71,8 +72,8 @@ a running `QMdmmServer` over TCP or WebSocket.
   and every id a packet can carry with the payload that goes with it.
 - [Getting Started](doc/getting-started.md) — build, run, and play a headless
   game end-to-end.
-- [Command-line programs](doc/command-line.md) — every option `QMdmmBot` and
-  `QMdmmServer` accept.
+- [Command-line programs](doc/command-line.md) — every option `QMdmmBot`,
+  `QMdmmCtl` and `QMdmmServer` accept.
 - [API reference](https://nemn9852.github.io/qmdmm-docs/) — Doxygen for the
   `QMdmmCore` and `QMdmmNetworking` public classes.
 
@@ -182,6 +183,7 @@ QMdmmNetworking/ Network layer (server / client / protocol transport)
 QMdmmServer/     Standalone server program
 QMdmmGui/        Graphical client (QML)
 QMdmmBot/        Scripted client that plays automatically (bot strategies)
+QMdmmCtl/        Operator tool: asks a running server for its status
 doc/             Documentation: Doxygen config + guides
 3rdparty/        Third-party dependencies
 cmake/           CMake helper modules

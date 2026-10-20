@@ -120,3 +120,7 @@ socket, and replays the round events the client missed so its mirror converges
   `knifePreferred` / `horsePreferred` / `rl`) instead of a human.
   `knifePreferred` and `horsePreferred` play real strategies; `rl` is still a
   placeholder and refuses to start.
+- **`QMdmmCtl`** — the operator tool. It asks a running `QMdmmServer` for the
+  snapshot its control plane serves and prints it unchanged, so what an
+  operator sees is the server's own reading rather than a second one. It starts
+  nothing, keeps no state and takes no part in a game.

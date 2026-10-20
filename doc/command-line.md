@@ -36,6 +36,43 @@ terminal ask -- a run reports the stop on stderr and exits with status 0,
 rather than being killed by the signal and leaving a caller nothing but the
 signal (`143`) to read.
 
+## QMdmmCtl
+
+`QMdmmCtl` is the operator tool. It asks a running server a question and prints
+the answer, and it does nothing else: it starts nothing, keeps no state, writes
+no log and takes no part in a game.
+
+### status
+
+- `status` -- print the server's status snapshot, byte for byte as the control
+  plane serves it (the plane itself is under `QMdmmServer`, below).
+- `-p`, `--control-port <port>` -- the port that server was given with
+  `--control-port`. Required: a server without one has no control plane to ask,
+  so there is no default to fall back to.
+- `-h`, `--help` -- print the usage table and exit with status 0.
+- `-v`, `--version` -- print the project version and exit with status 0.
+
+The snapshot is written out exactly as it arrived, down to the absence of a
+trailing newline, so it can be compared with the same answer read any other way:
+
+```sh
+diff <(curl -s 127.0.0.1:7900/status) <(QMdmmCtl6 status --control-port 7900)
+```
+
+An answer that carries no snapshot is not printed: a `404` from the control
+plane, an answer that ends before its headers do, and a port with nothing
+listening all end the run the same way -- the reason on stderr, nothing on
+stdout, and status 1.
+
+A command line that is refused -- no command, more than one, an unknown one,
+`status` without `--control-port`, or a value that is not a port -- is reported
+on stderr with status 3, the status the other programs use for a configuration
+they will not run with. An option the program does not know is refused by Qt's
+own option parser with status 1, as it is there.
+
+Starting, stopping and enabling a server through the platform's own service
+manager is not implemented yet; asking is all this program does.
+
 ## QMdmmServer
 
 `QMdmmServer` is the room host. It listens, fills a room, runs the rules for it

@@ -151,7 +151,7 @@ jobs:
           # One home for the module list: it is both the --filter set and the
           # list the per-module check below asks for, so a module cannot be
           # added to one of them and forgotten in the other.
-          modules=(QMdmmCore QMdmmNetworking QMdmmGui QMdmmServer QMdmmBot)
+          modules=(QMdmmCore QMdmmNetworking QMdmmGui QMdmmServer QMdmmBot QMdmmCtl)
           filters=()
           for module in "${modules[@]}"; do
             filters+=(--filter "QMdmm/${module}/src/")
@@ -725,7 +725,7 @@ jobs:
           # list, so a module cannot be named in one of them and forgotten in
           # the other.
           #
-          modules=(QMdmmCore QMdmmNetworking QMdmmGui QMdmmServer QMdmmBot)
+          modules=(QMdmmCore QMdmmNetworking QMdmmGui QMdmmServer QMdmmBot QMdmmCtl)
           joined=""
           for module in "${modules[@]}"; do
             joined="${joined:+$joined|}$module"
