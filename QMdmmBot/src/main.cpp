@@ -3,6 +3,7 @@
 #include "bot.h"
 #include "config.h"
 
+#include <QMdmmAgent>
 #include <QMdmmClient>
 #include <QMdmmGlobal>
 
@@ -14,6 +15,7 @@
 
 #include <csignal>
 #include <iostream>
+#include <utility>
 
 using namespace Qt::StringLiterals;
 
@@ -64,6 +66,83 @@ void shutDown()
     QCoreApplication::exit(0);
 }
 
+// How long a bot waits before it dials in for the next match.
+//
+// Not zero: the game-over broadcast is the last thing a session does, and the server tears the
+// finished room down while sending it, so a sign-in that arrived in that instant would be asking to
+// join a room on its way out. A second is far more than that teardown takes, and short enough that
+// a bot is never far from its next match. It steers how a bot behaves between matches rather than
+// how one is played, which is why it is a constant and not an option.
+constexpr int nextMatchDelay = 1000;
+
+// A bot's match loop: one match per client, and a fresh client for the next one.
+//
+// A match is a client's lifetime. The server ends a session with the game-over broadcast and the
+// client tears its socket down there (ClientP::notifyGameOver); what the client keeps is the room
+// mirror it built while the match ran -- the players, their upgrades, the place each of them stood
+// in -- because a client was only ever meant to be destroyed when its session ended. So a bot that
+// dialled back in on the same client would play the next match against the last one's ghosts. The
+// next match gets a client of its own instead, which starts it in the state a fresh run starts in,
+// down to the player name.
+class MatchLoop : public QObject
+{
+public:
+    MatchLoop(const QMdmmNetworking::ClientConfiguration &configuration, QString host, QString playingStyle)
+        : configuration_(configuration)
+        , host_(std::move(host))
+        , playingStyle_(std::move(playingStyle))
+    {
+    }
+
+    ~MatchLoop() override
+    {
+        delete client_;
+    }
+
+    Q_DISABLE_COPY_MOVE(MatchLoop)
+
+    // Dials in for a match, and for the next one once this one ends.
+    void start()
+    {
+        client_ = new QMdmmNetworking::Client(configuration_);
+
+        // The bot is a child of the client, which is what destroys it together with the match it
+        // played, and its whole behaviour is the set of signal connections its constructor makes.
+        // createBot() answers nullptr for a style it does not know, which would leave this run a
+        // strategy-less client that still signs in and plays; that is out of reach because
+        // Config::read_() rejects an unknown style through Bot::styleExist before main() gets here.
+        Bot *bot = Bot::createBot(playingStyle_, client_);
+        Q_UNUSED(bot);
+
+        connect(client_->agent(), &QMdmmNetworking::Agent::gameOverNotified, this, &MatchLoop::matchEnded);
+
+        client_->connectToHost(host_, QMdmmCore::Data::StateOnlineBot);
+    }
+
+private:
+    // Schedules the next match, and does not start it here: the broadcast arrives from inside the
+    // client's own handling of it, so the client that reports it is not ours to delete while it is
+    // still running that code.
+    // NOLINTNEXTLINE(readability-make-member-function-const): a slot is an entry point, not a read
+    void matchEnded()
+    {
+        QTimer::singleShot(nextMatchDelay, this, &MatchLoop::startNextMatch);
+    }
+
+    void startNextMatch()
+    {
+        QMdmmNetworking::Client *finished = client_;
+        start();
+        finished->deleteLater();
+    }
+
+    QMdmmNetworking::ClientConfiguration configuration_;
+    QString host_;
+    QString playingStyle_;
+    // The client playing the match that is running, or the one about to start one.
+    QMdmmNetworking::Client *client_ = nullptr;
+};
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -98,21 +177,9 @@ int main(int argc, char *argv[])
     QMdmmNetworking::ClientConfiguration conf;
     conf.setScreenName(config.name());
 
-    QMdmmNetworking::Client client(conf);
-
-    Bot *bot = Bot::createBot(config.playingStyle(), &client);
-
-    // The bot needs no further driving and the pointer is discarded on purpose:
-    // it is a child of the client, so it is destroyed with the client and needs
-    // no owner here, and its whole behaviour is the set of signal connections its
-    // constructor makes. Signing in below is all that is left for this process.
-    //
-    // createBot() answers nullptr for a style it does not know, which would leave
-    // this run a strategy-less client that still signs in and plays. That is out
-    // of reach today because Config::read_() rejects an unknown style through
-    // Bot::styleExist before we get here, but the guarantee is implicit and worth
-    // stating.
-    Q_UNUSED(bot);
+    // Constructed here and started below, once the stop signals are in place: a run has to be able
+    // to be asked to stop from the moment it holds a connection.
+    MatchLoop loop(conf, config.host(), config.playingStyle());
 
     // The two signals a supervisor or a terminal sends to ask a process to stop. A handler
     // that cannot be installed is worth saying out loud: the run still works, it just ends on
@@ -136,7 +203,7 @@ int main(int argc, char *argv[])
     });
     stopPoll.start(100);
 
-    client.connectToHost(config.host(), QMdmmCore::Data::StateOnlineBot);
+    loop.start();
 
     return QCoreApplication::exec();
 }
