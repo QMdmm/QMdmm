@@ -30,7 +30,7 @@ error rather than an option that quietly does nothing.
 
 ### Plain prefix layout (default)
 
-The three programs are installed as siblings in `<prefix>/bin/`, with Qt
+The four programs are installed as siblings in `<prefix>/bin/`, with Qt
 expected on the machine. No Qt content is copied, so a Qt from a package
 manager - Homebrew included - is fine here. This is the shape a distribution
 package or a bottle is built from.
@@ -46,7 +46,8 @@ manager's Qt at all, which is why it is not the default.
 Configure with `-DQMDMM_MACOS_APP_BUNDLE=ON`. The GUI is then installed as
 `QMdmm6.app` at the top of the prefix, and it carries what it needs: the Qt
 libraries, the QML modules, the platform plugins, and the `QMdmmServer6` /
-`QMdmmBot6` programs it starts as child processes.
+`QMdmmBot6` programs it starts as child processes. The operator tool,
+`QMdmmCtl6`, is installed inside the bundle as well.
 
 That step deploys Qt into the bundle, so it wants an official Qt archive rather
 than a package manager's build of Qt:
@@ -225,9 +226,9 @@ A path given this way is used as it is. Left out, each program is looked for by
 name - `QMdmmServer6` and `QMdmmBot6` - first next to the client program, then
 three levels above it, which is where a build tree keeps them when the client
 runs from inside the bundle. Each name is tried with the suffix the platform
-runs and taken only if it is executable. Both installed layouts keep the three
-programs together: the bundle carries them side by side in `Contents/MacOS/`,
-and the plain shape puts all three in `<prefix>/bin/`.
+runs and taken only if it is executable. Both installed layouts keep the four
+programs together, the client among them: the bundle carries them side by side
+in `Contents/MacOS/`, and the plain shape puts all four in `<prefix>/bin/`.
 
 Neither a path that leads nowhere nor a name that was not found is an error at
 startup: nothing needs either program until a local game is asked for, and

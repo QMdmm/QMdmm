@@ -195,7 +195,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build/${CMAKE_INSTALL_LI
 # sit at the top of the prefix, because Qt's deploy commands address it as
 # <name>.app relative to the prefix, and the command line programs it starts as
 # child processes are installed inside it - so that the installed bundle is what
-# carries them.  In the plain shape all three are siblings in bin/, which is
+# carries them.  In the plain shape all four are siblings in bin/, which is
 # also the directory the GUI has to look for them in.  The number in the bundle
 # name is the Qt major version, as in the target names, so anything else
 # installed inside the bundle goes through this variable rather than spelling
