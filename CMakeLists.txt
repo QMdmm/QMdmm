@@ -167,10 +167,10 @@ endif()
 set(QT_NO_CREATE_VERSIONLESS_FUNCTIONS 1)
 set(QT_NO_CREATE_VERSIONLESS_TARGETS 1)
 
-find_package(Qt6 6.7 REQUIRED COMPONENTS Core Network WebSockets Gui Qml Quick Widgets QuickWidgets ${QT6_EXTRA_COMPONENTS_NEEDED})
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Network WebSockets Gui Qml Quick Widgets QuickWidgets ${QT6_EXTRA_COMPONENTS_NEEDED})
 
 if (Qt6_FOUND)
-    qt6_standard_project_setup(REQUIRES 6.7)
+    qt6_standard_project_setup(REQUIRES 6.8)
     # we don't need them to be set by default
     unset(CMAKE_AUTOMOC)
     unset(CMAKE_AUTOUIC)

@@ -82,7 +82,7 @@ a running `QMdmmServer` over TCP or WebSocket.
 Requirements:
 
 - CMake ≥ 3.19
-- Qt ≥ 6.7 (Core / Network / WebSockets / Gui / Qml / Quick / Widgets / QuickWidgets)
+- Qt ≥ 6.8 (Core / Network / WebSockets / Gui / Qml / Quick / Widgets / QuickWidgets)
 - A C++20 compiler
 
 ```sh
