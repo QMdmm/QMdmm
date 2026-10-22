@@ -14,6 +14,40 @@
 using namespace Qt::StringLiterals;
 using namespace QMdmmCore;
 
+namespace {
+
+// The console side of message output, the way a case can read it.
+//
+// The module installs a handler of its own and hands the lines it copies out to whichever handler
+// was in place before it, so a case that wants to read that side puts this one there first. It has
+// to be in place before the module installs its own -- that is the handler the module records as
+// the one to copy out through -- and it must not be swapped in again afterwards: that would take
+// the module's handler out of the chain instead of sitting behind it.
+QStringList consoleLines;
+bool consoleCaptured = false;
+QtMessageHandler consolePrevious = nullptr;
+
+void captureConsole(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+{
+    consoleLines.append(msg);
+
+    if (consolePrevious != nullptr && consolePrevious != &captureConsole)
+        (*consolePrevious)(type, context, msg);
+    else
+        qt_message_output(type, context, msg);
+}
+
+void installConsoleCapture()
+{
+    if (consoleCaptured)
+        return;
+
+    consolePrevious = qInstallMessageHandler(&captureConsole);
+    consoleCaptured = true;
+}
+
+} // namespace
+
 class tst_QMdmmDebug : public QObject
 {
     Q_OBJECT
@@ -27,6 +61,9 @@ private slots:
     // called before each test case is run
     void init()
     {
+        installConsoleCapture();
+        consoleLines.clear();
+
         buf.setData({});
         buf.open(QIODevice::ReadWrite);
     }
@@ -34,8 +71,10 @@ private slots:
     // called after each test case is run
     void cleanup()
     {
-        // detach from the log device before it goes out of scope
+        // detach from the log device before it goes out of scope, and leave the level where a run
+        // that asked for nothing would have it
         qMdmmDebugSetDevice(nullptr);
+        qMdmmDebugSetConsoleLevel(LogLevel::Off);
         buf.close();
     }
 
@@ -157,6 +196,68 @@ private slots:
         QVERIFY(lines.at(0).endsWith(u"debug default: a debug line"_s));
         QVERIFY(lines.at(1).endsWith(u"info default: an info line"_s));
         QVERIFY(lines.at(2).endsWith(u"warning default: a warning line"_s));
+    }
+
+    // What the terminal is told is the level's business; what the file is told is not. Each row
+    // asks both halves: the four lines reach the device whatever the level says, and the console
+    // side holds exactly the ones at or above the level.
+    void QMdmmDebugconsoleLevel_data()
+    {
+        QTest::addColumn<int>("level");
+        QTest::addColumn<bool>("debugCopied");
+        QTest::addColumn<bool>("infoCopied");
+        QTest::addColumn<bool>("warningCopied");
+        QTest::addColumn<bool>("criticalCopied");
+
+        // The level goes over the column as a number: the enum is not a metatype, and the rows are
+        // read by the case as the level they name.
+        QTest::newRow("off") << static_cast<int>(LogLevel::Off) << false << false << false << false;
+        QTest::newRow("debug") << static_cast<int>(LogLevel::Debug) << true << true << true << true;
+        QTest::newRow("info") << static_cast<int>(LogLevel::Info) << false << true << true << true;
+        QTest::newRow("warning") << static_cast<int>(LogLevel::Warning) << false << false << true << true;
+        QTest::newRow("critical") << static_cast<int>(LogLevel::Critical) << false << false << false << true;
+    }
+
+    void QMdmmDebugconsoleLevel()
+    {
+        QFETCH(int, level);
+        QFETCH(bool, debugCopied);
+        QFETCH(bool, infoCopied);
+        QFETCH(bool, warningCopied);
+        QFETCH(bool, criticalCopied);
+
+        qMdmmDebugSetDevice(&buf);
+        qMdmmDebugSetConsoleLevel(static_cast<LogLevel>(level));
+
+        qDebug("a console debug line");
+        qInfo("a console info line");
+        qWarning("a console warning line");
+        qCritical("a console critical line");
+
+        // The record keeps every line, whichever ones the terminal was told about.
+        const QByteArray data = buf.data();
+        QVERIFY(data.contains("a console debug line"));
+        QVERIFY(data.contains("a console info line"));
+        QVERIFY(data.contains("a console warning line"));
+        QVERIFY(data.contains("a console critical line"));
+
+        QCOMPARE(consoleLines.contains(u"a console debug line"_s), debugCopied);
+        QCOMPARE(consoleLines.contains(u"a console info line"_s), infoCopied);
+        QCOMPARE(consoleLines.contains(u"a console warning line"_s), warningCopied);
+        QCOMPARE(consoleLines.contains(u"a console critical line"_s), criticalCopied);
+    }
+
+    // With no device the console is the only place a line has to go, so nothing is filtered out of
+    // it: that is what handing the device back means, and it is what a run that could not open its
+    // log file keeps doing.
+    void QMdmmDebugnoDeviceKeepsEverythingOnTheConsole()
+    {
+        qMdmmDebugSetDevice(nullptr);
+        qMdmmDebugSetConsoleLevel(LogLevel::Critical);
+
+        qDebug("a line with no record behind it");
+
+        QVERIFY(consoleLines.contains(u"a line with no record behind it"_s));
     }
 };
 

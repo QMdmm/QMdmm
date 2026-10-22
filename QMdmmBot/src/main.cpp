@@ -96,6 +96,11 @@ int main(int argc, char *argv[])
 
     Config config(QCoreApplication::arguments());
 
+    // The file opened above is the record and keeps every line; the level decides how much of it
+    // the terminal is told. It goes on now that the command line has been read, which also means
+    // what the configuration code reported while reading it is never filtered.
+    QMdmmCore::qMdmmDebugSetConsoleLevel(config.logLevel());
+
     QMdmmNetworking::ClientConfiguration conf;
     conf.setScreenName(config.name());
 

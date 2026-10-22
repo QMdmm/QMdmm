@@ -99,6 +99,18 @@ Configuration save / inspect:
                                      included) to the system-global scope and exit.
   -d, --show-current-configuration   Print the current configuration as JSON.
 
+Logging:
+  --log-level <level>                Lowest level copied from the log to the terminal (default:
+                                     off). The log file keeps every line either way, so this
+                                     decides what a terminal shows rather than what is
+                                     recorded. It is not a configuration item: -c does not save
+                                     it. One of:
+                                       off                 nothing
+                                       debug               debug and above
+                                       info                info and above
+                                       warning             warning and above
+                                       critical            critical and above
+
 Value ranges: <min~> means "at least min"; <0,min~> means "0, or at least min".
 Each maximum must be at least its own initial value, so for example --slash must not
 exceed --maximum-slash.
@@ -223,6 +235,8 @@ Config::Config()
     parser.addOption(QCommandLineOption(QStringList {u"C"_s, u"save-global-configuration"_s}));
     parser.addOption(QCommandLineOption(QStringList {u"d"_s, u"show-current-configuration"_s}));
 
+    parser.addOption(QCommandLineOption(QStringList {u"log-level"_s}, {}, u"level"_s));
+
     parser.process(*qApp);
 
     if (!parser.positionalArguments().isEmpty())
@@ -330,6 +344,22 @@ inline std::optional<QMdmmCore::LogicConfiguration::PunishHpRoundStrategy> strin
     return std::nullopt;
 }
 
+inline std::optional<QMdmmCore::LogLevel> stringToLogLevel(const QString &value)
+{
+    static const QHash<QString, QMdmmCore::LogLevel> levelHash {
+        std::make_pair(u"off"_s, QMdmmCore::LogLevel::Off),           std::make_pair(u"debug"_s, QMdmmCore::LogLevel::Debug),
+        std::make_pair(u"info"_s, QMdmmCore::LogLevel::Info),         std::make_pair(u"warning"_s, QMdmmCore::LogLevel::Warning),
+        std::make_pair(u"critical"_s, QMdmmCore::LogLevel::Critical),
+    };
+
+    for (QHash<QString, QMdmmCore::LogLevel>::const_iterator it = levelHash.constBegin(); it != levelHash.constEnd(); ++it) {
+        if (it.key().compare(value, Qt::CaseInsensitive) == 0)
+            return it.value();
+    }
+
+    return std::nullopt;
+}
+
 inline QString boolToString(bool value)
 {
     return value ? u"on"_s : u"off"_s;
@@ -397,6 +427,18 @@ void Config::read_(QMdmmCore::Settings *setting, QCommandLineParser *parser)
     } while (false)
 
     const bool v1set = parser->isSet(u"1"_s);
+
+    // Not a configuration item, so it does not go through the macro below: there is no property
+    // to set and nothing for -c to write out. It is also the one option here whose effect main()
+    // puts on rather than this constructor, since it decides how the run reports itself instead
+    // of what it does.
+    if (parser->isSet(u"log-level"_s)) {
+        const QString value = parser->value(u"log-level"_s);
+        const std::optional<QMdmmCore::LogLevel> level = stringToLogLevel(value);
+        if (!level.has_value())
+            configError(u"Config item log-level (from command line) can't be parsed."_s);
+        logLevel_ = level.value();
+    }
 
     if (v1set)
         logicConfiguration_ = QMdmmCore::LogicConfiguration::v1();
@@ -624,4 +666,9 @@ const QMdmmNetworking::ServerConfiguration &Config::serverConfiguration() const
 const QMdmmCore::LogicConfiguration &Config::logicConfiguration() const
 {
     return logicConfiguration_;
+}
+
+QMdmmCore::LogLevel Config::logLevel() const
+{
+    return logLevel_;
 }

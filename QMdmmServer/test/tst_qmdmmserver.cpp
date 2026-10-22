@@ -424,6 +424,7 @@ private slots:
     void punishHpModifierBelowFloor_isRejected();
     void switchValues_reachThePrintedConfiguration_data();
     void switchValues_reachThePrintedConfiguration();
+    void logLevel_isAcceptedButNotPartOfTheConfiguration();
     void portThatIsAlreadyTaken_makesTheRunGiveUp();
     void stopSignal_closesTheListenersAndExitsZero();
     void onlyStatusOverGet_getsTheSnapshot_data();
@@ -446,6 +447,7 @@ void tst_QMdmmServer::help_printsTheUsageAndExitsZero()
     // The usage text is the point of the option, so check that it carries the
     // options too rather than stopping after the first line.
     QVERIFY(result.standardOutput.contains(u"--save-configuration"_s));
+    QVERIFY(result.standardOutput.contains(u"--log-level"_s));
 }
 
 // config.cpp carries three short lines above its option list holding the letters that are still
@@ -908,8 +910,8 @@ void tst_QMdmmServer::unknownArgument_isRejected()
 // line and from a configuration file.
 //
 // Each row is a different way a value fails to parse: a word where a port number goes,
-// a number that does not fit the 16 bits a port is carried in, and a word outside the
-// family of spellings an on/off switch accepts.
+// a number that does not fit the 16 bits a port is carried in, a word outside the
+// family of spellings an on/off switch accepts, and a word that names no log level.
 void tst_QMdmmServer::unparsableOptionValue_isRejected_data()
 {
     QTest::addColumn<QStringList>("arguments");
@@ -918,6 +920,7 @@ void tst_QMdmmServer::unparsableOptionValue_isRejected_data()
     QTest::newRow("tcp-port is not a number") << QStringList {u"-p"_s, u"notaport"_s} << u"tcp-port (from command line) can't be parsed"_s;
     QTest::newRow("tcp-port does not fit a uint16") << QStringList {u"-p"_s, u"65536"_s} << u"tcp-port (from command line) can't be parsed"_s;
     QTest::newRow("tcp is not an on/off word") << QStringList {u"-t"_s, u"maybe"_s} << u"tcp (from command line) can't be parsed"_s;
+    QTest::newRow("log-level names no level") << QStringList {u"--log-level"_s, u"chatty"_s} << u"log-level (from command line) can't be parsed"_s;
 }
 
 void tst_QMdmmServer::unparsableOptionValue_isRejected()
@@ -1036,6 +1039,26 @@ void tst_QMdmmServer::switchValues_reachThePrintedConfiguration()
     QCOMPARE(result.exitCode, 0);
 
     QVERIFY(result.standardOutput.contains(printed));
+}
+
+// The level is the one option that is not a configuration item: it says how much of the
+// log the terminal is told, which is how a run reports itself rather than what the server
+// does. A run therefore accepts it and prints the configuration it would have printed
+// without it -- no key for the level, and nothing for -c to write out.
+//
+// -t on is the positive control: the printed page holds the values a run was given on the
+// command line, so an option that had become a setting would be printed beside it. Without
+// that half the case would pass on an empty page -- which is what -d prints for a run that
+// was given nothing, and would make the assertion below vacuous.
+void tst_QMdmmServer::logLevel_isAcceptedButNotPartOfTheConfiguration()
+{
+    const RunResult result = runServer({u"-t"_s, u"on"_s, u"--log-level"_s, u"warning"_s, u"-d"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 0);
+
+    QVERIFY(result.standardOutput.contains(u"\"tcpEnabled\": true"_s));
+    QVERIFY(!result.standardOutput.contains(u"log-level"_s));
 }
 
 // A run that gets past the configuration reaches the server itself, and a server that

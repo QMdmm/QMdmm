@@ -34,12 +34,21 @@ public:
         return playingStyle_;
     }
 
+    [[nodiscard]] QMdmmCore::LogLevel logLevel() const
+    {
+        return logLevel_;
+    }
+
 private:
     void read_(QCommandLineParser *parser);
 
     QString host_;
     QString name_;
     QString playingStyle_;
+
+    // How much of the log the terminal is told; the file keeps everything either way. Off is
+    // what the bot wrote before there was a level.
+    QMdmmCore::LogLevel logLevel_ = QMdmmCore::LogLevel::Off;
 };
 
 #endif

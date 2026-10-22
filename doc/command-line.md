@@ -25,6 +25,12 @@ from the terminal, so a room filled entirely with bots plays itself out.
   `horsePreferred` and `rl`. The first two play real strategies; `rl` is a
   placeholder that is still accepted by the option check and then refuses to
   start, with status 3, rather than joining a game with no strategy.
+- `--log-level <level>` -- how much of the log is copied out to the terminal.
+  Defaults to `off`, and the values are `debug`, `info`, `warning` and
+  `critical`, each naming the lowest level that is copied: `warning` copies
+  warnings and criticals and leaves the two below them to the file. The log file
+  keeps every line whatever the level says, so this decides what a terminal
+  shows rather than what is recorded.
 
 An unusable command line -- an argument that is not an option, a missing host,
 a style that does not exist, a style that exists but is refused before it can
@@ -83,10 +89,11 @@ Every value below has a default, and can also come from a stored configuration
 file; an option given on the command line wins over the file. The stored key of
 an option is its long name. The two sets are the same set: a setting that no
 option names has no stored key either, and the values the file can hold are
-exactly the values listed here. A setting internal enough that no one running a
-server would tune it is documented with the class that declares it instead of
-being listed here. [Getting Started](getting-started.md) covers where the files
-live and how a value is looked up.
+exactly the values listed here -- with the level under *Logging* the one
+exception, which is an option with no stored key. A setting internal enough that
+no one running a server would tune it is documented with the class that declares
+it instead of being listed here. [Getting Started](getting-started.md) covers
+where the files live and how a value is looked up.
 
 ### Help and version
 
@@ -240,6 +247,19 @@ been merged, so a value read from a file is judged exactly like one from a flag.
 - `-d`, `--show-current-configuration` -- print the configuration the run
   resolved as JSON, and exit with status 0. Given together with `-c` or `-C`,
   the JSON is printed and the save then decides the exit status.
+
+### Logging
+
+- `--log-level <level>` -- how much of the log is copied out to the terminal.
+  Defaults to `off`, and the values are `debug`, `info`, `warning` and
+  `critical`, each naming the lowest level that is copied: `warning` copies
+  warnings and criticals and leaves the two below them to the file.
+
+The level is the one option here that a stored configuration file cannot also
+carry, and `-c` does not write it out. The file the run opens is the record and
+keeps every line either way; the level says how much of it the terminal is told,
+which is how a run reports itself rather than what the server does. A run that
+never opens a log file has nothing to filter, so its terminal keeps every line.
 
 ### Stopping
 

@@ -6,8 +6,10 @@
 #include <QMdmmSettings>
 
 #include <QCommandLineParser>
+#include <QHash>
 
 #include <iostream>
+#include <optional>
 
 using namespace Qt::StringLiterals;
 
@@ -33,6 +35,17 @@ Bot:
                                        horsePreferred      prefer the horse
                                        rl                  reinforcement learning (not implemented; exits
                                                            at startup)
+
+Logging:
+  --log-level <level>                Lowest level copied from the log to the terminal (default:
+                                     off). The log file keeps every line either way, so this
+                                     decides what a terminal shows rather than what is
+                                     recorded. One of:
+                                       off                 nothing
+                                       debug               debug and above
+                                       info                info and above
+                                       warning             warning and above
+                                       critical            critical and above
 )help"_s;
     return text;
 }
@@ -75,6 +88,26 @@ template<typename... Args>
 
 } // namespace
 
+namespace {
+
+std::optional<QMdmmCore::LogLevel> stringToLogLevel(const QString &value)
+{
+    static const QHash<QString, QMdmmCore::LogLevel> levelHash {
+        std::make_pair(u"off"_s, QMdmmCore::LogLevel::Off),           std::make_pair(u"debug"_s, QMdmmCore::LogLevel::Debug),
+        std::make_pair(u"info"_s, QMdmmCore::LogLevel::Info),         std::make_pair(u"warning"_s, QMdmmCore::LogLevel::Warning),
+        std::make_pair(u"critical"_s, QMdmmCore::LogLevel::Critical),
+    };
+
+    for (QHash<QString, QMdmmCore::LogLevel>::const_iterator it = levelHash.constBegin(); it != levelHash.constEnd(); ++it) {
+        if (it.key().compare(value, Qt::CaseInsensitive) == 0)
+            return it.value();
+    }
+
+    return std::nullopt;
+}
+
+} // namespace
+
 Config::Config(const QStringList &arguments)
 {
     QCommandLineParser parser;
@@ -87,6 +120,8 @@ Config::Config(const QStringList &arguments)
     parser.addOption(QCommandLineOption(QStringList {u"n"_s, u"name"_s}, {}, u"Screen Name"_s));
 
     parser.addOption(QCommandLineOption(QStringList {u"s"_s, u"playing-style"_s}, {}, u"playing style"_s));
+
+    parser.addOption(QCommandLineOption(QStringList {u"log-level"_s}, {}, u"level"_s));
 
     parser.process(arguments);
 
@@ -118,4 +153,14 @@ void Config::read_(QCommandLineParser *parser)
     // whitelist in Bot::styleExist is the single source of truth.
     if (!Bot::styleExist(playingStyle_))
         configError(u"Specified playing style does not exist."_s);
+
+    // The level decides how much of the log the terminal is told; the file the run opened keeps
+    // everything either way. main() puts it on, so this half only reads it.
+    if (parser->isSet(u"log-level"_s)) {
+        const QString value = parser->value(u"log-level"_s);
+        const std::optional<QMdmmCore::LogLevel> level = stringToLogLevel(value);
+        if (!level.has_value())
+            configError(u"Specified log level does not exist."_s);
+        logLevel_ = level.value();
+    }
 }

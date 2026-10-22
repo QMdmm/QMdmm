@@ -581,6 +581,7 @@ private slots:
     void cli_missingHostIsRejected();
     void cli_unknownPlayingStyleIsRejected_data();
     void cli_unknownPlayingStyleIsRejected();
+    void cli_unknownLogLevelIsRejected();
 
     // The style the configuration accepts and no style implements: recognized,
     // and refused rather than played as a seat that plays nothing.
@@ -2023,6 +2024,7 @@ void tst_QMdmmBot::cli_helpPrintsTheUsageAndExitsZero()
     // The usage text is the point of the option, so check that it carries the
     // options too rather than stopping after the first line.
     QVERIFY(result.standardOutput.contains(u"--playing-style"_s));
+    QVERIFY(result.standardOutput.contains(u"--log-level"_s));
 }
 
 // The version option is Qt's, added rather than written out, and it is the other
@@ -2085,6 +2087,20 @@ void tst_QMdmmBot::cli_unknownPlayingStyleIsRejected()
     QVERIFY(result.exitStatus == QProcess::NormalExit);
     QCOMPARE(result.exitCode, 3);
     QVERIFY(result.standardError.contains(u"Specified playing style does not exist."_s));
+}
+
+// The level is a word from a fixed set rather than a switch, so a word outside it is a
+// typo and is refused like the style above rather than quietly left at off -- a run
+// configured differently from what the user typed is worse than a run that does not
+// start. The style is spelled out here because the style is checked first, and a run
+// that stopped there would pass this case for the wrong reason.
+void tst_QMdmmBot::cli_unknownLogLevelIsRejected()
+{
+    const RunResult result = runBot({u"-l"_s, u"somewhere"_s, u"-s"_s, u"knifePreferred"_s, u"--log-level"_s, u"chatty"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 3);
+    QVERIFY(result.standardError.contains(u"Specified log level does not exist."_s));
 }
 
 // The style the parser accepts but no style implements is refused rather than
