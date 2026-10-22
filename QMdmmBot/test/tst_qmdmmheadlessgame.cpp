@@ -6,20 +6,19 @@
 // suite never gets past the command line, and the bot suite drives whole games through the Bot
 // class in its own address space. Neither says that QMdmmServer6 and QMdmmBot6 work together, and
 // that pair of programs is what a user starts. This file is that reading -- one server and N bots,
-// all of them real programs, from an empty room to a finished match and on to the next one.
+// all of them real programs, from an empty room to a finished match.
 //
 // What it reads through is the server's read-only control plane (--control-port, GET /status),
 // which is the only surface a process outside the server has: the server writes no lines of its
 // own to either stream, and a match is over in a fraction of a second, so there is nothing to read
-// afterwards. The snapshot carries the three counts and, per room, its id and round counter.
+// afterwards. The snapshot carries the three counts and each room's round counter, and the pair of
+// readings this leg is after is that counter having climbed and the room being gone afterwards
+// with every process still running.
 //
-// The reading is a room built after the one this leg watched fill, with a round played in it. A
-// bot's match ends with the game-over broadcast, and the program dials in again for the next one
-// (see MatchLoop in QMdmmBot/src/main.cpp), so a later room can only fill if the bots came back --
-// all of them, since a room starts its match only once it holds every seat. Reading that rather
-// than the room being gone afterwards is deliberate: with bots that come back, the empty server
-// between two matches is a moment rather than a state, and a reading that depends on catching it
-// would be a race.
+// A room that is gone with its bots still running is the end of a match rather than a set of
+// departures: a bot leaves the room when the match ends (ClientP::notifyGameOver) and does not
+// come back, and the server tears a room down with its last player. The round counter having
+// climbed is what rules out the other reading -- a room nobody ever played in, vacated.
 
 #include "test.h"
 
@@ -52,14 +51,6 @@ namespace {
 // with, and the number the trio this leg grew out of was measured at.
 constexpr int playerCount = 3;
 
-// One room as the control plane reports it: the id it was built with, and how many rounds it has
-// started.
-struct RoomReading
-{
-    quint32 id = 0;
-    int rounds = 0;
-};
-
 // What one answer from the control plane says, as far as this file reads it.
 struct Snapshot
 {
@@ -69,8 +60,6 @@ struct Snapshot
     // The largest round counter any room reports. Zero on a server whose rooms have yet to start a
     // match, and on one with no rooms at all.
     int rounds = 0;
-    // Every room in the answer, by id.
-    std::vector<RoomReading> roomList;
 };
 
 // A port nothing is listening on, taken from the kernel and handed back before the caller passes
@@ -137,36 +126,11 @@ bool askStatus(quint16 port, Snapshot *snapshot)
     read.players = reported.value(u"players"_s).toInt();
 
     const QJsonArray roomList = reported.value(u"roomList"_s).toArray();
-    for (const QJsonValue &room : roomList) {
-        const QJsonObject entry = room.toObject();
-
-        RoomReading reading;
-        // The id is unsigned, and QJsonValue has no unsigned accessor: through qint64 keeps it
-        // exact.
-        reading.id = static_cast<quint32>(entry.value(u"id"_s).toInteger());
-        reading.rounds = entry.value(u"rounds"_s).toInt();
-
-        read.rounds = std::max(read.rounds, reading.rounds);
-        read.roomList.push_back(reading);
-    }
+    for (const QJsonValue &room : roomList)
+        read.rounds = std::max(read.rounds, room.toObject().value(u"rounds"_s).toInt());
 
     *snapshot = read;
     return true;
-}
-
-// Whether a room other than @p first has played a round.
-//
-// A room is one match here: the server builds one per session and tears it down when the match
-// ends, so a room with another id is a later match. A round played in it says that match began,
-// which takes a full room -- every bot back at the table.
-bool aRoomOtherThanPlayed(const Snapshot &snapshot, quint32 first)
-{
-    for (const RoomReading &room : snapshot.roomList) {
-        if (room.id != first && room.rounds >= 1)
-            return true;
-    }
-
-    return false;
 }
 
 // Asks the plane until a snapshot is the one @p reached describes, or until @p deadlineMs has gone
@@ -334,11 +298,10 @@ public:
     Q_INVOKABLE tst_QMdmmHeadlessGame() = default;
 
 private slots:
-    // A room fills, a match is played, and the bots come back for the next one: a room built after
-    // the one this case watched fill, with a round played in it, is a second match that could only
-    // start with every seat filled again. Every process still being there is what says nothing died
-    // on the way from one match to the next.
-    void headlessGame_theBotsComeBackAfterAMatch();
+    // A room fills, a match is played, and the room is gone afterwards with every process still
+    // running. The round counter climbing is what says a match was played rather than a room
+    // vacated; the processes still being there is what says nothing died on the way.
+    void headlessGame_playsAMatchToItsEnd();
 
     // The same leg one seat short: the third bot is pointed at a port nobody listens on, and the
     // room stays recruiting for as long as it is watched. This is the negative control for the
@@ -359,7 +322,7 @@ private slots:
     void headlessGame_printsTheConfigurationTheLegPassed();
 };
 
-void tst_QMdmmHeadlessGame::headlessGame_theBotsComeBackAfterAMatch()
+void tst_QMdmmHeadlessGame::headlessGame_playsAMatchToItsEnd()
 {
     const quint16 gamePort = freePort();
     const quint16 controlPort = freePort();
@@ -378,21 +341,21 @@ void tst_QMdmmHeadlessGame::headlessGame_theBotsComeBackAfterAMatch()
         = waitForStatus(controlPort, 60000, [](const Snapshot &snapshot) { return snapshot.rooms == 1 && snapshot.players == playerCount - 1; });
     QVERIFY2(recruiting.has_value(), qPrintable(u"the room never filled to %1 of %2 players\n%3"_s.arg(playerCount - 1).arg(playerCount).arg(diagnosis(controlPort, processes))));
 
-    // Nothing has been played yet, which is what makes the rounds below a reading about a second
-    // match rather than about a room that was always busy. The room's id is the marker the rest of
-    // the case is read against: it is handed out when a room is built and never changes, so a
-    // later match is a room with another one.
+    // Nothing has been played yet, which is what makes the round counter's climb below a reading
+    // about the match rather than about a room that was always busy.
     QCOMPARE(recruiting->games, 0);
     QCOMPARE(recruiting->rounds, 0);
-    QVERIFY2(recruiting->roomList.size() == 1, qPrintable(u"the recruiting room was not the only one on the server\n%1"_s.arg(diagnosis(controlPort, processes))));
-    const quint32 firstRoom = recruiting->roomList.front().id;
 
     processes.addBot(gamePort, u"last"_s);
 
-    // The match is over in a fraction of a second and the next one starts a second later, so the
-    // reading is taken as fast as the plane answers rather than at an interval, and the loop is
-    // after a state that is reached by playing rather than a state that persists.
-    std::optional<Snapshot> returned;
+    // The match is over in a fraction of a second, so the reading is taken as fast as the plane
+    // answers rather than at an interval. What the loop is after is the pair -- a round counter
+    // that has climbed, and the room that is gone afterwards -- and only the first half of it is
+    // short-lived. The room is known to be there before the last bot is started, so a snapshot
+    // with no rooms in it is one taken after the match; there is nothing left to wait for at that
+    // point, which is why the loop ends there rather than spinning out the deadline.
+    int highestRound = 0;
+    bool sawTheEnd = false;
     QElapsedTimer timer;
     timer.start();
     while (timer.elapsed() < 60000) {
@@ -400,16 +363,18 @@ void tst_QMdmmHeadlessGame::headlessGame_theBotsComeBackAfterAMatch()
         if (!askStatus(controlPort, &snapshot))
             continue;
 
-        if (aRoomOtherThanPlayed(snapshot, firstRoom)) {
-            returned = snapshot;
+        highestRound = std::max(highestRound, snapshot.rounds);
+        if (snapshot.rooms == 0 && snapshot.players == 0) {
+            sawTheEnd = true;
             break;
         }
     }
 
-    QVERIFY2(returned.has_value(), qPrintable(u"no room after the first one ever played a match, so the bots never came back\n%1"_s.arg(diagnosis(controlPort, processes))));
+    QVERIFY2(sawTheEnd, qPrintable(u"the room never came to an end\n%1"_s.arg(diagnosis(controlPort, processes))));
+    QVERIFY2(highestRound >= 1, qPrintable(u"the room ended without a single round having been played\n%1"_s.arg(diagnosis(controlPort, processes))));
 
-    // Every process is still there: the match ended and the next one began by themselves, rather
-    // than by one of the programs going away.
+    // Every process is still there: the match ended by itself, rather than by one of the programs
+    // going away and taking the room with it.
     QVERIFY2(processes.server().state() == QProcess::Running, qPrintable(u"the server exited during the match\n%1"_s.arg(diagnosis(controlPort, processes))));
     for (qsizetype i = 0; i < static_cast<qsizetype>(processes.bots().size()); ++i)
         QVERIFY2(processes.bots()[i]->state() == QProcess::Running, qPrintable(u"bot %1 exited during the match"_s.arg(i)));
