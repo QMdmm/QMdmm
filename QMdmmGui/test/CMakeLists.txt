@@ -23,6 +23,14 @@ add_dependencies(QMdmmGui_Test tst_qmdmmgui6)
 # be there when the tests run -- which is next to the test, as the build lays them out.
 add_dependencies(tst_qmdmmgui6 QMdmmServer6 QMdmmBot6)
 
+# A stand-in for a bot: a program that leaves with code 0 at once, which is what a bot's own
+# exit looks like once the match it played is over (see botstandin.cpp). The seats a local game
+# fills are watched by the bridge, and the half worth a case of its own -- a seat that went home
+# rather than one that failed -- is reached by handing the bridge this program instead of a bot.
+add_executable(botstandin6 EXCLUDE_FROM_ALL botstandin.cpp)
+add_dependencies(QMdmmGui_Test botstandin6)
+add_dependencies(tst_qmdmmgui6 botstandin6)
+
 target_link_libraries(tst_qmdmmgui6
     PUBLIC QMdmm6::Core
            QMdmm6::Networking
@@ -45,6 +53,9 @@ target_include_directories(tst_qmdmmgui6 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..
 # Qt Quick Test discovers the tst_*.qml cases in this directory.
 target_compile_definitions(tst_qmdmmgui6 PRIVATE
     "QUICK_TEST_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\""
+    # Resolved by the build system, so the case that hands the bridge a stand-in bot does not
+    # have to guess the output directory, the version suffix or the platform's own file name.
+    "QMDMM_STANDIN_BOT=\"$<TARGET_FILE:botstandin6>\""
 )
 
 # What a failing case leaves behind has to be a file. The test's own output does not reach the

@@ -94,6 +94,39 @@ TestCase {
         }, 15000);
     }
 
+    function test_aBotThatPlayedItsMatchIsNotReportedAsGone() {
+        // The other half of the same watch: a bot's run is one match, so a bot that leaves with
+        // code 0 is a seat that played its game out and went home, and the strip has to stay quiet
+        // about it -- otherwise every game that ends puts a failure on the screen of a game that
+        // went exactly as it should. The program here is a stand-in that leaves with code 0 at
+        // once, which is what a real bot does once its match is over with the match itself taken
+        // out of the picture (see botstandin.cpp); the case above is the same watch on a seat that
+        // failed, and the two are told apart by this exit alone.
+        var said = createTemporaryObject(signalSpyComponent, testCase, {
+                                             target: game,
+                                             signalName: "statusMessageChanged"
+                                         });
+        game.setProgramPaths("", standInBotProgram);
+        game.playerCount = 2;
+        game.startLocalGame("Tester");
+
+        // The human's own arrival is what says the server was found and the game came up, so that
+        // the silence below is about the bot rather than about a game that never started.
+        tryVerify(function () {
+            return game.players.length === 1;
+        }, 15000);
+        // The stand-in leaves as soon as it is started, well before anyone else can arrive, so by
+        // here it is long gone: the wait is what makes the silence an observation rather than a
+        // snapshot taken before the exit could have been seen.
+        wait(3000);
+        compare(reported(said, "bot stopped"), false);
+        // ...and it really did leave rather than fail to start: a stand-in that was not there
+        // would be reported as a seat that cannot be filled, and the reading above would then be
+        // green for the wrong reason.
+        compare(reported(said, "Failed to start"), false);
+        compare(game.players.length, 1);
+    }
+
     function test_aHandedOverPlayerIsNotAskedForTheRequestsAfterIt() {
         // The other half of the hand-over: with the flag on, a request is given up as it arrives
         // and never reaches the view. The action request is the one to watch -- every living

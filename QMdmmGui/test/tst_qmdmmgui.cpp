@@ -211,6 +211,12 @@ public slots:
         engine->rootContext()->setContextProperty(u"bridgeSocketName"_s, QMdmmGameClient::serverSocketName());
         engine->rootContext()->setContextProperty(u"serverDefaultSocketName"_s, QMdmmNetworking::ServerConfiguration::defaults().localSocketName());
 
+        // The stand-in bot the seat-watch case hands the bridge: a program that leaves with code 0
+        // at once, which is what a bot's own exit looks like once the match it played is over (see
+        // botstandin.cpp). It arrives resolved from the build system rather than looked up here, so
+        // the case says nothing about where the build keeps its programs.
+        engine->rootContext()->setContextProperty(u"standInBotProgram"_s, QString::fromUtf8(QMDMM_STANDIN_BOT));
+
         // The values behind the two enums the scene names in its own branches -- the punish
         // rounding its rules strip spells out, and the rock-paper-scissors pick its match log
         // spells out. It is handed both as plain numbers, so the branches only hold while their
