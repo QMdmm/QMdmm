@@ -119,12 +119,14 @@ void QMdmmGameClient::stopLocalServer()
     m_childrenAreStopping = false;
 }
 
-void QMdmmGameClient::watchChildProcess(QProcess *process, const QString &failure)
+void QMdmmGameClient::watchChildProcess(QProcess *process, const QString &failure, bool leavesAfterItsMatch)
 {
     // A program a local game runs is wanted for as long as the game lasts: the server is what the
     // game is played on and the bots are what fill its seats, so one that is gone has taken the
     // floor out from under a game the view is still showing. Saying so is what the strip is for,
     // and it is the same strip the two "not found" notices land on (see startLocalGame / addBot).
+    // A bot's share of that is one match rather than the whole game; the finished() handler below
+    // is where the two are told apart.
     //
     // A program that never started is not watched: whoever started it reports that itself (the
     // waitForStarted right after each start()), and there is nothing left to watch. Everything
@@ -134,8 +136,15 @@ void QMdmmGameClient::watchChildProcess(QProcess *process, const QString &failur
             return;
         setStatusMessage(failure);
     });
-    connect(process, &QProcess::finished, this, [this, failure](int, QProcess::ExitStatus) {
+    connect(process, &QProcess::finished, this, [this, failure, leavesAfterItsMatch](int exitCode, QProcess::ExitStatus exitStatus) {
         if (m_childrenAreStopping)
+            return;
+        // A bot's run is one match (see QMdmmBot/src/main.cpp): it leaves with code 0 when the
+        // match it was started for ends, so a seat that played its game out and went home is not
+        // a seat that failed. Anything else either program can do -- a crash, a signal, any other
+        // code -- is still said, and so is any way of leaving at all for the server, which serves
+        // every match rather than one of them.
+        if (leavesAfterItsMatch && exitStatus == QProcess::NormalExit && exitCode == 0)
             return;
         setStatusMessage(failure);
     });
@@ -492,7 +501,7 @@ void QMdmmGameClient::addBot(const QString &name)
     QProcess *bot = new QProcess(this);
     bot->setProgram(m_botProgram);
     bot->setArguments({u"--host"_s, serverSocketName(), u"--name"_s, name});
-    watchChildProcess(bot, tr("A bot stopped"));
+    watchChildProcess(bot, tr("A bot stopped"), /* leavesAfterItsMatch = */ true);
     bot->start();
     if (!bot->waitForStarted(ProcessStartTimeoutMs)) {
         setStatusMessage(tr("Failed to start a bot"));

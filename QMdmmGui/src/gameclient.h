@@ -153,7 +153,11 @@ private:
     void stopBots();
     // Watch a program a local game runs, so that one which goes away is said on the strip rather
     // than leaving a game on screen that has nothing left to play on (see the definition).
-    void watchChildProcess(QProcess *process, const QString &failure);
+    //
+    // @p leavesAfterItsMatch is for a program whose whole job is one match: a bot leaves with code
+    // 0 when the match it was started for ends, and that is the game finishing rather than the
+    // seat failing.
+    void watchChildProcess(QProcess *process, const QString &failure, bool leavesAfterItsMatch = false);
     void setGameState(GameState s);
     void setStatusMessage(const QString &msg);
     void setLogicConfiguration(const QMdmmCore::LogicConfiguration &conf);
