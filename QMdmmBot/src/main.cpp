@@ -3,6 +3,7 @@
 #include "bot.h"
 #include "config.h"
 
+#include <QMdmmAgent>
 #include <QMdmmClient>
 #include <QMdmmGlobal>
 
@@ -135,6 +136,14 @@ int main(int argc, char *argv[])
         shutDown();
     });
     stopPoll.start(100);
+
+    // A run is one match. The server ends a session with the game-over broadcast, and the client
+    // drops its socket there (ClientP::notifyGameOver); a bot that stayed past it would sit in its
+    // event loop holding nothing but the room mirror it built while playing, waiting for a match
+    // nobody is going to hand it. Starting the next one is not this run's business -- a second bot
+    // program, a GUI's local game or a test leg starts it -- so this run ends where the match ends,
+    // the way one asked to stop does: the loop leaves with code 0.
+    QObject::connect(client.agent(), &QMdmmNetworking::Agent::gameOverNotified, &a, []() { QCoreApplication::exit(0); });
 
     client.connectToHost(config.host(), QMdmmCore::Data::StateOnlineBot);
 

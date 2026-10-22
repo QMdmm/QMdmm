@@ -104,10 +104,10 @@ set_target_properties(tst_qmdmmheadlessgame6 PROPERTIES
 
 add_test(NAME "QMdmmBot - headless game - Qt6" COMMAND tst_qmdmmheadlessgame6)
 
-# The cases wait on state rather than on a fixed pause, and both waits are bounded well inside the
-# suite's own bound: 60 s for a room to fill and 60 s for the match to end, plus 15 s per process to
-# stop, is under 300 s. The reading this is first set against is the platform the case runs on
-# today; it is re-read from CI once the leg has run there.
+# The cases wait on state rather than on a fixed pause, and every wait is bounded well inside the
+# suite's own bound: 60 s for a room to fill, 60 s for the match to end, 20 s for each set of bots
+# to end its runs, plus 15 s per process to stop, comes to 265 s. The reading this is first set
+# against is the platform the case runs on today; it is re-read from CI once the leg has run there.
 set_tests_properties("QMdmmBot - headless game - Qt6" PROPERTIES TIMEOUT 300)
 
 # See the note in QMdmmCore/test/CMakeLists.txt for how the bound is chosen. This case drives

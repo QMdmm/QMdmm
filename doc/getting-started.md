@@ -173,8 +173,9 @@ then start one bot per seat:
 
 (`-3` is shorthand for `--players=3`.) The server starts the game as soon as the
 last seat is taken. With no human in the room nothing waits on input, so the
-bots play the game out at once; the room then goes quiet, the server takes the
-next room, and each bot stays in its event loop.
+bots play the game out at once. A bot's run is one match: it exits, with code 0,
+when its match ends, and the server stays up for the next one -- running that
+command line again with three more bots is what starts the next match.
 
 Neither program is a way to play the game yourself: a server hosts the rooms and
 hands out the requests, a bot answers them as they arrive, and neither reads

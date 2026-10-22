@@ -6,19 +6,21 @@
 // suite never gets past the command line, and the bot suite drives whole games through the Bot
 // class in its own address space. Neither says that QMdmmServer6 and QMdmmBot6 work together, and
 // that pair of programs is what a user starts. This file is that reading -- one server and N bots,
-// all of them real programs, from an empty room to a finished match.
+// all of them real programs, from an empty room to a finished match, and on to the one a caller
+// starts afterwards.
 //
 // What it reads through is the server's read-only control plane (--control-port, GET /status),
 // which is the only surface a process outside the server has: the server writes no lines of its
 // own to either stream, and a match is over in a fraction of a second, so there is nothing to read
-// afterwards. The snapshot carries the three counts and each room's round counter, and the pair of
-// readings this leg is after is that counter having climbed and the room being gone afterwards
-// with every process still running.
+// afterwards. The snapshot carries the three counts and each room's round counter; the counter
+// having climbed is what says a match was played, and the room being gone afterwards what says
+// that match ended.
 //
-// A room that is gone with its bots still running is the end of a match rather than a set of
-// departures: a bot leaves the room when the match ends (ClientP::notifyGameOver) and does not
-// come back, and the server tears a room down with its last player. The round counter having
-// climbed is what rules out the other reading -- a room nobody ever played in, vacated.
+// A bot's run is one match (see QMdmmBot/src/main.cpp): the program leaves with code 0 when the
+// game-over broadcast arrives, and the next match is somebody else's to start. That is the second
+// reading here -- every bot the case started ends on its own and cleanly while the server is still
+// up -- and the reason the case goes on to start a second set of bots: a leg that only watched the
+// first match go quiet would read the same whether the bots ended or merely stopped answering.
 
 #include "test.h"
 
@@ -151,6 +153,37 @@ std::optional<Snapshot> waitForStatus(quint16 port, int deadlineMs, const std::f
     }
 
     return std::nullopt;
+}
+
+// Waits for every bot from @p from on to end its run, and names the ones that did not end the way
+// a finished match ends one: on its own, and with code 0. Empty when they all did.
+//
+// @p timeoutMs bounds the group rather than each bot, so a case that has several bots still
+// playing cannot add up to more than the suite is allowed. A bot that outlives the match it played
+// is one whose run does not end where the program says it does, and waiting longer would only turn
+// that into a killed process with no reading attached.
+QString botsThatDidNotEnd(const std::vector<std::unique_ptr<QProcess>> &bots, qsizetype from, int timeoutMs)
+{
+    QStringList complaints;
+    QElapsedTimer timer;
+    timer.start();
+
+    for (qsizetype i = from; i < static_cast<qsizetype>(bots.size()); ++i) {
+        QProcess *bot = bots[i].get();
+        const int remaining = std::max(0, timeoutMs - static_cast<int>(timer.elapsed()));
+
+        if (!bot->waitForFinished(remaining)) {
+            complaints.append(u"bot %1 was still running when its match ended"_s.arg(i));
+            continue;
+        }
+
+        if (bot->exitStatus() != QProcess::NormalExit)
+            complaints.append(u"bot %1 did not leave on its own"_s.arg(i));
+        else if (bot->exitCode() != 0)
+            complaints.append(u"bot %1 left with %2"_s.arg(i).arg(bot->exitCode()));
+    }
+
+    return complaints.join(u"; "_s);
 }
 
 // The bots and the server a case starts, and what takes them down.
@@ -298,10 +331,12 @@ public:
     Q_INVOKABLE tst_QMdmmHeadlessGame() = default;
 
 private slots:
-    // A room fills, a match is played, and the room is gone afterwards with every process still
-    // running. The round counter climbing is what says a match was played rather than a room
-    // vacated; the processes still being there is what says nothing died on the way.
-    void headlessGame_playsAMatchToItsEnd();
+    // A room fills, a match is played to its end, and every bot leaves with code 0 while the
+    // server stays up. The round counter climbing is what says a match was played rather than a
+    // room vacated; the bots ending on their own is what says each run stopped where its match
+    // stopped, and the second set of bots afterwards is the half this leg owes the caller -- the
+    // next match is not started by the bots that played the last one.
+    void headlessGame_aMatchEndsAndTheBotsExit();
 
     // The same leg one seat short: the third bot is pointed at a port nobody listens on, and the
     // room stays recruiting for as long as it is watched. This is the negative control for the
@@ -322,7 +357,7 @@ private slots:
     void headlessGame_printsTheConfigurationTheLegPassed();
 };
 
-void tst_QMdmmHeadlessGame::headlessGame_playsAMatchToItsEnd()
+void tst_QMdmmHeadlessGame::headlessGame_aMatchEndsAndTheBotsExit()
 {
     const quint16 gamePort = freePort();
     const quint16 controlPort = freePort();
@@ -373,11 +408,25 @@ void tst_QMdmmHeadlessGame::headlessGame_playsAMatchToItsEnd()
     QVERIFY2(sawTheEnd, qPrintable(u"the room never came to an end\n%1"_s.arg(diagnosis(controlPort, processes))));
     QVERIFY2(highestRound >= 1, qPrintable(u"the room ended without a single round having been played\n%1"_s.arg(diagnosis(controlPort, processes))));
 
-    // Every process is still there: the match ended by itself, rather than by one of the programs
-    // going away and taking the room with it.
+    // Each bot ends its own run there, and ends it cleanly. What the exit code carries is the whole
+    // reading: a bot leaves 0 from the one place a finished match leads to, so a bot that crashed,
+    // one that was killed and one that is still holding its event loop all read differently from
+    // the outside.
+    const QString stillPlaying = botsThatDidNotEnd(processes.bots(), 0, 20000);
+    QVERIFY2(stillPlaying.isEmpty(), qPrintable(stillPlaying + u"\n"_s + diagnosis(controlPort, processes)));
+
+    // The server is what stays: its room went away with the match, but the program is still there
+    // taking rooms, which is what makes the second half below possible at all.
     QVERIFY2(processes.server().state() == QProcess::Running, qPrintable(u"the server exited during the match\n%1"_s.arg(diagnosis(controlPort, processes))));
-    for (qsizetype i = 0; i < static_cast<qsizetype>(processes.bots().size()); ++i)
-        QVERIFY2(processes.bots()[i]->state() == QProcess::Running, qPrintable(u"bot %1 exited during the match"_s.arg(i)));
+
+    // The next match is the caller's to start -- that is the other half of what a run ending
+    // means. Three more bot programs, a room of their own, and every one of them ending the same
+    // way the first three did.
+    for (int i = 0; i < playerCount; ++i)
+        processes.addBot(gamePort, u"next"_s + QString::number(i));
+
+    const QString secondStillPlaying = botsThatDidNotEnd(processes.bots(), playerCount, 20000);
+    QVERIFY2(secondStillPlaying.isEmpty(), qPrintable(secondStillPlaying + u"\n"_s + diagnosis(controlPort, processes)));
 }
 
 void tst_QMdmmHeadlessGame::headlessGame_aMissingBot_leavesTheRoomRecruiting()
