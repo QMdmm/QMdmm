@@ -11,10 +11,10 @@
 //
 // What it reads through is the server's read-only control plane (--control-port, GET /status),
 // which is the only surface a process outside the server has: the server writes no lines of its
-// own to either stream, and a match is over in a fraction of a second, so there is nothing to read
-// afterwards. The snapshot carries the three counts and each room's round counter; the counter
-// having climbed is what says a match was played, and the room being gone afterwards what says
-// that match ended.
+// own to either stream, and a match leaves nothing behind once it is over, so there is nothing to
+// read afterwards. The snapshot carries the three counts and each room's round counter; the
+// counter having climbed is what says a match was played, and the room being gone afterwards what
+// says that match ended.
 //
 // A bot's run is one match (see QMdmmBot/src/main.cpp): the program leaves with code 0 when the
 // game-over broadcast arrives, and the next match is somebody else's to start. That is the second
@@ -52,6 +52,24 @@ namespace {
 // How many players the room every case here fills holds. Three is the default the server starts
 // with, and the number the trio this leg grew out of was measured at.
 constexpr int playerCount = 3;
+
+// What a case waits for, in milliseconds. These bound the runners rather than the programs: the
+// same match is over in a fraction of a second on the machine this was written on and takes tens
+// of seconds on a CI runner, a round costing a second or more once sanitised. A bound read off a
+// local timing therefore reads as "the match should be over by now" on CI, which is what the first
+// cut of these did: twenty seconds for a set of bots' runs, and every Linux cell of the run that
+// carried it failed with the second room still at round eleven to fifteen.
+
+// A room filling: three programs started, dialled in and seated. One or two seconds in practice;
+// what this covers is a runner slow to get three programs going.
+constexpr int roomDeadlineMs = 60000;
+
+// One match, from the room filling to the room being gone again.
+constexpr int matchDeadlineMs = 120000;
+
+// One bot's run ending after its match has ended: the game-over broadcast is what ends it (see
+// QMdmmBot/src/main.cpp), so this covers a few lines after the room goes away, not a match.
+constexpr int exitDeadlineMs = 20000;
 
 // What one answer from the control plane says, as far as this file reads it.
 struct Snapshot
@@ -159,9 +177,9 @@ std::optional<Snapshot> waitForStatus(quint16 port, int deadlineMs, const std::f
 // a finished match ends one: on its own, and with code 0. Empty when they all did.
 //
 // @p timeoutMs bounds the group rather than each bot, so a case that has several bots still
-// playing cannot add up to more than the suite is allowed. A bot that outlives the match it played
-// is one whose run does not end where the program says it does, and waiting longer would only turn
-// that into a killed process with no reading attached.
+// playing cannot add up to more than the suite is allowed. What it has to cover is whatever the
+// caller has not already read: a set of bots whose match was watched to its end is waited on for
+// the exit path alone, while a set started after that has its whole match in front of it.
 QString botsThatDidNotEnd(const std::vector<std::unique_ptr<QProcess>> &bots, qsizetype from, int timeoutMs)
 {
     QStringList complaints;
@@ -173,7 +191,7 @@ QString botsThatDidNotEnd(const std::vector<std::unique_ptr<QProcess>> &bots, qs
         const int remaining = std::max(0, timeoutMs - static_cast<int>(timer.elapsed()));
 
         if (!bot->waitForFinished(remaining)) {
-            complaints.append(u"bot %1 was still running when its match ended"_s.arg(i));
+            complaints.append(u"bot %1 was still running when the wait ran out"_s.arg(i));
             continue;
         }
 
@@ -373,7 +391,7 @@ void tst_QMdmmHeadlessGame::headlessGame_aMatchEndsAndTheBotsExit()
         processes.addBot(gamePort, u"bot"_s + QString::number(i));
 
     const std::optional<Snapshot> recruiting
-        = waitForStatus(controlPort, 60000, [](const Snapshot &snapshot) { return snapshot.rooms == 1 && snapshot.players == playerCount - 1; });
+        = waitForStatus(controlPort, roomDeadlineMs, [](const Snapshot &snapshot) { return snapshot.rooms == 1 && snapshot.players == playerCount - 1; });
     QVERIFY2(recruiting.has_value(), qPrintable(u"the room never filled to %1 of %2 players\n%3"_s.arg(playerCount - 1).arg(playerCount).arg(diagnosis(controlPort, processes))));
 
     // Nothing has been played yet, which is what makes the round counter's climb below a reading
@@ -383,17 +401,18 @@ void tst_QMdmmHeadlessGame::headlessGame_aMatchEndsAndTheBotsExit()
 
     processes.addBot(gamePort, u"last"_s);
 
-    // The match is over in a fraction of a second, so the reading is taken as fast as the plane
-    // answers rather than at an interval. What the loop is after is the pair -- a round counter
-    // that has climbed, and the room that is gone afterwards -- and only the first half of it is
-    // short-lived. The room is known to be there before the last bot is started, so a snapshot
-    // with no rooms in it is one taken after the match; there is nothing left to wait for at that
-    // point, which is why the loop ends there rather than spinning out the deadline.
+    // The reading is taken as fast as the plane answers rather than at an interval, because what
+    // the loop is after is the pair -- a round counter that has climbed, and the room that is gone
+    // afterwards -- and only the first half of it is short-lived. The room is known to be there
+    // before the last bot is started, so a snapshot with no rooms in it is one taken after the
+    // match; there is nothing left to wait for at that point, which is why the loop ends there
+    // rather than spinning out the deadline. What the deadline is set from is the runner, not the
+    // match: the match itself is what takes tens of seconds on a slow one.
     int highestRound = 0;
     bool sawTheEnd = false;
     QElapsedTimer timer;
     timer.start();
-    while (timer.elapsed() < 60000) {
+    while (timer.elapsed() < matchDeadlineMs) {
         Snapshot snapshot;
         if (!askStatus(controlPort, &snapshot))
             continue;
@@ -412,7 +431,7 @@ void tst_QMdmmHeadlessGame::headlessGame_aMatchEndsAndTheBotsExit()
     // reading: a bot leaves 0 from the one place a finished match leads to, so a bot that crashed,
     // one that was killed and one that is still holding its event loop all read differently from
     // the outside.
-    const QString stillPlaying = botsThatDidNotEnd(processes.bots(), 0, 20000);
+    const QString stillPlaying = botsThatDidNotEnd(processes.bots(), 0, exitDeadlineMs);
     QVERIFY2(stillPlaying.isEmpty(), qPrintable(stillPlaying + u"\n"_s + diagnosis(controlPort, processes)));
 
     // The server is what stays: its room went away with the match, but the program is still there
@@ -422,10 +441,17 @@ void tst_QMdmmHeadlessGame::headlessGame_aMatchEndsAndTheBotsExit()
     // The next match is the caller's to start -- that is the other half of what a run ending
     // means. Three more bot programs, a room of their own, and every one of them ending the same
     // way the first three did.
+    //
+    // None of that match is read here, and the bound says so: what is waited on is a whole match
+    // plus the exit path after it, rather than the exit path alone. Watching this one the way the
+    // first was watched would mean reading a room that exists for less than the time a single
+    // answer from the plane takes on a fast machine, which is a wait that can miss it and fail for
+    // having looked at the wrong moment. The bots ending is the reading that matters, and the
+    // snapshot in the failure report tells a slow match from a stuck one.
     for (int i = 0; i < playerCount; ++i)
         processes.addBot(gamePort, u"next"_s + QString::number(i));
 
-    const QString secondStillPlaying = botsThatDidNotEnd(processes.bots(), playerCount, 20000);
+    const QString secondStillPlaying = botsThatDidNotEnd(processes.bots(), playerCount, matchDeadlineMs + exitDeadlineMs);
     QVERIFY2(secondStillPlaying.isEmpty(), qPrintable(secondStillPlaying + u"\n"_s + diagnosis(controlPort, processes)));
 }
 
@@ -445,7 +471,7 @@ void tst_QMdmmHeadlessGame::headlessGame_aMissingBot_leavesTheRoomRecruiting()
         processes.addBot(gamePort, u"bot"_s + QString::number(i));
 
     const std::optional<Snapshot> recruiting
-        = waitForStatus(controlPort, 60000, [](const Snapshot &snapshot) { return snapshot.rooms == 1 && snapshot.players == playerCount - 1; });
+        = waitForStatus(controlPort, roomDeadlineMs, [](const Snapshot &snapshot) { return snapshot.rooms == 1 && snapshot.players == playerCount - 1; });
     QVERIFY2(recruiting.has_value(), qPrintable(u"the room never filled to %1 of %2 players\n%3"_s.arg(playerCount - 1).arg(playerCount).arg(diagnosis(controlPort, processes))));
 
     processes.addBot(deadPort, u"stray"_s);
