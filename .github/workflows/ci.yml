@@ -354,20 +354,31 @@ jobs:
     #
     # halt_on_error=0 keeps a report from deciding a case: what a case did is the
     # "cases" reading, and what the runtime found is the "thread-reports"
-    # reading. exitcode=0 goes further than that, and the reading has to be read
-    # with it in mind -- on one tree, over one suite, "halt_on_error=0" alone
-    # came back with 214 reports and "halt_on_error=0:exitcode=0" with none at
-    # all, so the option stops the runtime from printing rather than only from
-    # failing the case. "thread-reports" is therefore zero by construction here,
-    # and the positive control below, not that number, is what says the runtime
-    # can still speak at all.
+    # reading. exitcode=0 is not set beside it. It reads as if it only kept the
+    # process's status out of the reading, but on one tree over one suite
+    # "halt_on_error=0" alone came back with 214 reports and
+    # "halt_on_error=0:exitcode=0" with none at all: the option stops the runtime
+    # from printing, not merely from failing the case, and a leg that cannot
+    # print has no reading. What dropping it costs is that a suite which reported
+    # anything aborts at the end of its process, so the "failed" count names
+    # suites rather than cases -- the cases inside them ran and passed, which is
+    # what halt_on_error=0 is still there for.
     #
-    # No suppression list, and deliberately not an empty one. A list can only be
-    # judged against a run that lets reports through, and this one does not; what
-    # has been seen so far sits inside Qt's own containers, with three reports at
-    # ServerConnectionP's send functions. Naming them is the work that has to
-    # come before these options are loosened -- not before that, because a list
-    # nobody can check is a file nobody keeps true.
+    # No suppression list, and deliberately not an empty one either. A list is
+    # worth keeping only once someone has read what it would cover, and what it
+    # would cover here is the finding rather than the noise. Measured on macOS
+    # with the options below, over the 16 cases this leg keeps: 344 reports in 29
+    # distinct summaries -- 33 at five sites in this repository
+    # (ServerConnectionP::sendRockPaperScissorsNotified 14,
+    # sendActionOrderRequested 8, sendUpgradeNotified 1,
+    # Logic::actionOrderReply 6, LogicP::upgradeFeasible 4), the other 311 inside
+    # Qt's container headers (QArrayDataPointer, QHash, QList, qHashEquals). That
+    # is where those accesses show up, not where they come from: in the ones
+    # read, the other side sits in this repository's own frames, across the
+    # logic-thread boundary. A list keyed on those headers would therefore
+    # suppress the family this leg exists to find. Those counts are a reading of
+    # one tree on one platform, not a promise, and the cell below prints its own;
+    # what to do about them is separate work.
     #
     # Two cases are left out, and the positive control is a third. Both excluded
     # cases drive other programs built with the same flags, and both stop at a
@@ -425,8 +436,10 @@ jobs:
         env:
           # A report must not decide a case: the case either did its work or it
           # did not, and the runtime's findings are counted separately below.
-          # exitcode=0 is what keeps the process's own status out of it.
-          TSAN_OPTIONS: halt_on_error=0:exitcode=0
+          # exitcode=0 is deliberately absent, for the reason the job's own
+          # comment gives: it silences the runtime instead of only sparing the
+          # process's status, and a silent leg has nothing to report.
+          TSAN_OPTIONS: halt_on_error=0
         run: |
           # The log is kept because the step below counts what is in it, and
           # --output-on-failure is what puts the runtime's own report into it.
@@ -471,8 +484,9 @@ jobs:
           # count, the cases that failed by name, and the control's own count.
           # The counts are what this leg exists to produce; the step outcomes say
           # whether it got to produce them. The two counts are read together: a
-          # zero in the first beside a non-zero in the second is what says the
-          # options above, and not the tree, are why the first is zero.
+          # zero in the first beside a non-zero in the second is the tree having
+          # nothing to report on this run, because the control is what says the
+          # runtime would have spoken if there had been something.
           log="${RUNNER_TEMP}/tsan.log"
           controlLog="${RUNNER_TEMP}/tsan-control.log"
           reports=0
