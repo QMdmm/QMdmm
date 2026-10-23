@@ -26,11 +26,11 @@ from the terminal, so a room filled entirely with bots plays itself out.
   placeholder that is still accepted by the option check and then refuses to
   start, with status 3, rather than joining a game with no strategy.
 - `--log-level <level>` -- how much of the log is copied out to the terminal.
-  Defaults to `off`, and the values are `debug`, `info`, `warning` and
-  `critical`, each naming the lowest level that is copied: `warning` copies
-  warnings and criticals and leaves the two below them to the file. The log file
-  keeps every line whatever the level says, so this decides what a terminal
-  shows rather than what is recorded.
+  Defaults to `off`, and the values are `off`, `debug`, `info`, `warning` and
+  `critical`: each but the first names the lowest level that is copied, and
+  `off` copies nothing. `warning` copies warnings and criticals and leaves the
+  two below them to the file. The log file keeps every line whatever the level
+  says, so this decides what a terminal shows rather than what is recorded.
 
 An unusable command line -- an argument that is not an option, a missing host,
 a style that does not exist, a style that exists but is refused before it can
@@ -251,9 +251,10 @@ been merged, so a value read from a file is judged exactly like one from a flag.
 ### Logging
 
 - `--log-level <level>` -- how much of the log is copied out to the terminal.
-  Defaults to `off`, and the values are `debug`, `info`, `warning` and
-  `critical`, each naming the lowest level that is copied: `warning` copies
-  warnings and criticals and leaves the two below them to the file.
+  Defaults to `off`, and the values are `off`, `debug`, `info`, `warning` and
+  `critical`: each but the first names the lowest level that is copied, and
+  `off` copies nothing. `warning` copies warnings and criticals and leaves the
+  two below them to the file.
 
 The level is the one option here that a stored configuration file cannot also
 carry, and `-c` does not write it out. The file the run opens is the record and
