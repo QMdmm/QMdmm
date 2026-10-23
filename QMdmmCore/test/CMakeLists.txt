@@ -54,3 +54,8 @@ add_qmdmmcore_test(tst_qmdmmlogicconfiguration.cpp)
 add_qmdmmcore_test(tst_qmdmmprotocol.cpp)
 add_qmdmmcore_test(tst_qmdmmdebug.cpp)
 add_qmdmmcore_test(tst_qmdmmsettings.cpp)
+# Not a test of anything this module does: it holds one deliberate data race, so
+# that the ThreadSanitizer leg can tell "nothing raced" apart from "the runtime
+# said nothing". Every other cell skips it; the leg's positive-control step is
+# the only caller that sets the variable the case looks for.
+add_qmdmmcore_test(tst_qmdmmrace.cpp)
