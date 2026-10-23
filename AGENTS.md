@@ -54,6 +54,23 @@ Read these before touching code:
   are exported because the class is. Dropping the class-level macro is what
   stops exporting them, so that is not a way to silence MSVC.
 
+### Data member initializers
+
+- Do not give a data member its default in the class body (`LogLevel level =
+  LogLevel::Off;`). Such an initializer is part of every constructor the
+  compiler writes for the type, so it is compiled into each translation unit
+  that constructs it: a header that changes the default changes code the user
+  never rebuilt, and one program then runs two different definitions of the
+  same constructor. A `= default` constructor written in a header has the same
+  problem for the same reason -- the body it defaults to is inline there.
+- Put the default in the constructor's mem-initializer list instead, with the
+  constructor defined in the `.cpp`. This applies to export-private types as
+  much as to public ones: `QMDMMCORE_PRIVATE_EXPORT` narrows who is meant to
+  link against a type, not who has already compiled it in.
+- `.clang-tidy` disables `cppcoreguidelines-use-default-member-init` and
+  `modernize-use-default-member-init` for this reason: both propose moving an
+  initializer the other way, out of the constructor and into the class body.
+
 ### Memory management
 
 - Do not use `QScopedPointer` -- it is deprecated in Qt. Use `std::unique_ptr`

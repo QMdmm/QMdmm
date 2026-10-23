@@ -47,8 +47,9 @@ private:
     QString playingStyle_;
 
     // How much of the log the terminal is told; the file keeps everything either way. Off is
-    // what the bot wrote before there was a level.
-    QMdmmCore::LogLevel logLevel_ = QMdmmCore::LogLevel::Off;
+    // what the bot wrote before there was a level, and the constructor in config.cpp is where
+    // that default is set.
+    QMdmmCore::LogLevel logLevel_;
 };
 
 #endif

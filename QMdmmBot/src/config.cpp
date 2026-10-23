@@ -109,6 +109,7 @@ std::optional<QMdmmCore::LogLevel> stringToLogLevel(const QString &value)
 } // namespace
 
 Config::Config(const QStringList &arguments)
+    : logLevel_(QMdmmCore::LogLevel::Off)
 {
     QCommandLineParser parser;
     parser.setSingleDashWordOptionMode(QCommandLineParser::ParseAsCompactedShortOptions);

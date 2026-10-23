@@ -40,6 +40,11 @@ namespace p {
 
 QtMessageHandler DebugLogP::qtMessageHandler = nullptr;
 
+DebugLogP::DebugLogP()
+    : consoleLevel(LogLevel::Off)
+{
+}
+
 DebugLogP *debugLogInstance()
 {
     static DebugLogP i;

@@ -179,6 +179,7 @@ template<typename... Args>
 } // namespace
 
 Config::Config()
+    : logLevel_(QMdmmCore::LogLevel::Off)
 {
     QMdmmCore::Settings setting;
 

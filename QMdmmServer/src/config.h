@@ -26,7 +26,8 @@ private:
     // How much of the log the terminal is told. It is not a configuration item: nothing in
     // ServerConfiguration carries it, and it says how this run reports itself rather than what
     // the server does, so it comes from the command line only and -c does not write it out.
-    QMdmmCore::LogLevel logLevel_ = QMdmmCore::LogLevel::Off;
+    // The default is set in the constructor, which lives in config.cpp.
+    QMdmmCore::LogLevel logLevel_;
 
     void read_(QMdmmCore::Settings *setting, QCommandLineParser *parser);
     int save_(QMdmmCore::Settings *setting, QMdmmCore::Settings::Instance toSave);
