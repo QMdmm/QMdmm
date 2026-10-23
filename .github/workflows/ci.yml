@@ -352,29 +352,35 @@ jobs:
     # What it is about is one boundary -- the logic thread in LogicRunnerP against
     # the rest, which is otherwise a single-threaded event loop.
     #
-    # halt_on_error=0 and exitcode=0 keep a report from deciding a case. What a
-    # case did is the "cases" reading; what the runtime found is the
-    # "thread-reports" reading. A leg that let the second decide the first could
-    # not be read, and with continue-on-error above it would not decide the run
-    # either way.
+    # halt_on_error=0 keeps a report from deciding a case: what a case did is the
+    # "cases" reading, and what the runtime found is the "thread-reports"
+    # reading. exitcode=0 goes further than that, and the reading has to be read
+    # with it in mind -- on one tree, over one suite, "halt_on_error=0" alone
+    # came back with 214 reports and "halt_on_error=0:exitcode=0" with none at
+    # all, so the option stops the runtime from printing rather than only from
+    # failing the case. "thread-reports" is therefore zero by construction here,
+    # and the positive control below, not that number, is what says the runtime
+    # can still speak at all.
     #
-    # No suppression list, and deliberately not an empty one: the run that took
-    # this leg's baseline came back with no reports at all, so there is nothing
-    # to suppress yet. When a report turns out to come from Qt rather than from
-    # here, that is the moment to add a list beside this file and pass it in
-    # TSAN_OPTIONS -- not before, because a list that names nothing is a file
-    # nobody keeps true.
+    # No suppression list, and deliberately not an empty one. A list can only be
+    # judged against a run that lets reports through, and this one does not; what
+    # has been seen so far sits inside Qt's own containers, with three reports at
+    # ServerConnectionP's send functions. Naming them is the work that has to
+    # come before these options are loosened -- not before that, because a list
+    # nobody can check is a file nobody keeps true.
     #
-    # Two cases are left out. Both drive other programs built with the same
-    # flags, and both stop at a bound of their own rather than at a bound this
-    # leg could lengthen: "QMdmmServer - server cli - Qt6" has TIMEOUT 60 for a
-    # suite that takes 107 s instrumented, and "QMdmmBot - headless game - Qt6"
-    # waits 120 s for a match that takes longer (measured on macOS, where the
-    # whole set goes from 150 s to 596 s). Those numbers are the cost of the
-    # flags, not a finding, and a cell that reported them on every run would be
-    # the red nobody can act on. What they cover is the same code the cases kept
-    # here cover in process, and the sanitizer cells still run them at native
-    # speed.
+    # Two cases are left out, and the positive control is a third. Both excluded
+    # cases drive other programs built with the same flags, and both stop at a
+    # bound of their own rather than at a bound this leg could lengthen:
+    # "QMdmmServer - server cli - Qt6" has TIMEOUT 60 for a suite that takes 107 s
+    # instrumented, and "QMdmmBot - headless game - Qt6" waits 120 s for a match
+    # that takes longer (measured on macOS, where the whole set goes from 150 s to
+    # 596 s). Those numbers are the cost of the flags, not a finding, and a cell
+    # that reported them on every run would be the red nobody can act on. What
+    # they cover is the same code the cases kept here cover in process, and the
+    # sanitizer cells still run them at native speed. The control is left out of
+    # this run so that "thread-reports" keeps meaning what the tree does on its
+    # own; the step below runs it on its own, under options that do print.
     #
     continue-on-error: true
     runs-on: ubuntu-26.04
@@ -424,23 +430,53 @@ jobs:
         run: |
           # The log is kept because the step below counts what is in it, and
           # --output-on-failure is what puts the runtime's own report into it.
-          # -E drops the two cases described above; the reading still says how
-          # many cases ran, so a case that drops out of the set shows up as a
-          # number that moved rather than as silence.
+          # -E drops the cases described above, the positive control among them;
+          # the reading still says how many cases ran, so a case that drops out
+          # of the set shows up as a number that moved rather than as silence.
           set -o pipefail
           ctest --test-dir build --output-on-failure --timeout 1020 \
-            -E '^(QMdmmServer - server cli - Qt6|QMdmmBot - headless game - Qt6)$' 2>&1 |
+            -E '^(QMdmmServer - server cli - Qt6|QMdmmBot - headless game - Qt6|QMdmmCore - tst_qmdmmrace.cpp - Qt6)$' 2>&1 |
             tee "${RUNNER_TEMP}/tsan.log"
+
+      - name: Positive control
+        id: control
+        env:
+          # The one case in the tree that must produce a report. It is run here
+          # rather than in the step above because its options have to be the
+          # loose ones: exitcode=0 would silence the report this step exists to
+          # see, and the suite would then pass for the wrong reason.
+          QMDMM_TSAN_CONTROL: 1
+          TSAN_OPTIONS: halt_on_error=0
+        run: |
+          # The case is a data race, so the run is expected to fail: what is read
+          # here is the log, not the exit status. A log with no report in it is
+          # the failure this step is for -- it means the runtime says nothing
+          # even when it is allowed to, and every zero this leg reports is then
+          # unreadable.
+          log="${RUNNER_TEMP}/tsan-control.log"
+          ctest --test-dir build --output-on-failure --timeout 120 \
+            -R '^QMdmmCore - tst_qmdmmrace.cpp - Qt6$' 2>&1 |
+            tee "$log" || true
+          if ! grep -q 'WARNING: ThreadSanitizer' "$log"; then
+            echo "::error::the positive control raced without a report -- this leg cannot tell 'nothing raced' from 'the runtime said nothing'"
+            exit 1
+          fi
+          grep -c 'WARNING: ThreadSanitizer' "$log"
 
       - name: Report the reading
         if: always()
         run: |
-          # One line, in the shape the other legs use: which of the three steps
+          # One line, in the shape the other legs use: which of the steps
           # carried out, how many cases ran, and what came back -- the reports by
-          # count, and the cases that failed by name. The count is what this leg
-          # exists to produce; the step outcome says whether it got to produce it.
+          # count, the cases that failed by name, and the control's own count.
+          # The counts are what this leg exists to produce; the step outcomes say
+          # whether it got to produce them. The two counts are read together: a
+          # zero in the first beside a non-zero in the second is what says the
+          # options above, and not the tree, are why the first is zero.
           log="${RUNNER_TEMP}/tsan.log"
+          controlLog="${RUNNER_TEMP}/tsan-control.log"
           reports=0
+          control=0
           total=0
           failed=0
           names=none
@@ -458,7 +494,10 @@ jobs:
               paste -sd ';' - || true)
             if [ -n "$names" ]; then names="(${names})"; else names=none; fi
           fi
-          echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} test=${{ steps.test.outcome }} cases=$((total - failed))/${total} failed=${failed} ${names} thread-reports=${reports}"
+          if [ -f "$controlLog" ]; then
+            control=$(grep -c 'WARNING: ThreadSanitizer' "$controlLog" || true)
+          fi
+          echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} test=${{ steps.test.outcome }} control=${{ steps.control.outcome }} cases=$((total - failed))/${total} failed=${failed} ${names} thread-reports=${reports} positive-control=${control}"
 
   fuzz:
     name: Fuzz (ubuntu-26.04, inbound decoding)
