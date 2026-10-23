@@ -333,6 +333,133 @@ jobs:
           fi
           echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} test=${{ steps.test.outcome }} cases=$((total - failed))/${total} failed=${failed} ${names} address-reports=${address} undefined-reports=${undefined}"
 
+  thread-sanitizer:
+    name: ThreadSanitizer (ubuntu-26.04 probe, Debug)
+    #
+    # ThreadSanitizer over nearly the same ctest set, in a Debug cell on Linux.
+    #
+    # A probe, and allowed to be red, for the reason the sanitizer cells are not
+    # probes and are not: a report from AddressSanitizer or UndefinedBehaviorSanitizer
+    # is a defect in this tree, while a report from ThreadSanitizer has to be read
+    # before it can be called one. Neither Qt flavour the cells install is built
+    # with a sanitizer, and the runtime only sees the primitives it intercepts, so
+    # the first question this leg has to answer is whether its own baseline is
+    # usable at all. A gate built on an unread baseline would be a red nobody can
+    # act on; the name says probe and continue-on-error keeps the run green.
+    #
+    # One cell, on Linux, for the reason the fuzz cell has one: the concurrency
+    # this leg is about is in this repository's own code, not in the platform.
+    # What it is about is one boundary -- the logic thread in LogicRunnerP against
+    # the rest, which is otherwise a single-threaded event loop.
+    #
+    # halt_on_error=0 and exitcode=0 keep a report from deciding a case. What a
+    # case did is the "cases" reading; what the runtime found is the
+    # "thread-reports" reading. A leg that let the second decide the first could
+    # not be read, and with continue-on-error above it would not decide the run
+    # either way.
+    #
+    # No suppression list, and deliberately not an empty one: the run that took
+    # this leg's baseline came back with no reports at all, so there is nothing
+    # to suppress yet. When a report turns out to come from Qt rather than from
+    # here, that is the moment to add a list beside this file and pass it in
+    # TSAN_OPTIONS -- not before, because a list that names nothing is a file
+    # nobody keeps true.
+    #
+    # Two cases are left out. Both drive other programs built with the same
+    # flags, and both stop at a bound of their own rather than at a bound this
+    # leg could lengthen: "QMdmmServer - server cli - Qt6" has TIMEOUT 60 for a
+    # suite that takes 107 s instrumented, and "QMdmmBot - headless game - Qt6"
+    # waits 120 s for a match that takes longer (measured on macOS, where the
+    # whole set goes from 150 s to 596 s). Those numbers are the cost of the
+    # flags, not a finding, and a cell that reported them on every run would be
+    # the red nobody can act on. What they cover is the same code the cases kept
+    # here cover in process, and the sanitizer cells still run them at native
+    # speed.
+    #
+    continue-on-error: true
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          path: QMdmm
+
+      - name: Set timezone (Linux)
+        run: |
+          sudo ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+          date
+
+      - name: Install Qt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qt6-base-dev qt6-websockets-dev qt6-declarative-dev qt6-tools-dev
+
+      - name: Configure
+        id: configure
+        run: |
+          # The flags go through CMAKE_CXX_FLAGS rather than through a build type
+          # of their own for the reason the sanitizer cells give: CMake passes them
+          # to the link line as well, which is how the runtime reaches the
+          # executables. They also have to reach every translation unit, not just
+          # the one under test -- a race whose two halves are instrumented
+          # differently is not a race the runtime can see.
+          cmake -B build -S QMdmm -G "Unix Makefiles" \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=ON \
+            -DQMDMM_EXPORT_PRIVATE=NO \
+            -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer"
+
+      - name: Build
+        id: build
+        run: cmake --build build --parallel
+
+      - name: Test
+        id: test
+        env:
+          # A report must not decide a case: the case either did its work or it
+          # did not, and the runtime's findings are counted separately below.
+          # exitcode=0 is what keeps the process's own status out of it.
+          TSAN_OPTIONS: halt_on_error=0:exitcode=0
+        run: |
+          # The log is kept because the step below counts what is in it, and
+          # --output-on-failure is what puts the runtime's own report into it.
+          # -E drops the two cases described above; the reading still says how
+          # many cases ran, so a case that drops out of the set shows up as a
+          # number that moved rather than as silence.
+          set -o pipefail
+          ctest --test-dir build --output-on-failure --timeout 1020 \
+            -E '^(QMdmmServer - server cli - Qt6|QMdmmBot - headless game - Qt6)$' 2>&1 |
+            tee "${RUNNER_TEMP}/tsan.log"
+
+      - name: Report the reading
+        if: always()
+        run: |
+          # One line, in the shape the other legs use: which of the three steps
+          # carried out, how many cases ran, and what came back -- the reports by
+          # count, and the cases that failed by name. The count is what this leg
+          # exists to produce; the step outcome says whether it got to produce it.
+          log="${RUNNER_TEMP}/tsan.log"
+          reports=0
+          total=0
+          failed=0
+          names=none
+          if [ -f "$log" ]; then
+            reports=$(grep -c 'WARNING: ThreadSanitizer' "$log" || true)
+            summary=$(grep -E '^[0-9]+% tests passed' "$log" | tail -1 || true)
+            total=$(printf '%s' "$summary" | sed -n 's/.*out of \([0-9][0-9]*\).*$/\1/p')
+            failed=$(printf '%s' "$summary" | sed -n 's/.*, \([0-9][0-9]*\) tests failed.*/\1/p')
+            total=${total:-0}
+            failed=${failed:-0}
+            names=$(awk '/^The following tests FAILED:/ { inside = 1; next }
+                         inside && /^[[:space:]]+[0-9]+ - / { print; next }
+                         inside { exit }' "$log" |
+              sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*(.*$//' |
+              paste -sd ';' - || true)
+            if [ -n "$names" ]; then names="(${names})"; else names=none; fi
+          fi
+          echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} test=${{ steps.test.outcome }} cases=$((total - failed))/${total} failed=${failed} ${names} thread-reports=${reports}"
+
   fuzz:
     name: Fuzz (ubuntu-26.04, inbound decoding)
     #
