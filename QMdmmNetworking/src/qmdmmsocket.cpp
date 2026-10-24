@@ -97,6 +97,7 @@ namespace v0 {
 Socket::Socket(QTcpSocket *t, QObject *parent)
     : QObject(parent)
     , d(p::SocketPFactory::create(t, this))
+    , packetSizeBound(DefaultMaximumPacketSize)
 {
 }
 
@@ -108,6 +109,7 @@ Socket::Socket(QTcpSocket *t, QObject *parent)
 Socket::Socket(QLocalSocket *l, QObject *parent)
     : QObject(parent)
     , d(p::SocketPFactory::create(l, this))
+    , packetSizeBound(DefaultMaximumPacketSize)
 {
 }
 
@@ -119,6 +121,7 @@ Socket::Socket(QLocalSocket *l, QObject *parent)
 Socket::Socket(QWebSocket *w, QObject *parent)
     : QObject(parent)
     , d(p::SocketPFactory::create(w, this))
+    , packetSizeBound(DefaultMaximumPacketSize)
 {
 }
 
@@ -131,6 +134,7 @@ Socket::Socket(QWebSocket *w, QObject *parent)
 Socket::Socket(QObject *parent)
     : QObject(parent)
     , d(nullptr)
+    , packetSizeBound(DefaultMaximumPacketSize)
 {
 }
 

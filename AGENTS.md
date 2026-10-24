@@ -67,6 +67,19 @@ Read these before touching code:
   constructor defined in the `.cpp`. This applies to export-private types as
   much as to public ones: `QMDMMCORE_PRIVATE_EXPORT` narrows who is meant to
   link against a type, not who has already compiled it in.
+- The exception is a type that is a plain data aggregate: every data member
+  public, no constructor of any kind, no virtual functions, and callers build
+  it by aggregate or designated initialization (`setError({.code = ...,
+  .errorString = {}})`). There is no constructor of ours for the default to be
+  folded into, the class-body initializer is the only way to spell one, and
+  the type is data rather than a class with an interface. The exception lasts
+  only while the type is that free to change shape: once its ABI is settled, a
+  hand-written constructor is no longer available -- adding one stops the type
+  being an aggregate, so every call site that builds it with designated
+  initializers stops compiling -- and the default in the class body is then
+  the default the type is stuck with.
+- A pointer default (`QProcess *m_serverProcess = nullptr;`) is not a lighter
+  case: it is compiled into the same constructors, so it reads the same way.
 - `.clang-tidy` disables `cppcoreguidelines-use-default-member-init` and
   `modernize-use-default-member-init` for this reason: both propose moving an
   initializer the other way, out of the constructor and into the class body.

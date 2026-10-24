@@ -49,7 +49,7 @@ public:
     // would otherwise desynchronize the objectName key), and the target every incoming notify is
     // routed to.
     QHash<QString, Agent *> agents;
-    Agent *selfAgent = nullptr;
+    Agent *selfAgent;
 
     QTimer *heartbeatTimer;
     QTimer *reconnectTimer;
@@ -68,7 +68,7 @@ public:
     // every round-event notify it receives (and resets it on notifyRoundStart), and reports it on
     // reconnect for the precise catch-up (see backlog "precise catch-up"). Its value doubles as
     // the last received round-event sequence number.
-    int lastRoundEventSeq = 0;
+    int lastRoundEventSeq;
 
     void requestRockPaperScissors(const QJsonValue &value);
     void requestActionOrder(const QJsonValue &value);

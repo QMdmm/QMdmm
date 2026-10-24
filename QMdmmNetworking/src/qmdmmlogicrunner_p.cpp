@@ -17,6 +17,7 @@ LogicRunnerP::LogicRunnerP(QMdmmCore::LogicConfiguration logicConfiguration, int
     , conf(std::move(logicConfiguration))
     , playerNumPerRoom(playerNumPerRoom)
     , id(++lastId)
+    , rounds(0)
 {
     logic = new QMdmmCore::Logic(conf);
     logic->moveToThread(logicThread);

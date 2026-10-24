@@ -61,6 +61,12 @@ void stopProcess(QProcess *process)
 
 QMdmmGameClient::QMdmmGameClient(QObject *parent)
     : QObject(parent)
+    , m_human(nullptr)
+    , m_serverProcess(nullptr)
+    , m_childrenAreStopping(false)
+    , m_room(nullptr)
+    , m_state(GameState::Start)
+    , m_playerCount(3)
 {
 }
 

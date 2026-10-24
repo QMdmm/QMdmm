@@ -69,6 +69,7 @@ ClientP::ClientP(ClientConfiguration clientConfiguration, Client *q)
     , clientConfiguration(std::move(clientConfiguration))
     , socket(nullptr)
     , room(new QMdmmCore::Room(QMdmmCore::LogicConfiguration(), this))
+    , selfAgent(nullptr)
     , heartbeatTimer(new QTimer(this))
     , reconnectTimer(new QTimer(this))
     , reconnectAttempts(0)
@@ -76,6 +77,7 @@ ClientP::ClientP(ClientConfiguration clientConfiguration, Client *q)
     , connected(false)
     , currentRequest(QMdmmCore::Protocol::RequestInvalid)
     , initialState(QMdmmCore::Data::StateOffline)
+    , lastRoundEventSeq(0)
 {
     heartbeatTimer->setInterval(30000);
     heartbeatTimer->setSingleShot(false);

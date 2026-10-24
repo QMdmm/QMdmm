@@ -54,7 +54,7 @@ public:
     // The round count is kept here rather than read off the logic for one reason: the logic lives on
     // another thread, and the snapshot is taken on the server's.
     const quint32 id;
-    int rounds = 0;
+    int rounds;
 
     // Where the ids come from. One counter for the process, so two servers in one process cannot
     // hand out the same id to two rooms.

@@ -166,23 +166,23 @@ private:
     QVariantList actionListFor(const QMdmmCore::Player *from) const;
     [[nodiscard]] static QString locateProgram(const QString &programName, const QString &explicitPath);
 
-    QMdmmNetworking::Client *m_human = nullptr;
-    QProcess *m_serverProcess = nullptr;
+    QMdmmNetworking::Client *m_human;
+    QProcess *m_serverProcess;
     // One QMdmmBot process per seat this side fills, stopped with the game they belong to.
     QList<QProcess *> m_bots;
     // Set for the length of taking those programs down: a process that goes away then is this
     // bridge's own doing rather than a program that failed, and is not reported (see
     // watchChildProcess).
-    bool m_childrenAreStopping = false;
-    QMdmmCore::Room *m_room = nullptr;
+    bool m_childrenAreStopping;
+    QMdmmCore::Room *m_room;
 
     QString m_localName;
     QString m_localScreen;
-    GameState m_state = GameState::Start;
+    GameState m_state;
     QVariantList m_chat;
     QVariantMap m_logicConfiguration;
     QString m_status;
-    int m_playerCount = 3;
+    int m_playerCount;
     QString m_serverProgram;
     QString m_botProgram;
 

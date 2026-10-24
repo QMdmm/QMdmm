@@ -58,6 +58,7 @@ Socket::Type SocketP::typeByConnectAddr(const QString &addr)
 SocketP::SocketP(Socket *q)
     : QObject(q)
     , q(q)
+    , maximumPacketSize(Socket::DefaultMaximumPacketSize)
 {
     connect(q, &Socket::sendPacket, this, &SocketP::sendPacket);
 }

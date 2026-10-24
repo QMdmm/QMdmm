@@ -31,7 +31,7 @@ public:
 
     Socket *q;
     std::optional<Socket::Error> error;
-    int maximumPacketSize = Socket::DefaultMaximumPacketSize;
+    int maximumPacketSize;
 
 public slots: // NOLINT(readability-redundant-access-specifiers)
     virtual void sendPacket(QMdmmCore::Packet packet) = 0;

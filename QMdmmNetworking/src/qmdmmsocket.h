@@ -103,7 +103,7 @@ private:
     // survives the transport being created later (a client-side socket creates its transport in
     // connectToHost, long after the caller may have set this). Named apart from the accessors:
     // a data member and a member function cannot share a name.
-    int packetSizeBound = DefaultMaximumPacketSize;
+    int packetSizeBound;
 #endif
 };
 
