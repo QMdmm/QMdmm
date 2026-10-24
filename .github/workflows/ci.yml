@@ -370,20 +370,30 @@ jobs:
     # summed from each suite's own "Totals:" line, "suites" from ctest's summary.
     #
     # No suppression list, and deliberately not an empty one either. A list is
-    # worth keeping only once someone has read what it would cover, and what it
-    # would cover here is the finding rather than the noise. Measured on macOS
-    # with the options below, over the 16 suites this leg keeps: 344 reports in 29
-    # distinct summaries -- 33 at five sites in this repository
+    # worth keeping only once someone has read what it would cover, and what
+    # this one would cover is a reading of how the tests wait, not the density
+    # of races in the tree. Measured on macOS with the options below, over the
+    # 16 suites this leg keeps: 344 reports in 29 distinct summaries -- 33 at
+    # five sites in this repository
     # (ServerConnectionP::sendRockPaperScissorsNotified 14,
     # sendActionOrderRequested 8, sendUpgradeNotified 1,
-    # Logic::actionOrderReply 6, LogicP::upgradeFeasible 4), the other 311 inside
-    # Qt's container headers (QArrayDataPointer, QHash, QList, qHashEquals). That
-    # is where those accesses show up, not where they come from: in the ones
-    # read, the other side sits in this repository's own frames, across the
-    # logic-thread boundary. A list keyed on those headers would therefore
-    # suppress the family this leg exists to find. Those counts are a reading of
-    # one tree on one platform, not a promise, and the cell below prints its own;
-    # what to do about them is separate work.
+    # Logic::actionOrderReply 6, LogicP::upgradeFeasible 4), the other 311
+    # inside Qt's container headers (QArrayDataPointer, QHash, QList,
+    # qHashEquals). Reading the stacks rather than the counts is what says so:
+    # the write side builds a payload on the logic thread while the read side
+    # takes a name off it on another, and both sides carry the same allocation.
+    # The hand-off is ordered, and what is missing is the runtime's view of that
+    # edge rather than the edge itself -- a probe outside this tree, with the
+    # same hand-off and the same Qt, reports nothing over 50 rounds under
+    # QCoreApplication::exec(), and reports the identical
+    # "qarraydatapointer.h:112 in QArrayDataPointer<char16_t>::data()" as soon
+    # as the reading side is pumped by a nested QEventLoop with a
+    # QTimer::singleShot, which is the shape QTest::qWait has. A plain int
+    # written once and read once on the same path reports under that loop too.
+    # So the count is the test's event loop made visible, not a defect: no site
+    # here is a race to repair, and a list keyed on those headers would encode
+    # today's pump as noise. Those counts are a reading of one tree on one
+    # platform, not a promise, and the cell below prints its own.
     #
     # Two suites are left out, and the positive control is a third. Both excluded
     # suites drive other programs built with the same flags, and both stop at a
