@@ -353,21 +353,26 @@ jobs:
     # the rest, which is otherwise a single-threaded event loop.
     #
     # halt_on_error=0 keeps a report from deciding a case: what a case did is the
-    # "cases" reading, and what the runtime found is the "thread-reports"
-    # reading. exitcode=0 is not set beside it. It reads as if it only kept the
-    # process's status out of the reading, but on one tree over one suite
-    # "halt_on_error=0" alone came back with 214 reports and
-    # "halt_on_error=0:exitcode=0" with none at all: the option stops the runtime
-    # from printing, not merely from failing the case, and a leg that cannot
-    # print has no reading. What dropping it costs is that a suite which reported
-    # anything aborts at the end of its process, so the "failed" count names
-    # suites rather than cases -- the cases inside them ran and passed, which is
-    # what halt_on_error=0 is still there for.
+    # "cases" reading, and what the runtime found is the "thread-reports" one.
+    # exitcode=0 is not set beside it, and is set nowhere in this cell: it reads
+    # as if it only kept the process's status out of the reading, but on one tree
+    # over one suite "halt_on_error=0" alone came back with 214 reports and
+    # "halt_on_error=0:exitcode=0" with none at all -- it stops the runtime from
+    # printing, and a leg that cannot print has no reading.
+    #
+    # What that costs is accepted rather than worked around. A suite that
+    # reported anything aborts on its way out, so ctest counts the suite failed
+    # while the cases inside it ran and passed: on macOS, 4 of the 16 suites end
+    # that way, and all 502 cases the 14 QtTest suites hold pass. exitcode does
+    # not enter into it: the same tree and the same suite die of SIGABRT with the
+    # option unset and with exitcode=66 alike, so pinning it would only suggest a
+    # knob exists. The reading counts the two units apart instead -- "cases"
+    # summed from each suite's own "Totals:" line, "suites" from ctest's summary.
     #
     # No suppression list, and deliberately not an empty one either. A list is
     # worth keeping only once someone has read what it would cover, and what it
     # would cover here is the finding rather than the noise. Measured on macOS
-    # with the options below, over the 16 cases this leg keeps: 344 reports in 29
+    # with the options below, over the 16 suites this leg keeps: 344 reports in 29
     # distinct summaries -- 33 at five sites in this repository
     # (ServerConnectionP::sendRockPaperScissorsNotified 14,
     # sendActionOrderRequested 8, sendUpgradeNotified 1,
@@ -380,8 +385,8 @@ jobs:
     # one tree on one platform, not a promise, and the cell below prints its own;
     # what to do about them is separate work.
     #
-    # Two cases are left out, and the positive control is a third. Both excluded
-    # cases drive other programs built with the same flags, and both stop at a
+    # Two suites are left out, and the positive control is a third. Both excluded
+    # suites drive other programs built with the same flags, and both stop at a
     # bound of their own rather than at a bound this leg could lengthen:
     # "QMdmmServer - server cli - Qt6" has TIMEOUT 60 for a suite that takes 107 s
     # instrumented, and "QMdmmBot - headless game - Qt6" waits 120 s for a match
@@ -391,7 +396,7 @@ jobs:
     # they cover is the same code the cases kept here cover in process, and the
     # sanitizer cells still run them at native speed. The control is left out of
     # this run so that "thread-reports" keeps meaning what the tree does on its
-    # own; the step below runs it on its own, under options that do print.
+    # own; the step above runs it on its own, under options that do print.
     #
     continue-on-error: true
     runs-on: ubuntu-26.04
@@ -431,33 +436,16 @@ jobs:
         id: build
         run: cmake --build build --parallel
 
-      - name: Test
-        id: test
-        env:
-          # A report must not decide a case: the case either did its work or it
-          # did not, and the runtime's findings are counted separately below.
-          # exitcode=0 is deliberately absent, for the reason the job's own
-          # comment gives: it silences the runtime instead of only sparing the
-          # process's status, and a silent leg has nothing to report.
-          TSAN_OPTIONS: halt_on_error=0
-        run: |
-          # The log is kept because the step below counts what is in it, and
-          # --output-on-failure is what puts the runtime's own report into it.
-          # -E drops the cases described above, the positive control among them;
-          # the reading still says how many cases ran, so a case that drops out
-          # of the set shows up as a number that moved rather than as silence.
-          set -o pipefail
-          ctest --test-dir build --output-on-failure --timeout 1020 \
-            -E '^(QMdmmServer - server cli - Qt6|QMdmmBot - headless game - Qt6|QMdmmCore - tst_qmdmmrace.cpp - Qt6)$' 2>&1 |
-            tee "${RUNNER_TEMP}/tsan.log"
-
       - name: Positive control
         id: control
         env:
-          # The one case in the tree that must produce a report. It is run here
-          # rather than in the step above because its options have to be the
-          # loose ones: exitcode=0 would silence the report this step exists to
-          # see, and the suite would then pass for the wrong reason.
+          # The one case in the tree that must produce a report. It runs before
+          # the set rather than after it, because a step that fails skips every
+          # step after it: this is what makes a zero falsifiable, and a red test
+          # run must not be the thing that takes it away. Its options are the
+          # loose ones for the same reason -- exitcode=0 would silence the report
+          # this step exists to see, and the suite would then pass for the wrong
+          # reason.
           QMDMM_TSAN_CONTROL: 1
           TSAN_OPTIONS: halt_on_error=0
         run: |
@@ -476,21 +464,60 @@ jobs:
           fi
           grep -c 'WARNING: ThreadSanitizer' "$log"
 
+      - name: Test
+        id: test
+        # Waits for the build, not for the control: a control that fails says the
+        # runtime says nothing, and that is exactly the run whose own count is
+        # worth having. Skipping on it would take away the reading the control
+        # was sent to vouch for.
+        if: ${{ steps.build.outcome == 'success' }}
+        env:
+          # A report must not decide a case: the case either did its work or it
+          # did not, and the runtime's findings are counted separately below.
+          # exitcode=0 is deliberately absent, for the reason the job's own
+          # comment gives: it silences the runtime instead of only sparing the
+          # process's status, and a silent leg has nothing to report.
+          TSAN_OPTIONS: halt_on_error=0
+        run: |
+          # -V rather than --output-on-failure: the case count comes from the
+          # "Totals:" line each QtTest suite prints about itself, and
+          # --output-on-failure prints a suite's output only when it failed --
+          # measured on one tree with two suites, one of them failing: a single
+          # "Totals:" line reached the log. A count covering whichever suites
+          # happened to fail is not a count. Verbose also prefixes each suite's
+          # lines with that suite's number, which the count allows for. The log
+          # is kept either way; -E drops the suites described above, the positive
+          # control among them.
+          set -o pipefail
+          ctest --test-dir build -V --timeout 1020 \
+            -E '^(QMdmmServer - server cli - Qt6|QMdmmBot - headless game - Qt6|QMdmmCore - tst_qmdmmrace.cpp - Qt6)$' 2>&1 |
+            tee "${RUNNER_TEMP}/tsan.log"
+
       - name: Report the reading
         if: always()
         run: |
           # One line, in the shape the other legs use: which of the steps
           # carried out, how many cases ran, and what came back -- the reports by
-          # count, the cases that failed by name, and the control's own count.
+          # count, the suites that failed by name, and the control's own count.
           # The counts are what this leg exists to produce; the step outcomes say
           # whether it got to produce them. The two counts are read together: a
           # zero in the first beside a non-zero in the second is the tree having
           # nothing to report on this run, because the control is what says the
           # runtime would have spoken if there had been something.
+          #
+          # "cases" counts cases and "suites" counts suites. Until this cell
+          # reported a case count, both fields counted suites, and a run on which
+          # every case passed read as 0/16. The case numbers come from the
+          # "Totals:" line each QtTest suite prints about itself (under -V it
+          # arrives prefixed with the suite's number), so a suite that is not
+          # QtTest -- the two smoke suites -- adds nothing to either number; that
+          # it was there is what the suite count says.
           log="${RUNNER_TEMP}/tsan.log"
           controlLog="${RUNNER_TEMP}/tsan-control.log"
           reports=0
           control=0
+          casePassed=0
+          caseRan=0
           total=0
           failed=0
           names=none
@@ -501,6 +528,17 @@ jobs:
             failed=$(printf '%s' "$summary" | sed -n 's/.*, \([0-9][0-9]*\) tests failed.*/\1/p')
             total=${total:-0}
             failed=${failed:-0}
+            cases=$(awk '/^([0-9]+: )?Totals: / {
+                           for (i = 2; i < NF; i++) {
+                             unit = $(i + 1)
+                             sub(/,/, "", unit)
+                             if (unit == "passed") passed += $i
+                             else if (unit == "failed") failedCases += $i
+                           }
+                         }
+                         END { printf "%d %d", passed + 0, failedCases + 0 }' "$log")
+            casePassed=${cases% *}
+            caseRan=$((casePassed + ${cases#* }))
             names=$(awk '/^The following tests FAILED:/ { inside = 1; next }
                          inside && /^[[:space:]]+[0-9]+ - / { print; next }
                          inside { exit }' "$log" |
@@ -511,7 +549,7 @@ jobs:
           if [ -f "$controlLog" ]; then
             control=$(grep -c 'WARNING: ThreadSanitizer' "$controlLog" || true)
           fi
-          echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} test=${{ steps.test.outcome }} control=${{ steps.control.outcome }} cases=$((total - failed))/${total} failed=${failed} ${names} thread-reports=${reports} positive-control=${control}"
+          echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} control=${{ steps.control.outcome }} test=${{ steps.test.outcome }} cases=${casePassed}/${caseRan} suites=$((total - failed))/${total} ${names} thread-reports=${reports} positive-control=${control}"
 
   fuzz:
     name: Fuzz (ubuntu-26.04, inbound decoding)
