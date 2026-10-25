@@ -40,14 +40,15 @@ namespace v0 {
  * configuration file (named after the option), and a row in @c doc/command-line.md. The three go
  * together -- an option with no stored key is a setting that cannot be remembered between runs,
  * and a key with no row is one nobody can find -- and the server's own command-line tests hold
- * the properties declared here to the keys the program stores, so a new key cannot miss them
- * without turning a test red.
+ * the properties declared here to the keys the program stores and to the rows that page devotes
+ * to them, so a new key cannot miss any of the three without turning a test red.
  *
  * There is one shape today and no second one: every property declared here is a start-up setting
  * an operator would tune, so it carries all three faces. A key whose value no operator would tune
- * therefore has nowhere to go while the gate stands as it does -- the properties declared here and
- * the keys the program stores are held equal, with nothing subtracted on either side -- so adding
- * one means changing that gate in the same commit, not only declaring the property.
+ * therefore has nowhere to go while the gate stands as it does -- the properties declared here, the
+ * keys the program stores and the rows that page devotes to them are held equal, with nothing
+ * subtracted on any side -- so adding one means changing that gate in the same commit, not only
+ * declaring the property.
  */
 
 /**

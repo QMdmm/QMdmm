@@ -60,6 +60,15 @@ target_compile_definitions(tst_qmdmmserver6 PRIVATE
     "QMDMMSERVERCONFIGURATION_HEADER=\"${PROJECT_SOURCE_DIR}/QMdmmNetworking/src/qmdmmserver.h\""
 )
 
+# And for the third face of a key, the row doc/command-line.md devotes to it. The page is not a
+# build input, so nothing else in the build would notice it losing one; the case that reads it is
+# the only thing holding those rows to the keys, and its path is named here for the same reason as
+# the header's, the test binary's own location saying nothing about where the tree it was built
+# from keeps its documentation.
+target_compile_definitions(tst_qmdmmserver6 PRIVATE
+    "QMDMM_COMMAND_LINE_DOC=\"${PROJECT_SOURCE_DIR}/doc/command-line.md\""
+)
+
 # The networking suite drives this executable as well: its inbound-corpus case spawns the server and
 # feeds it the same frames, which is how "the server survived the corpus" becomes a reading about a
 # process rather than about a case's own verdict (see tst_qmdmmnetworking.cpp). The two modules are

@@ -240,17 +240,83 @@ QSet<QString> storedSectionKeys(const QString &contents, const QString &header)
     return keys;
 }
 
+// The sections of the server's page that list start-up settings, and nothing besides: every row in
+// them is a key of ServerConfiguration. The page's other sections carry options that are not
+// settings -- help and version, the preset, saving and printing a configuration, the log level,
+// which the page itself calls the one option with no stored key -- so a reading of the whole page
+// would have to subtract a list of exceptions rather than compare two sets.
+const std::array<const char *, 3> settingsSections {{
+    "Network transports",
+    "Control plane",
+    "Room, connections and timeouts",
+}};
+
+// What the rows of those sections spell: one entry per row, in file order, and the headings they
+// were read under. The headings are part of the reading because a page whose sections were renamed
+// would otherwise come back as "the page documents nothing" -- indistinguishable, from the rows
+// alone, from a page that lost a row.
+struct DocumentedSettings
+{
+    QStringList options;
+    QSet<QString> sections;
+};
+
+DocumentedSettings documentedSettings(const QString &page)
+{
+    static const QRegularExpression longOption(u"`--([A-Za-z0-9-]+)(?:[^`]*)`"_s);
+
+    DocumentedSettings ret;
+    bool inServer = false;
+    bool inSettings = false;
+    const QStringList lines = page.split(u'\n');
+    for (const QString &line : lines) {
+        if (line.startsWith(u"## ")) {
+            inServer = line.trimmed() == u"## QMdmmServer"_s;
+            inSettings = false;
+            continue;
+        }
+        if (!inServer)
+            continue;
+        if (line.startsWith(u"### ")) {
+            const QString heading = line.mid(4).trimmed();
+            inSettings = false;
+            for (const char *section : settingsSections) {
+                if (heading == QString::fromLatin1(section)) {
+                    inSettings = true;
+                    ret.sections.insert(heading);
+                }
+            }
+            continue;
+        }
+        if (!inSettings || !line.startsWith(u"- `"))
+            continue;
+
+        // A row spells its option list first and its description after a spaced double dash, so the
+        // reading stops where the description starts: the description names options of its own --
+        // "--timeout + 60" in the timeout row, "--players=4" in the shorthand row -- that are not
+        // what that row documents.
+        const qsizetype separator = line.indexOf(u" -- "_s);
+        const QString optionList = separator < 0 ? line : line.left(separator);
+
+        QRegularExpressionMatchIterator matches = longOption.globalMatch(optionList);
+        while (matches.hasNext())
+            ret.options.append(matches.next().captured(1));
+    }
+    return ret;
+}
+
 // The stored face of ServerConfiguration: one row per key, naming the property the run prints, the
 // key the configuration file holds and a value that differs from the default so that a reading
 // says which source won. A value is spelled twice because the two faces spell it differently -- the
 // file holds a bare word, the printed JSON holds a quoted string where the property is one.
 //
-// The rows are the subject of two cases that pull in opposite directions: each row is walked by
+// The rows are the subject of cases that pull in opposite directions: each row is walked by
 // `storedKeys_reachThePrintedConfiguration` (a row whose key the program does not read leaves the
-// printed value at its default, and that case goes red), and the set of rows is held against both
-// the properties the header declares and the keys a save writes by
-// `declaredConfigurationKeys_areTheStoredOnes` and `savedConfiguration_carriesEveryStoredKey` (a
-// property with no row, or a saved key with no row, makes a set differ and a case go red). A key
+// printed value at its default, and that case goes red), and the set of rows is held against the
+// properties the header declares, the keys a save writes and the rows the page devotes to them by
+// `declaredConfigurationKeys_areTheStoredOnes`, `savedConfiguration_carriesEveryStoredKey` and
+// `documentedConfigurationKeys_areTheStoredOnes` (a property with no row, a saved key with no row,
+// or a documented setting with no key, makes a set differ and a case go red). A key
 // an operator has no business tuning cannot simply be left off this table either: the two sets are
 // held equal with nothing subtracted on either side, so such a key means teaching these cases an
 // exception in the same commit -- which is what the doxygen on ServerConfiguration says, too.
@@ -408,6 +474,7 @@ private slots:
     void storedKeys_reachThePrintedConfiguration_data();
     void storedKeys_reachThePrintedConfiguration();
     void declaredConfigurationKeys_areTheStoredOnes();
+    void documentedConfigurationKeys_areTheStoredOnes();
     void savedConfiguration_carriesEveryStoredKey();
     void outOfRangeValue_isRejected();
     void crossedPairs_areRejected_data();
@@ -780,6 +847,53 @@ void tst_QMdmmServer::declaredConfigurationKeys_areTheStoredOnes()
         declared.size() == declaredCount,
         qPrintable(u"the header declares %1 properties and %2 were read out of it -- a property declared twice, or one whose READ the pattern does not see"_s.arg(declaredCount)
                        .arg(declared.size())));
+}
+
+// The third face: the row doc/command-line.md devotes to a setting. The class says a start-up
+// setting is reachable three ways -- an option, a stored key, a row -- and the two cases around this
+// one hold the first two. The row was the one nothing held: the page could lose the row for a key
+// and every case here stayed green, which is the direction a reader notices last, since a key with
+// no row is one nobody can find and nothing points at the page from the code.
+//
+// The page is read as text, the way the header above and config.cpp are read, because it is not a
+// build input: nothing in the build would notice it drifting. Only the sections that list settings
+// are read, for the reason given at `settingsSections`.
+void tst_QMdmmServer::documentedConfigurationKeys_areTheStoredOnes()
+{
+    QFile page(QString::fromLatin1(QMDMM_COMMAND_LINE_DOC));
+    QVERIFY2(page.open(QIODevice::ReadOnly), qPrintable(page.fileName() + u": "_s + page.errorString()));
+
+    const DocumentedSettings documented = documentedSettings(QString::fromUtf8(page.readAll()));
+
+    // The headings are looked at first, so that a renamed section fails as a section the reading did
+    // not find rather than as thirteen keys the page has allegedly stopped documenting.
+    QSet<QString> expectedSections;
+    for (const char *section : settingsSections)
+        expectedSections.insert(QString::fromLatin1(section));
+
+    QString sectionsMessage = u"the page was not read where it was expected to be read -- sections not found: ["_s + sortedWords(expectedSections - documented.sections);
+    sectionsMessage += u"]; sections read: ["_s + sortedWords(documented.sections) + u"]"_s;
+    QVERIFY2(documented.sections == expectedSections, qPrintable(sectionsMessage));
+
+    // One key spelled by two rows would read as two entries, and the set comparison below could not
+    // tell that from the page being right, so the rows as a list are looked at first.
+    QStringList rows = documented.options;
+    rows.sort();
+    QStringList deduplicated = rows;
+    deduplicated.removeDuplicates();
+    QCOMPARE(deduplicated, rows);
+
+    QSet<QString> documentedKeys;
+    for (const QString &option : rows)
+        documentedKeys.insert(option);
+
+    QSet<QString> stored;
+    for (const StoredServerKey &row : storedServerKeys())
+        stored.insert(QString::fromLatin1(row.key));
+
+    QString message = u"the documented settings and the stored keys disagree -- documented but not stored: ["_s + sortedWords(documentedKeys - stored);
+    message += u"]; stored but not documented: ["_s + sortedWords(stored - documentedKeys) + u"]"_s;
+    QVERIFY2(documentedKeys == stored, qPrintable(message));
 }
 
 // The write side: a key the program reads but does not save would be lost the moment a run replays
