@@ -75,8 +75,9 @@ quint16 freePort()
 //
 // The answers worth checking here are the ones a real server never produces -- a body that never
 // ends, a body that is not the snapshot, a body that keeps growing -- so the far end has to be
-// something other than the server. What it does not do is read the request: none of these cases
-// turn on what the program asks for.
+// something other than the server. It does not look at the request: none of these cases turn on
+// what the program asks for. It is taken out of the socket before the answer is written all the
+// same, for the reason given at answerAndClose().
 class StandInPlane
 {
 public:
@@ -120,10 +121,22 @@ QByteArray answerWith(const QByteArray &body)
 // socket needs its events to drain what was written and to finish closing. A case that skipped the
 // wait would have its answer left in this process and would be read as a peer that went quiet
 // instead of one that answered and left -- which is a different thing being tested.
+//
+// The request is taken out of the socket first, and the answer is waited for rather than only
+// handed over: a close that leaves received bytes unread is answered with a reset, and Windows
+// sends that reset without first putting the answer on the wire -- the run then reads a connection
+// that ended with nothing on it and reports an answer that ended before its header block did,
+// which is exactly the reading a case about the content of an answer must not be looking at.
 void answerAndClose(QTcpSocket *connection, const QByteArray &answer)
 {
+    if (connection->bytesAvailable() == 0 && !connection->waitForReadyRead(5000))
+        qFatal("the run never asked the stand-in control plane anything");
+    connection->readAll();
+
     connection->write(answer);
     connection->flush();
+    if (connection->bytesToWrite() > 0 && !connection->waitForBytesWritten(5000))
+        qFatal("the stand-in could not put its answer on the wire");
     connection->disconnectFromHost();
 
     if (connection->state() != QAbstractSocket::UnconnectedState && !connection->waitForDisconnected(5000))
