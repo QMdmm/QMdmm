@@ -4,7 +4,11 @@
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QHostAddress>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 #include <QTcpSocket>
 
 #include <cstdlib>
@@ -18,7 +22,17 @@ namespace {
 // answers one short request per connection and closes, it is reached over the loopback interface,
 // and it gives a peer that has not spoken five seconds before it drops it -- so this is longer than
 // everything the far end does and short enough that a run pointed at nothing does not hang.
+//
+// It is one deadline for the exchange and not one per read: a peer that drips a byte at a time
+// would never run out of reads, and a run any peer can keep waiting for as long as it likes is a
+// run whose caller has no bound to lean on.
 constexpr int answerTimeout = 5000;
+
+// The most of an answer this program will hold. The snapshot is a few hundred bytes and grows with
+// the number of rooms rather than with anything the peer chooses; an answer past this is a peer
+// that is sending rather than answering, and how far the buffer behind it would grow is its choice
+// rather than this program's.
+constexpr qsizetype answerSizeLimit = static_cast<qsizetype>(1024) * 1024;
 
 // What a rejected run ends with: the same 3 the two long-running programs use for a configuration
 // they will not run with. A caller has to be able to tell "the arguments were refused" apart from
@@ -69,6 +83,26 @@ implemented yet; this program only asks.
     giveUp(message, exitRejectedRun);
 }
 
+// Whether what came back is the snapshot the control plane serves.
+//
+// A 200 is not enough on its own: this plane answers what it does not serve with a 404 and its own
+// text, but a peer that is not this plane at all is free to answer 200 with nothing behind it, and
+// that would be printed as a snapshot and reported as a healthy server to whoever reads the output.
+//
+// The four keys are asked for by name and nothing beyond them: what the program prints is the body
+// byte for byte, so a key it does not know about is carried through as it arrived. A body missing
+// one of the four is a different shape, not a newer one.
+bool isTheSnapshot(const QByteArray &body)
+{
+    QJsonParseError parseError {};
+    const QJsonDocument document = QJsonDocument::fromJson(body, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject())
+        return false;
+
+    const QJsonObject snapshot = document.object();
+    return snapshot.value(u"rooms"_s).isDouble() && snapshot.value(u"games"_s).isDouble() && snapshot.value(u"players"_s).isDouble() && snapshot.value(u"roomList"_s).isArray();
+}
+
 // One HTTP/1.0 exchange with the control plane, and the body that came back.
 //
 // The request line is the whole of what that plane looks at, and it answers exactly one request
@@ -81,9 +115,18 @@ implemented yet; this program only asks.
 // port this was asked for is one the far end took, and anything else never got there.
 QByteArray fetchSnapshot(quint16 port, QString *failure)
 {
+    // Started before the connection is attempted: a peer that is slow to accept and one that is
+    // slow to answer are the same wait to the caller this belongs to.
+    QElapsedTimer deadline;
+    deadline.start();
+    const auto timeLeft = [&deadline] {
+        const qint64 left = answerTimeout - deadline.elapsed();
+        return left > 0 ? static_cast<int>(left) : 0;
+    };
+
     QTcpSocket socket;
     socket.connectToHost(QHostAddress::LocalHost, port);
-    const bool connected = socket.waitForConnected(answerTimeout);
+    const bool connected = socket.waitForConnected(timeLeft());
     if (!connected || socket.peerPort() != port) {
         *failure = u"nothing answered on 127.0.0.1:%1; is a server running there with --control-port?"_s.arg(static_cast<int>(port));
         return {};
@@ -92,18 +135,32 @@ QByteArray fetchSnapshot(quint16 port, QString *failure)
     socket.write("GET /status HTTP/1.0\r\n\r\n"_ba);
     socket.flush();
 
+    // Only the close ends the loop. Running out of the deadline does not count as an answer that
+    // ended: a peer that holds the connection open and says nothing is the one shape a caller
+    // cannot tell from a slow answer, so it is reported as no answer rather than parsed as one.
     QByteArray answer;
     for (;;) {
         if (socket.bytesAvailable() > 0) {
             answer += socket.readAll();
+            if (answer.size() > answerSizeLimit) {
+                *failure = u"the answer from 127.0.0.1:%1 grew past %2 bytes without ending"_s.arg(static_cast<int>(port)).arg(static_cast<qlonglong>(answerSizeLimit));
+                return {};
+            }
             continue;
         }
         if (socket.state() == QAbstractSocket::UnconnectedState)
             break;
-        if (!socket.waitForReadyRead(answerTimeout))
-            break;
+
+        // A wait that came back empty is either the far end having closed or the deadline running
+        // out, and the two are not the same answer: the close is what says an answer is complete,
+        // so the state is read rather than the return value trusted. A deadline of zero is the same
+        // statement a moment later, and is not worth a wait of its own.
+        const int left = timeLeft();
+        if (left == 0 || (!socket.waitForReadyRead(left) && socket.state() != QAbstractSocket::UnconnectedState)) {
+            *failure = u"the answer from 127.0.0.1:%1 did not finish within %2 ms"_s.arg(static_cast<int>(port)).arg(answerTimeout);
+            return {};
+        }
     }
-    answer += socket.readAll();
 
     const qsizetype headerEnd = answer.indexOf("\r\n\r\n"_ba);
     if (headerEnd < 0) {
@@ -120,7 +177,13 @@ QByteArray fetchSnapshot(quint16 port, QString *failure)
         return {};
     }
 
-    return answer.mid(headerEnd + 4);
+    QByteArray body = answer.mid(headerEnd + 4);
+    if (!isTheSnapshot(body)) {
+        *failure = u"127.0.0.1:%1 answered 200 with something that is not the snapshot"_s.arg(static_cast<int>(port));
+        return {};
+    }
+
+    return body;
 }
 
 // The body goes out exactly as it arrived, down to the absence of a trailing newline.

@@ -66,9 +66,10 @@ diff <(curl -s 127.0.0.1:7900/status) <(QMdmmCtl6 status --control-port 7900)
 ```
 
 An answer that carries no snapshot is not printed: a `404` from the control
-plane, an answer that ends before its headers do, and a port with nothing
-listening all end the run the same way -- the reason on stderr, nothing on
-stdout, and status 1.
+plane, an answer that ends before its headers do, an answer that does not finish
+within five seconds, a `200` whose body is not the snapshot, and a port with
+nothing listening all end the run the same way -- the reason on stderr, nothing
+on stdout, and status 1.
 
 A command line that is refused -- no command, more than one, an unknown one,
 `status` without `--control-port`, or a value that is not a port -- is reported
