@@ -372,14 +372,18 @@ jobs:
     # No suppression list, and deliberately not an empty one either. A list is
     # worth keeping only once someone has read what it would cover, and what
     # this one would cover is a reading of how the tests wait, not the density
-    # of races in the tree. Measured on macOS with the options below, over the
-    # 16 suites this leg keeps: 344 reports in 29 distinct summaries -- 33 at
-    # five sites in this repository
+    # of races in the tree. One reading of one tree -- macOS, the options
+    # below, the test step at --output-on-failure as it stood in d73b560, over
+    # the 16 suites this leg keeps: 344 reports in 29 distinct summaries -- 33
+    # of them at five sites in this repository
     # (ServerConnectionP::sendRockPaperScissorsNotified 14,
     # sendActionOrderRequested 8, sendUpgradeNotified 1,
     # Logic::actionOrderReply 6, LogicP::upgradeFeasible 4), the other 311
     # inside Qt's container headers (QArrayDataPointer, QHash, QList,
-    # qHashEquals). Reading the stacks rather than the counts is what says so:
+    # qHashEquals). The same sources read back in 2ae3b25, once the test step
+    # had moved to -V, came to 349 reports, so neither number is a constant:
+    # they are two readings of one tree, and both are on macOS. Reading the
+    # stacks rather than the counts is what says so:
     # the write side builds a payload on the logic thread while the read side
     # takes a name off it on another, and both sides carry the same allocation.
     # The hand-off is ordered, and what is missing is the runtime's view of that
@@ -392,7 +396,10 @@ jobs:
     # written once and read once on the same path reports under that loop too.
     # So the count is the test's event loop made visible, not a defect: no site
     # here is a race to repair, and a list keyed on those headers would encode
-    # today's pump as noise. Those counts are a reading of one tree on one
+    # today's pump as noise. That holds for the stacks read above, on macOS, and
+    # does not carry over -- this cell runs on Linux, where one run of it, read
+    # on 2026-10-25, came to 13061 reports with all 16 suites red, and nobody
+    # has read those stacks yet. Those counts are a reading of one tree on one
     # platform, not a promise, and the cell below prints its own.
     #
     # Two suites are left out, and the positive control is a third. Both excluded
