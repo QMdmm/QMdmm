@@ -11,7 +11,7 @@ on:
 jobs:
   lint:
     name: Source is pure ASCII
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, ubuntu-26.04-arm, macos-latest, macos-26-intel]
+        os: [ubuntu-latest, ubuntu-26.04-arm, macos-latest, macos-26-intel]
         build_type: [Debug, Release, MinSizeRel]
         #
         # The cell that carries the coverage report is named here, in the
@@ -50,7 +50,7 @@ jobs:
         # cell named here, the same edit that moves the cell also moves the
         # coverage report.
         include:
-          - os: ubuntu-26.04
+          - os: ubuntu-latest
             build_type: Debug
             coverage: true
 
@@ -226,7 +226,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-latest]
+        os: [ubuntu-latest, macos-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -334,7 +334,7 @@ jobs:
           echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} test=${{ steps.test.outcome }} cases=$((total - failed))/${total} failed=${failed} ${names} address-reports=${address} undefined-reports=${undefined}"
 
   thread-sanitizer:
-    name: ThreadSanitizer (ubuntu-26.04 probe, Debug)
+    name: ThreadSanitizer (ubuntu-latest probe, Debug)
     #
     # ThreadSanitizer over nearly the same ctest set, in a Debug cell on Linux.
     #
@@ -409,7 +409,7 @@ jobs:
     # own; the step above runs it on its own, under options that do print.
     #
     continue-on-error: true
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -562,7 +562,7 @@ jobs:
           echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} control=${{ steps.control.outcome }} test=${{ steps.test.outcome }} cases=${casePassed}/${caseRan} suites=$((total - failed))/${total} ${names} thread-reports=${reports} positive-control=${control}"
 
   fuzz:
-    name: Fuzz (ubuntu-26.04, inbound decoding)
+    name: Fuzz (ubuntu-latest, inbound decoding)
     #
     # A time-boxed libFuzzer run over the one decoder that reads bytes nobody in
     # this project wrote. Packet::fromJson() is what turns a peer's array into the
@@ -586,7 +586,7 @@ jobs:
     # back into the tree: a job that committed would need a token and a push, and
     # the interesting half of a corpus is the part a person should read before it
     # lands.
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -872,7 +872,7 @@ jobs:
         # that carries no precompiled header, and the build cells exist to
         # build the product rather than to be reconfigured for the linter.
         #
-        os: [ubuntu-26.04, macos-latest]
+        os: [ubuntu-latest, macos-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
