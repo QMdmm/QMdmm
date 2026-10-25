@@ -38,6 +38,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -94,6 +95,24 @@ quint16 freePort()
 
     const quint16 port = reservation.serverPort();
     reservation.close();
+    return port;
+}
+
+// One port, different from every port in @p taken.
+//
+// A released port is one the kernel hands out again, so a case that reserves more than one has to
+// say which ones it already holds. What that protects is the negative control: the port nobody
+// listens on is the whole of what makes it negative, and one that comes back as the port the
+// server was started on points the stray bot at this run's own game room -- the room fills, a
+// match starts and the case fails reading a room that is playing rather than recruiting. Measured
+// on 2026-10-25: the ubuntu MinSizeRel cell failed exactly that way, at three of three players and
+// a round already played, and the same reading comes back here when the two numbers are made equal
+// on purpose.
+quint16 freePortOtherThan(std::initializer_list<quint16> taken)
+{
+    quint16 port = freePort();
+    while (std::find(taken.begin(), taken.end(), port) != taken.end())
+        port = freePort();
     return port;
 }
 
@@ -378,7 +397,7 @@ private slots:
 void tst_QMdmmHeadlessGame::headlessGame_aMatchEndsAndTheBotsExit()
 {
     const quint16 gamePort = freePort();
-    const quint16 controlPort = freePort();
+    const quint16 controlPort = freePortOtherThan({gamePort});
 
     Processes processes;
     QVERIFY2(processes.startServer(serverArguments(gamePort, controlPort), controlPort),
@@ -458,10 +477,12 @@ void tst_QMdmmHeadlessGame::headlessGame_aMatchEndsAndTheBotsExit()
 void tst_QMdmmHeadlessGame::headlessGame_aMissingBot_leavesTheRoomRecruiting()
 {
     const quint16 gamePort = freePort();
-    const quint16 controlPort = freePort();
+    const quint16 controlPort = freePortOtherThan({gamePort});
     // Nothing listens here for the length of the case: the port is taken and given back, and the
-    // stray bot below is the only thing pointed at it.
-    const quint16 deadPort = freePort();
+    // stray bot below is the only thing pointed at it. It is held apart from the two ports this
+    // case starts the server on, because a port that came back as one of those would point the
+    // stray at this run's own room (see freePortOtherThan()).
+    const quint16 deadPort = freePortOtherThan({gamePort, controlPort});
 
     Processes processes;
     QVERIFY2(processes.startServer(serverArguments(gamePort, controlPort), controlPort),
@@ -503,7 +524,7 @@ void tst_QMdmmHeadlessGame::headlessGame_aMissingBot_leavesTheRoomRecruiting()
 void tst_QMdmmHeadlessGame::headlessGame_printsTheConfigurationTheLegPassed()
 {
     const quint16 gamePort = freePort();
-    const quint16 controlPort = freePort();
+    const quint16 controlPort = freePortOtherThan({gamePort});
 
     // The same arguments the other two cases start the server with, plus the one that asks for the
     // configuration instead of serving it. -d prints and exits 0, so this run finishes on its own.
