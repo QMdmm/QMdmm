@@ -312,6 +312,10 @@ void tst_QMdmmCtl::status_printsWhatTheControlPlaneServesByteForByte()
 
 // A server that is not there is not an empty answer: the exit status has to carry the failure, and
 // nothing may be mistaken for a snapshot on stdout.
+//
+// The status is pinned to 1 rather than "not 0": 3 is what a command line the program will not run
+// with ends at, before anything is asked, and the number is the only thing that tells a caller who
+// asked and read nothing apart from one that never got as far as asking.
 void tst_QMdmmCtl::status_exitsNonZeroWhenNothingAnswers()
 {
     const quint16 silentPort = freePort();
@@ -319,7 +323,7 @@ void tst_QMdmmCtl::status_exitsNonZeroWhenNothingAnswers()
     const RunResult result = runCtl({u"status"_s, u"--control-port"_s, QString::number(silentPort)});
 
     QCOMPARE(result.exitStatus, QProcess::NormalExit);
-    QVERIFY2(result.exitCode != 0, "a run that could ask nothing came back as a success");
+    QCOMPARE(result.exitCode, 1);
     QVERIFY2(result.standardOutput.isEmpty(), qPrintable(QString::fromLocal8Bit(result.standardOutput)));
     QVERIFY2(result.standardError.contains("nothing answered"), qPrintable(QString::fromLocal8Bit(result.standardError)));
 }
