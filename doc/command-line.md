@@ -65,6 +65,14 @@ trailing newline, so it can be compared with the same answer read any other way:
 diff <(curl -s 127.0.0.1:7900/status) <(QMdmmCtl6 status --control-port 7900)
 ```
 
+It has no `--log-level` and installs no message handler, and that is a decision
+rather than an omission. The two long-running programs have a level because they
+open a log file: the level says how much of that record the terminal is told.
+This one opens no log file at all, so it has no record to filter and nothing a
+level could choose between. What it prints is the whole of what it produces,
+and a line of its own on that stream would be one more thing for whoever reads
+the comparison above to explain away.
+
 An answer that carries no snapshot is not printed: a `404` from the control
 plane, an answer that ends before its headers do, an answer that does not finish
 within five seconds, an answer that grows past 1 MiB without ending, a `200`
