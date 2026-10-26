@@ -97,8 +97,12 @@ int main(int argc, char *argv[])
     Config config(QCoreApplication::arguments());
 
     // The file opened above is the record and keeps every line; the level decides how much of it
-    // the terminal is told. It goes on now that the command line has been read, which also means
-    // what the configuration code reported while reading it is never filtered.
+    // the terminal is told. It can only be set here, once the command line has been read, so what
+    // the configuration code reported while reading it was written before any level applied: those
+    // lines followed the starting level, off, and the record is the only place they went. The one
+    // thing a configuration in progress does put on the terminal is what configErrorImpl() writes
+    // to stderr itself, which never passes through the level at all. A run with no record to keep
+    // -- one whose log file could not be opened -- filters nothing, before this line and after it.
     QMdmmCore::qMdmmDebugSetConsoleLevel(config.logLevel());
 
     QMdmmNetworking::ClientConfiguration conf;
