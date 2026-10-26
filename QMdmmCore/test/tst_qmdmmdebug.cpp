@@ -259,6 +259,36 @@ private slots:
 
         QVERIFY(consoleLines.contains(u"a line with no record behind it"_s));
     }
+
+    // The names --log-level takes are read here rather than in each program that carries the
+    // option: one table, so a name added to the level reaches both programs at once. Case is not
+    // part of a name, and a word no level has to be nothing rather than some level.
+    void QMdmmDebuglogLevelFromString_data()
+    {
+        QTest::addColumn<QString>("name");
+        QTest::addColumn<int>("level");
+
+        // -1 stands for "no level", the way the other table carries the enum over as a number.
+        QTest::newRow("off") << u"off"_s << static_cast<int>(LogLevel::Off);
+        QTest::newRow("debug") << u"debug"_s << static_cast<int>(LogLevel::Debug);
+        QTest::newRow("info, in capitals") << u"INFO"_s << static_cast<int>(LogLevel::Info);
+        QTest::newRow("warning, mixed case") << u"Warning"_s << static_cast<int>(LogLevel::Warning);
+        QTest::newRow("critical") << u"critical"_s << static_cast<int>(LogLevel::Critical);
+        QTest::newRow("a word no level has") << u"chatty"_s << -1;
+        QTest::newRow("nothing at all") << QString() << -1;
+    }
+
+    void QMdmmDebuglogLevelFromString()
+    {
+        QFETCH(QString, name);
+        QFETCH(int, level);
+
+        const std::optional<LogLevel> read = qMdmmDebugLogLevelFromString(name);
+
+        QCOMPARE(read.has_value(), level >= 0);
+        if (read.has_value())
+            QCOMPARE(static_cast<int>(read.value()), level);
+    }
 };
 
 namespace {

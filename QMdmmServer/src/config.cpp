@@ -345,22 +345,6 @@ inline std::optional<QMdmmCore::LogicConfiguration::PunishHpRoundStrategy> strin
     return std::nullopt;
 }
 
-inline std::optional<QMdmmCore::LogLevel> stringToLogLevel(const QString &value)
-{
-    static const QHash<QString, QMdmmCore::LogLevel> levelHash {
-        std::make_pair(u"off"_s, QMdmmCore::LogLevel::Off),           std::make_pair(u"debug"_s, QMdmmCore::LogLevel::Debug),
-        std::make_pair(u"info"_s, QMdmmCore::LogLevel::Info),         std::make_pair(u"warning"_s, QMdmmCore::LogLevel::Warning),
-        std::make_pair(u"critical"_s, QMdmmCore::LogLevel::Critical),
-    };
-
-    for (QHash<QString, QMdmmCore::LogLevel>::const_iterator it = levelHash.constBegin(); it != levelHash.constEnd(); ++it) {
-        if (it.key().compare(value, Qt::CaseInsensitive) == 0)
-            return it.value();
-    }
-
-    return std::nullopt;
-}
-
 inline QString boolToString(bool value)
 {
     return value ? u"on"_s : u"off"_s;
@@ -435,9 +419,9 @@ void Config::read_(QMdmmCore::Settings *setting, QCommandLineParser *parser)
     // of what it does.
     if (parser->isSet(u"log-level"_s)) {
         const QString value = parser->value(u"log-level"_s);
-        const std::optional<QMdmmCore::LogLevel> level = stringToLogLevel(value);
+        const std::optional<QMdmmCore::LogLevel> level = QMdmmCore::qMdmmDebugLogLevelFromString(value);
         if (!level.has_value())
-            configError(u"Config item log-level (from command line) can't be parsed."_s);
+            configError(u"log-level (from command line) can't be parsed."_s);
         logLevel_ = level.value();
     }
 

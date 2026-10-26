@@ -16,6 +16,8 @@
 #include <QDebug>
 #include <QFileDevice>
 
+#include <optional>
+
 QMDMM_EXPORT_NAME(QMdmmDebug)
 
 namespace QMdmmCore {
@@ -34,11 +36,13 @@ enum class LogLevel : uint8_t
 
 QMDMMCORE_EXPORT void qMdmmDebugSetDevice(QIODevice *f);
 QMDMMCORE_EXPORT void qMdmmDebugSetConsoleLevel(LogLevel level);
+QMDMMCORE_EXPORT std::optional<LogLevel> qMdmmDebugLogLevelFromString(const QString &value);
 
 #ifndef DOXYGEN
 } // namespace v0
 inline namespace v1 {
 using v0::LogLevel;
+using v0::qMdmmDebugLogLevelFromString;
 using v0::qMdmmDebugSetConsoleLevel;
 using v0::qMdmmDebugSetDevice;
 } // namespace v1

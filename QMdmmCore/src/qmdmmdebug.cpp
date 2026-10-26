@@ -4,7 +4,11 @@
 #include "qmdmmdebug_p.h"
 
 #include <QDebug>
+#include <QHash>
 #include <QIODevice>
+
+#include <optional>
+#include <utility>
 
 using namespace Qt::StringLiterals;
 
@@ -92,6 +96,31 @@ void qMdmmDebugSetDevice(QIODevice *f)
 void qMdmmDebugSetConsoleLevel(LogLevel level)
 {
     p::debugLogInstance()->consoleLevel = level;
+}
+
+/**
+ * @brief Read a level from the name it goes by on the command line.
+ * @param value The name to read
+ * @return The level @p value names, or nothing if it names none of them
+ *
+ * The five names are the ones @c --log-level takes, and case is not part of a name: @c Warning and
+ * @c warning are the same level. This is the only place they are written down -- a program that
+ * kept its own copy of them would go on refusing a name the level had gained, or go on accepting
+ * one it had lost, and nothing would report the difference.
+ */
+std::optional<LogLevel> qMdmmDebugLogLevelFromString(const QString &value)
+{
+    static const QHash<QString, LogLevel> levelHash {
+        std::make_pair(u"off"_s, LogLevel::Off),         std::make_pair(u"debug"_s, LogLevel::Debug),       std::make_pair(u"info"_s, LogLevel::Info),
+        std::make_pair(u"warning"_s, LogLevel::Warning), std::make_pair(u"critical"_s, LogLevel::Critical),
+    };
+
+    for (QHash<QString, LogLevel>::const_iterator it = levelHash.constBegin(); it != levelHash.constEnd(); ++it) {
+        if (it.key().compare(value, Qt::CaseInsensitive) == 0)
+            return it.value();
+    }
+
+    return std::nullopt;
 }
 
 #ifndef DOXYGEN
