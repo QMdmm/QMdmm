@@ -26,9 +26,16 @@ add_dependencies(tst_qmdmmserver6 QMdmmServer6)
 
 # Qt6::Network is here for the case that has to hand the run a port it cannot
 # bind: it holds one of its own and passes that port on the command line.
+#
+# QMdmm6::Core is here for one reading of where that run keeps its log: the
+# directory is resolved from the installed layout (see
+# QMdmmCore::Global::runtimeDataDirectory()), and a case that worked the rule out
+# again would be a second copy of it. Nothing of the executable under test is
+# linked in -- this is the module that path comes from, not the subject.
 target_link_libraries(tst_qmdmmserver6
     PUBLIC Qt6::Core
            Qt6::Network
+           QMdmm6::Core
 )
 if (BUILD_TESTING)
     target_link_libraries(tst_qmdmmserver6 PUBLIC Qt6::Test)

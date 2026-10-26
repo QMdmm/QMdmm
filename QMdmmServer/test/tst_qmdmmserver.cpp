@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <QMdmmGlobal>
+
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -182,6 +184,18 @@ RunResult runServer(const QStringList &arguments, int timeoutMs = 60000, const Q
     result.standardOutput = QString::fromLocal8Bit(process.readAllStandardOutput());
     result.standardError = QString::fromLocal8Bit(process.readAllStandardError());
     return result;
+}
+
+// The names of the log files the runs opened under @p directory -- each is named after the
+// moment it was opened at, so a name a case did not see before the run it started belongs to
+// that run. A directory no run has reached yet answers with none.
+QSet<QString> logFileNames(const QString &directory)
+{
+    QSet<QString> names;
+    const QStringList entries = QDir(directory).entryList({u"QMdmmServer-*"_s}, QDir::Files);
+    for (const QString &entry : entries)
+        names.insert(entry);
+    return names;
 }
 
 // Every letter a short option can be spelled with. The free-slot table in config.cpp is a subset
@@ -492,6 +506,7 @@ private slots:
     void switchValues_reachThePrintedConfiguration_data();
     void switchValues_reachThePrintedConfiguration();
     void logLevel_isAcceptedButNotPartOfTheConfiguration();
+    void logLevel_decidesHowMuchOfTheLogTheTerminalIsTold();
     void portThatIsAlreadyTaken_makesTheRunGiveUp();
     void stopSignal_closesTheListenersAndExitsZero();
     void onlyStatusOverGet_getsTheSnapshot_data();
@@ -1173,6 +1188,70 @@ void tst_QMdmmServer::logLevel_isAcceptedButNotPartOfTheConfiguration()
 
     QVERIFY(result.standardOutput.contains(u"\"tcpEnabled\": true"_s));
     QVERIFY(!result.standardOutput.contains(u"log-level"_s));
+}
+
+// Accepting the option is not the same as applying it, and nothing above reads the difference:
+// the level decides how much of the log the terminal is told, and the file is the record either
+// way. What this case needs is one line of a known level that a run reaches after the option has
+// been applied -- not one the configuration wrote while it was still being read, which the level
+// arrives too late for. The transport error is exactly that: qCritical() from the run itself,
+// on the way out of a listen it could not make.
+//
+// Three readings of that one line. With nothing asked for, the terminal is told none of it --
+// what it has is the reason the run writes to stderr by hand, which is not the logging path --
+// and the file the run opened holds the line. With --log-level critical the same line reaches
+// the terminal too. A level that never arrived would leave all three on the quiet side except
+// the stderr line, and the reading about the file would still pass; the loud half is the one
+// that holds the wiring, and the quiet half is what keeps the loud one from passing on a run
+// that talks whatever it was asked for.
+//
+// The directory is asked of the module the run asks (Global::runtimeDataDirectory()) rather
+// than worked out a second time here: which of the shapes it resolves to depends on how the tree
+// was built and installed, and a copy of that rule in a case would part ways with it.
+//
+// The port is held by this case, the way the case below holds one. A run that could bind would
+// sit in its event loop instead of ending, which runServer() fails as a run that stopped exiting
+// where it was expected to.
+void tst_QMdmmServer::logLevel_decidesHowMuchOfTheLogTheTerminalIsTold()
+{
+    QTcpServer occupant;
+    QVERIFY(occupant.listen(QHostAddress::Any, 0));
+    const quint16 port = occupant.serverPort();
+
+    const QString logDirectory = QMdmmCore::Global::runtimeDataDirectory() + u"/log"_s;
+    const QSet<QString> before = logFileNames(logDirectory);
+
+    const QStringList arguments = {u"-t"_s, u"on"_s, u"-p"_s, QString::number(port), u"-l"_s, u"off"_s, u"-w"_s, u"off"_s};
+
+    const RunResult quiet = runServer(arguments);
+
+    QVERIFY(quiet.exitStatus == QProcess::NormalExit);
+    QCOMPARE(quiet.exitCode, 3);
+    QVERIFY2(quiet.standardError.contains(u"Unable to listen, exiting."_s), qPrintable(quiet.standardError));
+    QVERIFY2(!quiet.standardError.contains(u"Unable to listen on"_s), qPrintable(quiet.standardError));
+
+    // The record keeps what the terminal was not told. Any file the run left behind carries the
+    // line; one that does not is somebody else's, and the case is about this run's.
+    bool recorded = false;
+    const QSet<QString> afterQuiet = logFileNames(logDirectory);
+    for (const QString &name : afterQuiet) {
+        if (before.contains(name))
+            continue;
+
+        QFile logFile(QDir(logDirectory).absoluteFilePath(name));
+        if (!logFile.open(QIODevice::ReadOnly))
+            continue;
+
+        if (QString::fromUtf8(logFile.readAll()).contains(u"Unable to listen on tcp:"_s))
+            recorded = true;
+    }
+    QVERIFY2(recorded, qPrintable(u"no log file written under %1 carries the line the terminal was not told"_s.arg(logDirectory)));
+
+    const RunResult told = runServer(QStringList(arguments) << u"--log-level"_s << u"critical"_s);
+
+    QVERIFY(told.exitStatus == QProcess::NormalExit);
+    QCOMPARE(told.exitCode, 3);
+    QVERIFY2(told.standardError.contains(u"Unable to listen on tcp:"_s), qPrintable(told.standardError));
 }
 
 // A run that gets past the configuration reaches the server itself, and a server that
