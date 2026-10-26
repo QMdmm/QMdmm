@@ -30,7 +30,9 @@ from the terminal, so a room filled entirely with bots plays itself out.
   `critical`: each but the first names the lowest level that is copied, and
   `off` copies nothing. `warning` copies warnings and criticals and leaves the
   two below them to the file. The log file keeps every line whatever the level
-  says, so this decides what a terminal shows rather than what is recorded.
+  says, so this decides what a terminal shows rather than what is recorded. A
+  run that never opens a log file has nothing to filter, so its terminal keeps
+  every line.
 
 An unusable command line -- an argument that is not an option, a missing host,
 a style that does not exist, a style that exists but is refused before it can
