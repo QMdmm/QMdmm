@@ -1223,7 +1223,17 @@ void tst_QMdmmServer::logLevel_decidesHowMuchOfTheLogTheTerminalIsTold()
 
     const QStringList arguments = {u"-t"_s, u"on"_s, u"-p"_s, QString::number(port), u"-l"_s, u"off"_s, u"-w"_s, u"off"_s};
 
-    const RunResult quiet = runServer(arguments);
+    // The copied-out line is delivered by Qt's own handler, and on Windows that handler gives a
+    // line to the debugger instead of stderr whenever no console is attached -- which is the shape
+    // a process started by another one has. QT_ASSUME_STDERR_HAS_CONSOLE is the override Qt
+    // documents for exactly this: a parent process that reads the child's stderr and presents it
+    // itself. Without it the two readings below that ask what stderr holds would agree with
+    // themselves on that platform, the line never being able to arrive at all; with it every
+    // platform is read the same way.
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(u"QT_ASSUME_STDERR_HAS_CONSOLE"_s, u"1"_s);
+
+    const RunResult quiet = runServer(arguments, 60000, environment);
 
     QVERIFY(quiet.exitStatus == QProcess::NormalExit);
     QCOMPARE(quiet.exitCode, 3);
@@ -1247,7 +1257,7 @@ void tst_QMdmmServer::logLevel_decidesHowMuchOfTheLogTheTerminalIsTold()
     }
     QVERIFY2(recorded, qPrintable(u"no log file written under %1 carries the line the terminal was not told"_s.arg(logDirectory)));
 
-    const RunResult told = runServer(QStringList(arguments) << u"--log-level"_s << u"critical"_s);
+    const RunResult told = runServer(QStringList(arguments) << u"--log-level"_s << u"critical"_s, 60000, environment);
 
     QVERIFY(told.exitStatus == QProcess::NormalExit);
     QCOMPARE(told.exitCode, 3);
