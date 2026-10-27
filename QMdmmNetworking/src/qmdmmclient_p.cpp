@@ -79,6 +79,12 @@ ClientP::ClientP(ClientConfiguration clientConfiguration, Client *q)
     , initialState(QMdmmCore::Data::StateOffline)
     , lastRoundEventSeq(0)
 {
+    // The heartbeat interval is written in three places and this is the only one a change is made
+    // in: the server drops a signed-in peer after three of these (heartbeatSilenceTimeout, 90
+    // seconds, in qmdmmserverconnection_p.cpp), and doc/protocol.md says the same in its "Silence
+    // and the heartbeat" section. Neither of those follows this number on its own, so changing it
+    // here quietly turns the ratio into two or four -- and the ratio is the whole guard against
+    // dropping a client that is merely busy.
     heartbeatTimer->setInterval(30000);
     heartbeatTimer->setSingleShot(false);
     connect(heartbeatTimer, &QTimer::timeout, this, &ClientP::heartbeatTimeout);

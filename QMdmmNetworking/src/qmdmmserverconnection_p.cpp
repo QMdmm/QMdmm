@@ -55,12 +55,15 @@ int ServerConnectionP::requestTimeoutGracePeriod = 60;
 namespace {
 
 // How long a signed-in peer may stay silent before the server gives up on it. A client sends
-// NotifyPingServer every 30 seconds for as long as it holds a connection (ClientP's heartbeat), so
-// this is three of those: one or two missed pings are a busy event loop, three is a peer that is no
-// longer there. Fixed rather than configured, for the same reason the control plane's deadline is
-// (see qmdmmserver_p.cpp): it bounds a peer's behaviour, not a policy an operator tunes, and a dial
-// here alone would be half a dial -- the interval it has to outlast is a constant on the client
-// side, which has no key of its own either.
+// NotifyPingServer every 30 seconds for as long as it holds a connection (ClientP's heartbeat, the
+// interval set in qmdmmclient_p.cpp's constructor), so this is three of those: one or two missed
+// pings are a busy event loop, three is a peer that is no longer there. Fixed rather than
+// configured, for the same reason the control plane's deadline is (see qmdmmserver_p.cpp): it
+// bounds a peer's behaviour, not a policy an operator tunes, and a dial here alone would be half a
+// dial -- the interval it has to outlast is a constant on the client side, which has no key of its
+// own either. That interval, this timeout and the "three ping intervals" of doc/protocol.md's
+// "Silence and the heartbeat" section are one rule written in three places; the client's line is
+// the one a change is made in, and the other two have to follow it.
 constexpr int heartbeatSilenceTimeout = 90;
 
 } // namespace
