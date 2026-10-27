@@ -78,6 +78,19 @@ Read these before touching code:
   being an aggregate, so every call site that builds it with designated
   initializers stops compiling -- and the default in the class body is then
   the default the type is stuck with.
+- The exception above leaves two shapes to spell out. A caller that builds the
+  type positionally (`setError({Socket::ProtocolError, {}})`) is still
+  aggregate initialization, but the weaker half of it: such a call depends on
+  the order of the members, which designated initialization does not -- a
+  member inserted ahead of the one it passes leaves that call compiling with a
+  different meaning, where a designated one stops compiling. Write the
+  designated form wherever it fits; the call sites that spell it positionally
+  today are all inside macros that raise an error. The other shape is a type
+  that is only ever default-constructed -- no call site builds it with
+  initializers at all, as with a private struct its owner holds in a
+  `std::unique_ptr` and `make_unique`s. It keeps its class-body default too:
+  there is no initializer to move into a constructor the type does not have,
+  and the exception lasts exactly as long as the type stays an aggregate.
 - A pointer default (`QProcess *m_serverProcess = nullptr;`) is not a lighter
   case: it is compiled into the same constructors, so it reads the same way.
 - `.clang-tidy` disables `cppcoreguidelines-use-default-member-init` and
