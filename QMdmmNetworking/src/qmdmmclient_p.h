@@ -52,6 +52,7 @@ public:
     Agent *selfAgent;
 
     QTimer *heartbeatTimer;
+    QTimer *pongDeadline;
     QTimer *reconnectTimer;
     QString host;
     int reconnectAttempts;
@@ -60,6 +61,10 @@ public:
     // yet). Backs Client::isConnected(); tracked explicitly because the QPointer<Socket> stays
     // non-null until deleteLater() is processed, so it cannot be used for a synchronous query.
     bool connected;
+
+    // Round trip of the last ping that came back, in milliseconds, or -1 while no measurement
+    // exists for the current connection. Backs Client::roundTripTime().
+    qint64 roundTripTime;
 
     QMdmmCore::Protocol::RequestId currentRequest;
     QMdmmCore::Data::AgentState initialState;
@@ -106,6 +111,7 @@ public slots: // NOLINT(readability-redundant-access-specifiers)
 
     void reconnectTimeout();
     void heartbeatTimeout();
+    void pongDeadlinePassed();
 
     // encode + send the client's own agent's replies / speech / operation to the server. These
     // slots listen to the Agent's replyXxx / spoken / operated signals (the operation side drives

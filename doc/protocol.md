@@ -171,6 +171,16 @@ connection that never signed in. Pulling the plug without closing the socket cle
 exactly the case it exists for, and a seat held by such a peer is released when the deadline
 runs out rather than when the operating system gets around to noticing.
 
+The same rule runs the other way, and there it is the pong that carries it. Answering a ping
+is the one thing a server whose event loop is stuck cannot do -- a stuck process still has a
+kernel that acknowledges the socket, so an open connection is no evidence that anything
+behind it is serving. The client therefore reads every pong twice: the pong echoes the
+client's own timestamp back untouched, so the difference is a round trip measured with one
+clock alone (reported as `Client::roundTripTime()`), and the answer restarts a deadline of
+its own. Nothing coming back for three intervals ends the connection the way a closed socket
+does -- reported through `Client::socketConnectionLost()` and followed by the reconnect
+below.
+
 ## Reconnecting
 
 A client that loses its connection may open a new one and sign in again with the same

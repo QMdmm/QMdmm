@@ -71,10 +71,12 @@ ClientP::ClientP(ClientConfiguration clientConfiguration, Client *q)
     , room(new QMdmmCore::Room(QMdmmCore::LogicConfiguration(), this))
     , selfAgent(nullptr)
     , heartbeatTimer(new QTimer(this))
+    , pongDeadline(new QTimer(this))
     , reconnectTimer(new QTimer(this))
     , reconnectAttempts(0)
     , reconnectInProgress(false)
     , connected(false)
+    , roundTripTime(-1)
     , currentRequest(QMdmmCore::Protocol::RequestInvalid)
     , initialState(QMdmmCore::Data::StateOffline)
     , lastRoundEventSeq(0)
@@ -84,10 +86,24 @@ ClientP::ClientP(ClientConfiguration clientConfiguration, Client *q)
     // seconds, in qmdmmserverconnection_p.cpp), and doc/protocol.md says the same in its "Silence
     // and the heartbeat" section. Neither of those follows this number on its own, so changing it
     // here quietly turns the ratio into two or four -- and the ratio is the whole guard against
-    // dropping a client that is merely busy.
-    heartbeatTimer->setInterval(30000);
+    // dropping a client that is merely busy. The client's own silence deadline below is the fourth
+    // place the interval reaches and the only one that follows it by itself: it is three of it,
+    // spelled as such instead of as a second number to keep in step.
+    constexpr int heartbeatInterval = 30000;
+    heartbeatTimer->setInterval(heartbeatInterval);
     heartbeatTimer->setSingleShot(false);
     connect(heartbeatTimer, &QTimer::timeout, this, &ClientP::heartbeatTimeout);
+
+    // The same rule, in the direction the server does not watch: a peer whose event loop is stuck
+    // still has a kernel that acknowledges, so a connection can look up while nothing behind it
+    // answers. The deadline is armed with the connection and restarted by every pong; three
+    // intervals without one is a connection this client no longer has (see pongDeadlinePassed).
+    // Named so that a reader of the client's timers can tell it apart from the heartbeat's repeat
+    // and the reconnect timer's backoff without knowing either interval.
+    pongDeadline->setInterval(3 * heartbeatInterval);
+    pongDeadline->setSingleShot(true);
+    pongDeadline->setObjectName(u"pongDeadline"_s);
+    connect(pongDeadline, &QTimer::timeout, this, &ClientP::pongDeadlinePassed);
 
     reconnectTimer->setSingleShot(true);
     connect(reconnectTimer, &QTimer::timeout, this, &ClientP::reconnectTimeout);
@@ -254,8 +270,13 @@ void ClientP::notifyPongServer(const QJsonValue &value)
     int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
     int64_t elapsed = currentTime - pongTime;
 
-    // broadcast? or recorded internally?
-    Q_UNUSED(elapsed);
+    // The pong echoes the timestamp this client put in its ping (ServerP::pingServer sends the
+    // packet's value back untouched), so the difference is a round trip measured with this client's
+    // clock alone -- no clock on the other side takes part in it. It is the reading
+    // Client::roundTripTime() reports, and it is the only thing a stuck server cannot produce:
+    // the answer restarts the deadline, so a peer that stops answering is found by its absence.
+    roundTripTime = elapsed;
+    pongDeadline->start();
 
     onRet_.dismiss();
 }
@@ -1001,9 +1022,12 @@ void ClientP::handleSocketGone(const QString &errorString)
 
     // The heartbeat belongs to the connection it pings: disarm it together with the socket, so a
     // disconnected client stops pinging and can never address a socket that is going away.
-    // connectSocket() re-arms it once there is a connection again.
+    // connectSocket() re-arms it once there is a connection again. The pong deadline goes with it,
+    // and so does the reading it was measuring.
     heartbeatTimer->stop();
+    pongDeadline->stop();
     connected = false;
+    roundTripTime = -1;
 
     // Detach first so a second signal from the same socket (error + disconnected
     // often fire back to back) can't re-enter this handler.
@@ -1039,6 +1063,10 @@ bool ClientP::connectSocket()
         // Arm the heartbeat: while the client has a connection, NotifyPingServer goes out every
         // heartbeat interval, which is what lets a server tell an idle player from a gone one.
         heartbeatTimer->start();
+        // And the deadline those pings are answered within: a server that never answers the first
+        // one is as gone as one that stops answering later, so the clock starts here rather than
+        // at the first pong.
+        pongDeadline->start();
         return true;
     }
 
@@ -1083,6 +1111,17 @@ void ClientP::heartbeatTimeout()
 {
     if (socket != nullptr)
         emit socket->sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPingServer, QDateTime::currentMSecsSinceEpoch()));
+}
+
+// NOLINTNEXTLINE(readability-make-member-function-const)
+void ClientP::pongDeadlinePassed()
+{
+    // Nothing came back for three heartbeat intervals. This is not the socket's own error path --
+    // the socket is still open, which is exactly the case it exists for: the peer is a live process
+    // that is no longer serving. Take the way out a drop takes, so the operation side gets the
+    // report and the reconnect it already handles, and the error string says which of the two
+    // happened.
+    handleSocketGone(u"the server stopped answering pings"_s);
 }
 
 } // namespace p

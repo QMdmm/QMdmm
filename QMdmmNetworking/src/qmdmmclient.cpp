@@ -185,8 +185,10 @@ void Client::disconnectFromHost()
 {
     d->reconnectTimer->stop();
     d->heartbeatTimer->stop();
+    d->pongDeadline->stop();
     d->reconnectInProgress = false;
     d->connected = false;
+    d->roundTripTime = -1;
     d->currentRequest = QMdmmCore::Protocol::RequestInvalid;
 
     if (d->socket != nullptr) {
@@ -208,6 +210,22 @@ void Client::disconnectFromHost()
 bool Client::isConnected() const
 {
     return d->connected;
+}
+
+/**
+ * @brief how long the last ping took to come back
+ * @return the round trip in milliseconds, or @c -1 while nothing has been measured on the current
+ * connection
+ *
+ * The server answers @c NotifyPingServer by echoing its timestamp back unchanged, so this is a
+ * measurement taken with this client's own clock alone -- no clock on the other side takes part.
+ * The reading is the latest one; it is cleared when the connection goes away, and it stays @c -1
+ * for a server that never answers at all, which is what ends that connection instead (three ping
+ * intervals without a pong, reported through @c socketConnectionLost()).
+ */
+qint64 Client::roundTripTime() const
+{
+    return d->roundTripTime;
 }
 
 /**

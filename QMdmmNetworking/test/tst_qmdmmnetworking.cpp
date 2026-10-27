@@ -65,6 +65,8 @@ private slots:
     void server_doesNotDropServerBoundNotify();
     void client_disconnectFromHostStopsAutoReconnect();
     void client_sendsHeartbeatPings();
+    void client_measuresThePongRoundTrip();
+    void client_givesUpWhenThePongsStopComing();
     void client_disconnectsOnProtocolVersionMismatch();
     void client_reportsAVersionNumberMismatchAndSignsIn();
     void server_listenErrorAndClose();
@@ -1274,6 +1276,147 @@ void tst_QMdmmNetworking::client_sendsHeartbeatPings()
 
     accepted->close();
     QTRY_VERIFY_WITH_TIMEOUT(!armedWhenTheConnectionWasLost, 5000);
+}
+
+// A pong does two things, and both are read here off the public API rather than off a counter
+// inside the client: it is the measurement of the round trip -- the server echoes the client's own
+// timestamp, so the difference is taken with one clock -- and it is the proof of life that keeps
+// the client from giving up on a connection whose peer has stopped serving. The peer is a raw TCP
+// server, so the delay in the answer is this case's own and not the loopback's.
+void tst_QMdmmNetworking::client_measuresThePongRoundTrip()
+{
+    constexpr int answerDelay = 42;
+
+    QTcpServer rawServer;
+    QVERIFY(rawServer.listen(QHostAddress::LocalHost, 0));
+
+    int pings = 0;
+    QObject::connect(&rawServer, &QTcpServer::newConnection, &rawServer, [&rawServer, &pings]() {
+        QTcpSocket *accepted = rawServer.nextPendingConnection();
+        QObject::connect(accepted, &QAbstractSocket::readyRead, accepted, [accepted, &pings]() {
+            while (accepted->canReadLine()) {
+                const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(accepted->readLine());
+                if (packet.type() != QMdmmCore::Protocol::TypeNotify || packet.notifyId() != QMdmmCore::Protocol::NotifyPingServer)
+                    continue;
+                ++pings;
+                // Answer with the timestamp that came in, exactly as ServerP::pingServer does, only
+                // late enough for the reading to be a number rather than a zero.
+                const QJsonValue stamp = packet.value();
+                QTimer::singleShot(answerDelay, accepted,
+                                   [accepted, stamp]() { accepted->write(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPongServer, stamp).serialize().append('\n')); });
+            }
+        });
+    });
+
+    const QString host = u"qmdmm://127.0.0.1:%1"_s.arg(rawServer.serverPort());
+
+    auto *client = new Client(ClientConfiguration(), &rawServer);
+
+    QTimer *heartbeat = nullptr;
+    for (QTimer *timer : client->findChildren<QTimer *>()) {
+        if (!timer->isSingleShot())
+            heartbeat = timer;
+    }
+    QVERIFY2(heartbeat != nullptr, "the client has no repeating heartbeat timer");
+
+    QTimer *deadline = client->findChild<QTimer *>(u"pongDeadline"_s);
+    QVERIFY2(deadline != nullptr, "the client has no pong deadline");
+    // The ratio is the rule, and the server's own silence deadline is built on the same one: three
+    // heartbeat intervals. Pinned against the interval the heartbeat carries, not against 90000.
+    QCOMPARE(deadline->interval(), 3 * heartbeat->interval());
+
+    QCOMPARE(client->roundTripTime(), qint64(-1)); // nothing has been measured before the first pong
+
+    QVERIFY(client->connectToHost(host, Data::StateOnline));
+    QVERIFY2(deadline->isActive(), "connecting did not arm the pong deadline");
+
+    // The pings go out on the heartbeat's schedule; the case runs that schedule fast instead of
+    // waiting 30 seconds for the first one. The deadline keeps the interval it was built with, and
+    // it is the connection -- not the first pong -- that armed it.
+    heartbeat->setInterval(200);
+
+    QTRY_VERIFY_WITH_TIMEOUT(client->roundTripTime() >= 0, 5000);
+    const qint64 measured = client->roundTripTime();
+    QVERIFY2(measured >= answerDelay && measured < 5 * answerDelay, qPrintable(u"the reading is %1 ms, not the %2 ms the answer was held back"_s.arg(measured).arg(answerDelay)));
+
+    // Every pong restarts the deadline, and that is what keeps an answering server from being given
+    // up on. Shortened to well under the spacing of the pings: were it only armed with the
+    // connection and never restarted, it would run out here while the answers keep arriving.
+    QString lost;
+    connect(client, &Client::socketConnectionLost, &rawServer, [&lost](const QString &errorString) { lost = errorString; });
+    deadline->setInterval(1000);
+    QTest::qWait(2500);
+
+    QVERIFY2(pings >= 10, "the pings stopped going out");
+    QVERIFY2(lost.isEmpty(), "an answering server was given up on");
+    QVERIFY(client->isConnected());
+    const qint64 measuredLater = client->roundTripTime();
+    QVERIFY2(measuredLater >= answerDelay && measuredLater < 5 * answerDelay, "the reading left the range the delay allows");
+}
+
+// The other direction of the same silence rule. The server drops a peer that stops pinging; a client
+// must not sit on a connection whose peer is a live process that is no longer serving, and the
+// socket stays open in that case, so nothing but the pong's absence can tell. The deadline is
+// shortened on the client's own timer rather than the case waiting out three 30 second intervals;
+// what is under test is what happens when it runs out, not the wall clock.
+void tst_QMdmmNetworking::client_givesUpWhenThePongsStopComing()
+{
+    QTcpServer rawServer;
+    QVERIFY(rawServer.listen(QHostAddress::LocalHost, 0));
+
+    int pings = 0;
+    QObject::connect(&rawServer, &QTcpServer::newConnection, &rawServer, [&rawServer, &pings]() {
+        QTcpSocket *accepted = rawServer.nextPendingConnection();
+        // Read and drop: nothing is ever answered, which is the whole point of the case.
+        QObject::connect(accepted, &QAbstractSocket::readyRead, accepted, [accepted, &pings]() {
+            while (accepted->canReadLine()) {
+                const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(accepted->readLine());
+                if (packet.type() == QMdmmCore::Protocol::TypeNotify && packet.notifyId() == QMdmmCore::Protocol::NotifyPingServer)
+                    ++pings;
+            }
+        });
+    });
+
+    const QString host = u"qmdmm://127.0.0.1:%1"_s.arg(rawServer.serverPort());
+
+    auto *client = new Client(ClientConfiguration(), &rawServer);
+
+    // Read inside the notice: connected must already be false when the operation side is told, and
+    // only the first report of the episode is kept.
+    QString lost;
+    bool connectedWhenReported = true;
+    connect(client, &Client::socketConnectionLost, &rawServer, [client, &lost, &connectedWhenReported](const QString &errorString) {
+        connectedWhenReported = client->isConnected();
+        if (lost.isEmpty())
+            lost = errorString;
+    });
+
+    QTimer *heartbeat = nullptr;
+    for (QTimer *timer : client->findChildren<QTimer *>()) {
+        if (!timer->isSingleShot())
+            heartbeat = timer;
+    }
+    QVERIFY2(heartbeat != nullptr, "the client has no repeating heartbeat timer");
+    QTimer *deadline = client->findChild<QTimer *>(u"pongDeadline"_s);
+    QVERIFY2(deadline != nullptr, "the client has no pong deadline");
+
+    QVERIFY(client->connectToHost(host, Data::StateOnline));
+    heartbeat->setInterval(200);
+
+    // Several pings go unanswered and the connection is still up: the interval the deadline was
+    // built with has not run out, which is what keeps a merely busy server from being dropped.
+    QTRY_VERIFY_WITH_TIMEOUT(pings >= 4, 5000);
+    QVERIFY2(lost.isEmpty(), "the connection was reported lost before its deadline ran out");
+    QVERIFY(client->isConnected());
+    QCOMPARE(client->roundTripTime(), qint64(-1)); // nothing came back, so there is nothing to report
+
+    deadline->setInterval(200);
+    deadline->start();
+
+    QTRY_VERIFY_WITH_TIMEOUT(!lost.isEmpty(), 5000);
+    QVERIFY2(!connectedWhenReported, "the client still reported itself connected when it gave up");
+    // The reading goes with the connection it was measured on.
+    QCOMPARE(client->roundTripTime(), qint64(-1));
 }
 
 // A protocolVersion mismatch is a hard incompatibility, not a transient failure: the client must

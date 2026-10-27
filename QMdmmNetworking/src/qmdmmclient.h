@@ -68,6 +68,8 @@ public:
     void disconnectFromHost();
     [[nodiscard]] bool isConnected() const;
 
+    [[nodiscard]] qint64 roundTripTime() const;
+
     [[nodiscard]] QMdmmCore::Room *room();
     [[nodiscard]] const QMdmmCore::Room *room() const;
 
