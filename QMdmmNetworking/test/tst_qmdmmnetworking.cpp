@@ -1291,9 +1291,13 @@ void tst_QMdmmNetworking::client_measuresThePongRoundTrip()
     QVERIFY(rawServer.listen(QHostAddress::LocalHost, 0));
 
     int pings = 0;
-    QObject::connect(&rawServer, &QTcpServer::newConnection, &rawServer, [&rawServer, &pings]() {
+    // What the answer carries, added to the timestamp that came in. Zero for every answer but the
+    // last phase, which moves it: the client subtracts this value from its own clock, so moving it
+    // is how the case moves the reading while moving no timing at all.
+    qint64 stampShift = 0;
+    QObject::connect(&rawServer, &QTcpServer::newConnection, &rawServer, [&rawServer, &pings, &stampShift]() {
         QTcpSocket *accepted = rawServer.nextPendingConnection();
-        QObject::connect(accepted, &QAbstractSocket::readyRead, accepted, [accepted, &pings]() {
+        QObject::connect(accepted, &QAbstractSocket::readyRead, accepted, [accepted, &pings, &stampShift]() {
             while (accepted->canReadLine()) {
                 const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(accepted->readLine());
                 if (packet.type() != QMdmmCore::Protocol::TypeNotify || packet.notifyId() != QMdmmCore::Protocol::NotifyPingServer)
@@ -1301,7 +1305,7 @@ void tst_QMdmmNetworking::client_measuresThePongRoundTrip()
                 ++pings;
                 // Answer with the timestamp that came in, exactly as ServerP::pingServer does, only
                 // late enough for the reading to be a number rather than a zero.
-                const QJsonValue stamp = packet.value();
+                const QJsonValue stamp(packet.value().toVariant().toLongLong() + stampShift);
                 QTimer::singleShot(answerDelay, accepted,
                                    [accepted, stamp]() { accepted->write(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPongServer, stamp).serialize().append('\n')); });
             }
@@ -1337,7 +1341,13 @@ void tst_QMdmmNetworking::client_measuresThePongRoundTrip()
 
     QTRY_VERIFY_WITH_TIMEOUT(client->roundTripTime() >= 0, 5000);
     const qint64 measured = client->roundTripTime();
-    QVERIFY2(measured >= answerDelay && measured < 5 * answerDelay, qPrintable(u"the reading is %1 ms, not the %2 ms the answer was held back"_s.arg(measured).arg(answerDelay)));
+    // A lower bound, and only a lower bound: the answer was held back this long, so the round trip
+    // cannot read shorter than that. No ceiling is asserted, because a ceiling would be a claim
+    // about how fast the machine running this is: a shared runner spends its own time on top of
+    // the hold-back (macos-latest Release read 218 ms against the 42 ms hold-back on run
+    // 40559027778, where the 5 x ceiling this case used to carry failed). What the reading does
+    // have to be, on any machine, is the latest one -- which the end of the case pins.
+    QVERIFY2(measured >= answerDelay, qPrintable(u"the reading is %1 ms, under the %2 ms the answer was held back"_s.arg(measured).arg(answerDelay)));
 
     // Every pong restarts the deadline, and that is what keeps an answering server from being given
     // up on. Shortened to well under the spacing of the pings: were it only armed with the
@@ -1350,8 +1360,15 @@ void tst_QMdmmNetworking::client_measuresThePongRoundTrip()
     QVERIFY2(pings >= 10, "the pings stopped going out");
     QVERIFY2(lost.isEmpty(), "an answering server was given up on");
     QVERIFY(client->isConnected());
-    const qint64 measuredLater = client->roundTripTime();
-    QVERIFY2(measuredLater >= answerDelay && measuredLater < 5 * answerDelay, "the reading left the range the delay allows");
+
+    // The reading is the latest one, not the first. The answers from here on carry a timestamp a
+    // second older than the ping that asked for them, which adds exactly that second to the
+    // round trip without changing a single thing about the timing: the answer is still held back
+    // only answerDelay. A reading that stopped at the first pong cannot read this, and neither can
+    // one taken from anything but the value the answer carries back.
+    stampShift = -1000;
+    QTRY_VERIFY2_WITH_TIMEOUT(client->roundTripTime() >= 1000,
+                              qPrintable(u"the reading stayed at %1 ms after the answers started carrying a stamp a second older"_s.arg(client->roundTripTime())), 5000);
 }
 
 // The other direction of the same silence rule. The server drops a peer that stops pinging; a client
