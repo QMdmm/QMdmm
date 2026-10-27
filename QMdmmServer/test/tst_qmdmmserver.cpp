@@ -939,9 +939,16 @@ void tst_QMdmmServer::savedConfiguration_carriesEveryStoredKey()
     // The same reading over the file with the ending this platform does not write, so that the
     // reader is held to both: the run that added this case went red on the Windows entries alone,
     // where the section header was read back as "[server]\r" and the section came out empty.
+    //
+    // Which ending to build is therefore the one this platform left out: taking the carriage
+    // returns off and putting them back on lands on the very bytes the file already had wherever
+    // the platform writes them, and the second reading would be the first one again.
     QString otherEnding = contents;
-    otherEnding.replace(u"\r\n"_s, u"\n"_s);
-    otherEnding.replace(u"\n"_s, u"\r\n"_s);
+    if (otherEnding.contains(u"\r\n"_s))
+        otherEnding.replace(u"\r\n"_s, u"\n"_s);
+    else
+        otherEnding.replace(u"\n"_s, u"\r\n"_s);
+    QVERIFY2(otherEnding != contents, "the second reading has to be over the ending this platform did not write");
     QVERIFY2(storedSectionKeys(otherEnding, u"[server]"_s) == saved, "the reading of the saved file depends on the line endings it was written with");
 
     QSet<QString> stored;
