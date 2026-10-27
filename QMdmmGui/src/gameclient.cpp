@@ -145,11 +145,13 @@ void QMdmmGameClient::watchChildProcess(QProcess *process, const QString &failur
     connect(process, &QProcess::finished, this, [this, failure, leavesAfterItsMatch](int exitCode, QProcess::ExitStatus exitStatus) {
         if (m_childrenAreStopping)
             return;
-        // A bot's run is one match (see QMdmmBot/src/main.cpp): it leaves with code 0 when the
-        // match it was started for ends, so a seat that played its game out and went home is not
-        // a seat that failed. Anything else either program can do -- a crash, a signal, any other
-        // code -- is still said, and so is any way of leaving at all for the server, which serves
-        // every match rather than one of them.
+        // A bot's run is one match (see QMdmmBot/src/main.cpp), and it leaves with code 0 in two
+        // cases: when the match it was started for ends, and when it is asked to stop -- its
+        // signal handler says so on stderr and leaves with 0 as well. So a bot leaving with 0
+        // reads as "played out, or told to stop" and never as a seat that failed. Everything else
+        // either program can do -- a crash, a signal it did not handle, any other code -- is still
+        // said, and so is any way of leaving at all for the server, which serves every match
+        // rather than one of them.
         if (leavesAfterItsMatch && exitStatus == QProcess::NormalExit && exitCode == 0)
             return;
         setStatusMessage(failure);

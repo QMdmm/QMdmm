@@ -39,10 +39,13 @@ a style that does not exist, a style that exists but is refused before it can
 play -- is reported on stderr, and the program exits with status 3 rather than
 starting with something else.
 
-Asked to stop -- by a `SIGTERM` or a `SIGINT`, the two ways a supervisor or a
-terminal ask -- a run reports the stop on stderr and exits with status 0,
-rather than being killed by the signal and leaving a caller nothing but the
-signal (`143`) to read.
+A run is one match: once its match has been played out, the run ends by itself
+with status 0 (see [Getting Started](getting-started.md)). Being asked to stop
+-- by a `SIGTERM` or a `SIGINT`, the two ways a supervisor or a terminal ask --
+ends a run the same way and with the same code, rather than leaving a caller
+nothing but the signal (`143`) to read, but that run reports the stop on stderr
+first, while a played-out match writes nothing there of its own. Status 0
+therefore covers both, and that line is what tells them apart.
 
 ## QMdmmCtl
 
