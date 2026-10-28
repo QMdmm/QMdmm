@@ -259,6 +259,10 @@ Read these before touching code:
 - A leg that has not run yet has no CI reading to cite: write the number as
   several times the local one and say it is an estimate, so the next failure
   has a number to correct rather than a derivation to redo.
+- One wait is not this kind of bound: waiting for something that has already
+  happened to be noticed -- reaping a child that has ended, picking up a notice
+  that is already on its way. Its length does not track the machine, so it owes
+  no readings; say in one sentence why that long is enough.
 - This is about the bound on a wait, not about asserting how long something
   took. A measured duration may be compared against the delay you imposed
   yourself -- it cannot come back sooner than the time you held it -- but not

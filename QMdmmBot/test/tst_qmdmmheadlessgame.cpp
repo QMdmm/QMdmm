@@ -339,7 +339,9 @@ QStringList serverArguments(quint16 gamePort, quint16 controlPort)
 // case that failed here is not sitting in an event loop -- without a wait of its own the report
 // reads a run that died a minute ago as one that is still there. What it covers is one notice
 // arriving, not the run: the child is already gone, and a run that really is still there comes
-// back from this at once.
+// back from this at once. That is also why the number is not a reading of any machine -- a hundred
+// milliseconds is long enough that the notice is never the thing in doubt, and no reading of a
+// slower machine could make it wrong.
 constexpr int endingGraceMs = 100;
 
 // How one of the processes a case started is doing: still running, or the way it ended.
