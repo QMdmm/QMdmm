@@ -529,12 +529,24 @@ jobs:
           # arrives prefixed with the suite's number), so a suite that is not
           # QtTest -- the two smoke suites -- adds nothing to either number; that
           # it was there is what the suite count says.
+          #
+          # "suites-reported" is what says how much of that happened: the suites
+          # that printed a "Totals:" line against the suites that are QtTest and
+          # were meant to. Without it the two are read as one -- one run of this
+          # leg on Linux read cases=344/345 while macOS read 502/502 off the same
+          # tree, and nothing in the line said a suite had failed to hand in its
+          # count rather than that the tree had fewer cases. The second number is
+          # taken from the test list, not from the log: a suite that never got as
+          # far as printing its own line still counts as missing here, where a
+          # denominator read back out of the log would have shrunk with it and
+          # left the two agreeing on a number neither of them reached.
           log="${RUNNER_TEMP}/tsan.log"
           controlLog="${RUNNER_TEMP}/tsan-control.log"
           reports=0
           control=0
           casePassed=0
           caseRan=0
+          suitesReported=0
           total=0
           failed=0
           names=none
@@ -546,6 +558,12 @@ jobs:
             total=${total:-0}
             failed=${failed:-0}
             cases=$(awk '/^([0-9]+: )?Totals: / {
+                           if ($1 ~ /^[0-9]+:$/) {
+                             suite = $1 + 0
+                             if (!(suite in counted)) { counted[suite] = 1; suites++ }
+                           } else {
+                             suites++
+                           }
                            for (i = 2; i < NF; i++) {
                              unit = $(i + 1)
                              sub(/,/, "", unit)
@@ -553,9 +571,11 @@ jobs:
                              else if (unit == "failed") failedCases += $i
                            }
                          }
-                         END { printf "%d %d", passed + 0, failedCases + 0 }' "$log")
-            casePassed=${cases% *}
-            caseRan=$((casePassed + ${cases#* }))
+                         END { printf "%d %d %d", passed + 0, failedCases + 0, suites + 0 }' "$log")
+            set -- ${cases}
+            casePassed=$1
+            caseRan=$((casePassed + $2))
+            suitesReported=$3
             names=$(awk '/^The following tests FAILED:/ { inside = 1; next }
                          inside && /^[[:space:]]+[0-9]+ - / { print; next }
                          inside { exit }' "$log" |
@@ -566,7 +586,15 @@ jobs:
           if [ -f "$controlLog" ]; then
             control=$(grep -c 'WARNING: ThreadSanitizer' "$controlLog" || true)
           fi
-          echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} control=${{ steps.control.outcome }} test=${{ steps.test.outcome }} cases=${casePassed}/${caseRan} suites=$((total - failed))/${total} ${names} thread-reports=${reports} positive-control=${control}"
+          # The two "QMdmmNetworking - Smoke" entries run a hand-written driver
+          # and print no "Totals:" line; every other suite this leg keeps is
+          # QtTest and prints one. Both are in the run, which is why the count of
+          # suites the cases are expected from is the one ctest reports less two.
+          # If a third suite ever loses its line, this reads 12/14 or 13/14 -- a
+          # number that says so, rather than a case count that quietly shrank.
+          qtTestSuites=$((total - 2))
+          if [ "$qtTestSuites" -lt 0 ]; then qtTestSuites=0; fi
+          echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} control=${{ steps.control.outcome }} test=${{ steps.test.outcome }} cases=${casePassed}/${caseRan} suites-reported=${suitesReported}/${qtTestSuites} suites=$((total - failed))/${total} ${names} thread-reports=${reports} positive-control=${control}"
 
   fuzz:
     name: Fuzz (ubuntu-latest, inbound decoding)
