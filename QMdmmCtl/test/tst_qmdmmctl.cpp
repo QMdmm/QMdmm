@@ -313,9 +313,11 @@ void tst_QMdmmCtl::status_printsWhatTheControlPlaneServesByteForByte()
 // A server that is not there is not an empty answer: the exit status has to carry the failure, and
 // nothing may be mistaken for a snapshot on stdout.
 //
-// The status is pinned to 1 rather than "not 0": 3 is what a command line the program will not run
-// with ends at, before anything is asked, and the number is the only thing that tells a caller who
-// asked and read nothing apart from one that never got as far as asking.
+// The status is pinned to 1 rather than "not 0": 3 is what the program itself gives a command line
+// it will not run with, decided before anything is asked, and 1 is what a run ends at when no
+// snapshot came back -- the arm this case is about. 1 does not promise that a question was asked:
+// an option Qt's own parser does not know leaves with 1 as well, without anything being asked, so
+// the two arms of 1 are told apart by the reason on stderr rather than by the status.
 void tst_QMdmmCtl::status_exitsNonZeroWhenNothingAnswers()
 {
     const quint16 silentPort = freePort();
