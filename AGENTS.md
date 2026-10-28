@@ -237,3 +237,30 @@ Read these before touching code:
 - The two prefixes are the same command to doxygen. The reason to pick one is
   that mixing them inside a single comment block reads as if the difference
   meant something, and `@` is what this tree uses.
+
+### Timing constants in tests
+
+- A wait for an event -- a room filling, a match ending, a program exiting, an
+  answer arriving -- is bounded by what the slowest thing that will ever run it
+  needs, not by what it takes on the machine it was written on. Give the bound
+  a name, and put both readings in its comment: what the wait covers on a
+  development machine, and what the same wait costs on a CI runner.
+- The two are not close. A match is over in a fraction of a second on a build
+  tree and takes tens of seconds on a runner, a round costing a second or more
+  once sanitised; a packaged trio inside a container deals a round every second
+  or so. A bound read off a local timing therefore says "this should be over by
+  now" while the run is still playing, and the case fails as if the program were
+  wrong. That is not hypothetical: within one week a set of bots was given
+  twenty seconds and a packaged room twelve, and every Linux cell of the runs
+  that carried them failed.
+- `QMdmmBot/test/tst_qmdmmheadlessgame.cpp` is the form to copy: one constant
+  per wait, a comment saying what that wait covers, and a file header carrying
+  both readings and the failure that taught them.
+- A leg that has not run yet has no CI reading to cite: write the number as
+  several times the local one and say it is an estimate, so the next failure
+  has a number to correct rather than a derivation to redo.
+- This is about the bound on a wait, not about asserting how long something
+  took. A measured duration may be compared against the delay you imposed
+  yourself -- it cannot come back sooner than the time you held it -- but not
+  against a ceiling, because a ceiling is a statement about the machine, and
+  the machine the assertion runs on is not the one it was written on.
