@@ -209,7 +209,10 @@ QString botsThatDidNotEnd(const std::vector<std::unique_ptr<QProcess>> &bots, qs
         QProcess *bot = bots[i].get();
         const int remaining = std::max(0, timeoutMs - static_cast<int>(timer.elapsed()));
 
-        if (!bot->waitForFinished(remaining)) {
+        // A run that has already ended is not one that outlasted the wait: waitForFinished()
+        // answers false both when the wait ran out and when there was nothing left to wait for,
+        // and the state is what tells the two apart.
+        if (bot->state() != QProcess::NotRunning && !bot->waitForFinished(remaining)) {
             complaints.append(u"bot %1 was still running when the wait ran out"_s.arg(i));
             continue;
         }
@@ -330,9 +333,37 @@ QStringList serverArguments(quint16 gamePort, quint16 controlPort)
     return {u"-p"_s, QString::number(gamePort), u"-n"_s, QString::number(playerCount), u"-l"_s, u"off"_s, u"-w"_s, u"off"_s, u"--control-port"_s, QString::number(controlPort)};
 }
 
-// What a leg that could not get where it was going says: the last answer the plane gave, and the
-// streams of every process involved. A reading that never arrived and a reading that says the run
-// died look the same from the outside; this is what makes the failure say which one it was.
+// How long a report waits for a process that has already ended to be seen to have ended.
+//
+// A run that was started and then not waited on is only reaped when its death is noticed, and the
+// case that failed here is not sitting in an event loop -- without a wait of its own the report
+// reads a run that died a minute ago as one that is still there. What it covers is one notice
+// arriving, not the run: the child is already gone, and a run that really is still there comes
+// back from this at once.
+constexpr int endingGraceMs = 100;
+
+// How one of the processes a case started is doing: still running, or the way it ended.
+//
+// The streams cannot say this on their own. A healthy server writes no line of its own to either
+// one, so a run that died in silence and a run that is alive and not answering come back from the
+// streams alone as the same sentence -- which is the pair the report below exists to tell apart.
+// The two ways of ending are split the way botsThatDidNotEnd() already reads them: a run that left
+// on its own carries a code, one that was killed or crashed does not.
+QString processReading(QProcess &process)
+{
+    if (process.state() != QProcess::NotRunning && !process.waitForFinished(endingGraceMs))
+        return u"is still running"_s;
+
+    if (process.exitStatus() != QProcess::NormalExit)
+        return u"did not leave on its own"_s;
+
+    return u"left with %1"_s.arg(process.exitCode());
+}
+
+// What a leg that could not get where it was going says: the last answer the plane gave, whether
+// each process is still there or how it ended, and the streams of every process involved. A
+// reading that never arrived and a reading that says the run died look the same from the outside;
+// this is what makes the failure say which one it was.
 QString diagnosis(quint16 controlPort, Processes &processes)
 {
     QStringList lines;
@@ -345,11 +376,13 @@ QString diagnosis(quint16 controlPort, Processes &processes)
     }
 
     const QString serverError = QString::fromLocal8Bit(processes.server().readAllStandardError());
+    lines.append(u"the server %1"_s.arg(processReading(processes.server())));
     lines.append(u"the server said: %1"_s.arg(serverError.isEmpty() ? u"nothing"_s : serverError.trimmed()));
 
     const std::vector<std::unique_ptr<QProcess>> &bots = processes.bots();
     for (qsizetype i = 0; i < static_cast<qsizetype>(bots.size()); ++i) {
         const QString botError = QString::fromLocal8Bit(bots[i]->readAllStandardError());
+        lines.append(u"bot %1 %2"_s.arg(i).arg(processReading(*bots[i])));
         lines.append(u"bot %1 said: %2"_s.arg(i).arg(botError.isEmpty() ? u"nothing"_s : botError.trimmed()));
     }
 
