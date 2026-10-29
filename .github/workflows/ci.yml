@@ -590,8 +590,16 @@ jobs:
           # and print no "Totals:" line; every other suite this leg keeps is
           # QtTest and prints one. Both are in the run, which is why the count of
           # suites the cases are expected from is the one ctest reports less two.
-          # If a third suite ever loses its line, this reads 12/14 or 13/14 -- a
-          # number that says so, rather than a case count that quietly shrank.
+          # A third one can go missing without anyone leaving anything out: the
+          # runtime aborts the process it is in when its own thread registry
+          # trips -- "CHECK failed: sanitizer_thread_registry.cpp:186" in
+          # CreateThread -- so a suite can end without ever printing its line,
+          # however it played. Run 40870679259 read 11/14, and 13 (QMdmmBot -
+          # bot, right after a race summary) and 15 (QMdmmGui - gui smoke, after
+          # its cases had all passed) were two of the three that ended without
+          # one, both by that same abort. A number below 14 therefore says a
+          # suite did not reach its end, not that the cases shrank -- and the
+          # case count on this leg is a lower bound for the same reason.
           qtTestSuites=$((total - 2))
           if [ "$qtTestSuites" -lt 0 ]; then qtTestSuites=0; fi
           echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} control=${{ steps.control.outcome }} test=${{ steps.test.outcome }} cases=${casePassed}/${caseRan} suites-reported=${suitesReported}/${qtTestSuites} suites=$((total - failed))/${total} ${names} thread-reports=${reports} positive-control=${control}"
