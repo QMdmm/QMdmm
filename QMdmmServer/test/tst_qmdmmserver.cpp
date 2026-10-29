@@ -255,14 +255,15 @@ QSet<QString> storedSectionKeys(const QString &contents, const QString &header)
 }
 
 // The sections of the server's page that list the start-up settings of ServerConfiguration, and
-// nothing besides: every row in them is one of that class's keys. Two kinds of section are left out,
-// for two different reasons. `### Game rules` lists settings as well, but of another class -- its
-// options are LogicConfiguration's, stored in the `[logic]` group -- and it spells them as a table
-// rather than one row per option, so it is outside this reading rather than missing from it. The
-// rest carry options that are not settings at all -- help and version, the preset, saving and
-// printing a configuration, the log level, which the page itself calls the one option with no stored
-// key. A reading of the whole page would therefore have to subtract a list of exceptions rather than
-// compare two sets.
+// nothing besides: every row in them is one of that class's keys. The page's remaining sections
+// are left out, and not for one reason. `### Game rules` lists settings as well, but of another
+// class -- its options are LogicConfiguration's, stored in the `[logic]` group -- and it spells
+// them as a table rather than one row per option, so this reading stays away from it rather than
+// forgetting it. `### Stopping` carries no option at all: it is prose about how a run ends and
+// which status it ends with. The others carry options that are not settings -- help and version,
+// the preset, saving and printing a configuration, the log level, the last of them being the one
+// the page itself calls the option with no stored key. A reading of the whole page would therefore
+// have to subtract a list of exceptions rather than compare two sets.
 const std::array<const char *, 3> settingsSections {{
     "Network transports",
     "Control plane",
