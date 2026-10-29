@@ -254,11 +254,15 @@ QSet<QString> storedSectionKeys(const QString &contents, const QString &header)
     return keys;
 }
 
-// The sections of the server's page that list start-up settings, and nothing besides: every row in
-// them is a key of ServerConfiguration. The page's other sections carry options that are not
-// settings -- help and version, the preset, saving and printing a configuration, the log level,
-// which the page itself calls the one option with no stored key -- so a reading of the whole page
-// would have to subtract a list of exceptions rather than compare two sets.
+// The sections of the server's page that list the start-up settings of ServerConfiguration, and
+// nothing besides: every row in them is one of that class's keys. Two kinds of section are left out,
+// for two different reasons. `### Game rules` lists settings as well, but of another class -- its
+// options are LogicConfiguration's, stored in the `[logic]` group -- and it spells them as a table
+// rather than one row per option, so it is outside this reading rather than missing from it. The
+// rest carry options that are not settings at all -- help and version, the preset, saving and
+// printing a configuration, the log level, which the page itself calls the one option with no stored
+// key. A reading of the whole page would therefore have to subtract a list of exceptions rather than
+// compare two sets.
 const std::array<const char *, 3> settingsSections {{
     "Network transports",
     "Control plane",
@@ -334,6 +338,10 @@ DocumentedSettings documentedSettings(const QString &page)
 // an operator has no business tuning cannot simply be left off this table either: the two sets are
 // held equal with nothing subtracted on either side, so such a key means teaching these cases an
 // exception in the same commit -- which is what the doxygen on ServerConfiguration says, too.
+//
+// The page lists settings of another class as well, the rules' own keys under `### Game rules`.
+// Those stay out of this table and out of the three comparisons above, for the reason
+// `settingsSections` gives: they are LogicConfiguration's keys, not this class's.
 struct StoredServerKey
 {
     const char *property;
