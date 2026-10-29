@@ -387,20 +387,32 @@ jobs:
     # the write side builds a payload on the logic thread while the read side
     # takes a name off it on another, and both sides carry the same allocation.
     # The hand-off is ordered, and what is missing is the runtime's view of that
-    # edge rather than the edge itself -- a probe outside this tree, with the
-    # same hand-off and the same Qt, reports nothing over 50 rounds under
-    # QCoreApplication::exec(), and reports the identical
-    # "qarraydatapointer.h:112 in QArrayDataPointer<char16_t>::data()" as soon
-    # as the reading side is pumped by a nested QEventLoop with a
-    # QTimer::singleShot, which is the shape QTest::qWait has. A plain int
-    # written once and read once on the same path reports under that loop too.
-    # So the count is the test's event loop made visible, not a defect: no site
-    # here is a race to repair, and a list keyed on those headers would encode
-    # today's pump as noise. That holds for the stacks read above, on macOS, and
-    # does not carry over -- this cell runs on Linux, where one run of it, read
-    # on 2026-10-25, came to 13061 reports with all 16 suites red, and nobody
-    # has read those stacks yet. Those counts are a reading of one tree on one
-    # platform, not a promise, and the cell below prints its own.
+    # edge rather than the edge itself.
+    #
+    # QTest is not what makes the reports, so the nested event loop qWait spins
+    # adds rounds rather than cause. A program built outside this tree around
+    # one QList<int> -- a producer thread, a consumer in the main one, a queued
+    # connection, no state of its own -- comes to five reports over 200 rounds
+    # under QCoreApplication::exec() and no QTest, in QArrayDataPointer's
+    # data() and deref() and on the buffer one thread appended to and the other
+    # read. A server and three bots playing a match to the end the same way,
+    # under the same options and with no nested loop in either, come to 32
+    # reports in one run read on 2026-10-30 and 36 to 46 over three earlier
+    # ones read on 2026-10-25, all of them in the server process and none in
+    # the bots; that server left idle with no
+    # player in it for ten minutes comes to none. The 32 fall into nine pairs,
+    # each with one half on the logic thread and the other reached only through
+    # Qt::QueuedConnection, and in eleven of them the contended block is
+    # allocated on a stack that runs through queued_activate(), so what is
+    # contended is the copy the posted event carries rather than state this
+    # repository shares. So the count is the hand-off's payload made visible,
+    # not a defect at a site: no site here is a race to repair, and a list
+    # keyed on those headers would encode that copy as noise.
+    # That holds for the readings above, all on macOS, and does not carry over
+    # -- this cell runs on Linux, where one run of it, read on 2026-10-25, came
+    # to 13061 reports with all 16 suites red, and nobody has read those stacks
+    # yet. Those counts are a reading of one tree on one platform, not a
+    # promise, and the cell below prints its own.
     #
     # Two suites are left out, and the positive control is a third. Both excluded
     # suites drive other programs built with the same flags, and both stop at a
