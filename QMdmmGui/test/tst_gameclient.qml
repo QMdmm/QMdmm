@@ -365,6 +365,28 @@ TestCase {
         // turns the suite red.
     }
 
+    function test_anUpgradeRequestReachesTheScene() {
+        // The request the server sends when a round leaves an upgrade point to spend: the bridge
+        // hands it on for the scene, whose overlay is what the player then answers. Nothing in the
+        // build ties the two together -- a wiring that stopped handing it on would compile, keep
+        // every other case green, and simply never ask the player anything, so this case is where
+        // that gap is closed.
+        //
+        // The bridge needs a client (and through it the agent) to be driven, not a server to talk
+        // to: the name below has nothing at it and is refused at once on every platform, which
+        // keeps the case off the retry chain's timing. The case about that chain says why a name
+        // rather than a closed port.
+        var asked = createTemporaryObject(signalSpyComponent, testCase, {
+                                              target: game,
+                                              signalName: "requestUpgrade"
+                                          });
+        game.connectOnline("QMdmmUnstartedServer", "Tester");
+
+        verify(bridgeDriver.askForUpgradeChoices(game, 2), "a started bridge has an agent to ask");
+        tryCompare(asked, "count", 1);
+        compare(asked.signalArguments[0][0], 2, "the count of points left arrives as it was sent");
+    }
+
     function test_botObjectNameDiffersFromScreenName() {
         // 1 human + 1 auto-replying bot. The bot's internal objectName (the
         // protocol-level player identity) must stay distinct from its display
@@ -674,6 +696,25 @@ TestCase {
         compare(gameStateNames[3], "GameOver");
     }
 
+    function test_theEndOfTheMatchReachesTheScene() {
+        // The end of a match has two readers and both are here: the state, which is what takes the
+        // game's own overlays down, and the signal, which carries the winners to the scene's own
+        // closing notice. A bridge that kept one and dropped the other would leave a finished game
+        // on screen looking like a live one, or the winners unannounced, and neither shows up in
+        // any case that stops at a room filling up.
+        var over = createTemporaryObject(signalSpyComponent, testCase, {
+                                             target: game,
+                                             signalName: "gameOver"
+                                         });
+        game.connectOnline("QMdmmUnstartedServer", "Tester");
+
+        verify(bridgeDriver.endTheMatch(game, ["Alice", "Bob"]), "a started bridge has an agent to raise it on");
+        tryCompare(game, "gameState", "gameover");
+        tryCompare(over, "count", 1);
+        compare(over.signalArguments[0][0].length, 2, "both winners are named");
+        compare(over.signalArguments[0][0][1], "Bob");
+    }
+
     function test_theLocalGameProgramsAreLookedUpNextToThisOne() {
         // A path given on the command line is taken as it is, whether or not anything is at it:
         // a path that leads nowhere is the business of whoever starts the program, not of the
@@ -760,6 +801,19 @@ TestCase {
             return game.statusMessage === "Reconnect failed";
         }, 30000);
         compare(errors.signalArguments[errors.count - 1][0], "Reconnect failed");
+    }
+
+    function test_theUpgradeChoiceGoesBackToTheAgent() {
+        // The reply the overlay's selection is sent with, and the one reply that is not a single
+        // pick: the numbers the scene holds are turned into upgrade items here. The case sends a
+        // selection that is not the empty list a managed player's default is, so an empty reading
+        // means the choices never left the bridge.
+        game.connectOnline("QMdmmUnstartedServer", "Tester");
+
+        var given = bridgeDriver.replyToUpgradeChoices(game, [0, 2]);
+        compare(given.length, 2, "both choices reach the agent");
+        compare(given[0], 0);
+        compare(given[1], 2);
     }
 
     function test_theUpgradesOfferedAreBuiltFromTheLiveRoom() {

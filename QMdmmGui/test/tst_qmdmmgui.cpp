@@ -4,11 +4,13 @@
 
 #include <QMetaEnum>
 #include <QQmlContext>
+#include <QSignalSpy>
 #include <QStringList>
 #include <QVariantMap>
 #include <QtQml>
 
 #include <QMdmmAgent>
+#include <QMdmmClient>
 #include <QMdmmData>
 #include <QMdmmPlayer>
 #include <QMdmmServer>
@@ -157,6 +159,99 @@ QStringList QMdmmAgentInventory::problems() const
     return result;
 }
 
+// Drives a bridge from the far end of its wiring, for the three places where an agent call turns
+// into something the screen acts on: the request that asks a player to spend an upgrade point, the
+// notice that the match is over, and the reply that carries the choice back. The cases go through
+// this object rather than reaching the agent themselves, because the bridge keeps its client
+// private -- the client is a child of the bridge all the same (see QMdmmGameClient::connectOnline),
+// and the agent is the end those three points are wired to (see QMdmmGameClient::wireClient).
+//
+// Every call names the bridge it drives: each case builds its own, as it builds its own GameClient.
+// No server stands behind any of this -- the cases point the bridge at a socket name with nothing
+// at it, which is refused at once everywhere, and then raise the agent's own entry points.
+class QMdmmBridgeDriver : public QObject
+{
+    Q_OBJECT
+
+public:
+    using QObject::QObject;
+
+    // The server asking this player which upgrades to spend the point on. False when the bridge has
+    // no agent to raise it on, which is what a bridge that was never started looks like.
+    Q_INVOKABLE bool askForUpgradeChoices(QObject *bridge, int remainingTimes) const;
+
+    // The match is over and these players won.
+    Q_INVOKABLE bool endTheMatch(QObject *bridge, const QStringList &winners) const;
+
+    // Hand a set of choices back the way the upgrade overlay does, and read out what the agent was
+    // given: the items as numbers, or an empty list when nothing reached it. The reply this sends is
+    // never the empty one, so an empty reading means the choices did not leave the bridge.
+    Q_INVOKABLE QVariantList replyToUpgradeChoices(QObject *bridge, const QVariantList &items) const;
+
+private:
+    [[nodiscard]] static QMdmmNetworking::Agent *agentOf(const QObject *bridge);
+};
+
+QMdmmNetworking::Agent *QMdmmBridgeDriver::agentOf(const QObject *bridge)
+{
+    const auto *game = qobject_cast<const QMdmmGameClient *>(bridge);
+    if (game == nullptr)
+        return nullptr;
+
+    // The one reading of the bridge's client available from outside: it is a child of the bridge.
+    auto *client = game->findChild<QMdmmNetworking::Client *>();
+    return client == nullptr ? nullptr : client->agent();
+}
+
+bool QMdmmBridgeDriver::askForUpgradeChoices(QObject *bridge, int remainingTimes) const
+{
+    QMdmmNetworking::Agent *agent = agentOf(bridge);
+    if (agent == nullptr)
+        return false;
+
+    agent->requestUpgrade(remainingTimes);
+    return true;
+}
+
+bool QMdmmBridgeDriver::endTheMatch(QObject *bridge, const QStringList &winners) const
+{
+    QMdmmNetworking::Agent *agent = agentOf(bridge);
+    if (agent == nullptr)
+        return false;
+
+    agent->notifyGameOver(winners);
+    return true;
+}
+
+QVariantList QMdmmBridgeDriver::replyToUpgradeChoices(QObject *bridge, const QVariantList &items) const
+{
+    auto *game = qobject_cast<QMdmmGameClient *>(bridge);
+    QMdmmNetworking::Agent *agent = agentOf(bridge);
+    if (game == nullptr || agent == nullptr)
+        return {};
+
+    // What the agent was handed, read off the signal the bridge's reply ends on. The choices travel
+    // to the agent as an Agent::upgrade() call and are read back here as the items it carried,
+    // rather than as the numbers the case typed in -- the conversion between the two is the whole of
+    // what replyUpgrade does.
+    //
+    // Named by signature rather than by pointer to member: every signal on Agent carries the private
+    // signal marker for a last parameter, so the pointer form is not open to a caller outside the
+    // class, while the meta object lists the marker as no parameter of its own -- the signature
+    // below is the one it holds.
+    QSignalSpy replies(agent, SIGNAL(replyUpgrade(QList<QMdmmCore::Data::UpgradeItem>)));
+
+    game->replyUpgrade(items);
+
+    QVariantList sent;
+    for (const QList<QVariant> &reply : replies) {
+        const auto given = qvariant_cast<QList<QMdmmCore::Data::UpgradeItem>>(reply.value(0));
+        for (QMdmmCore::Data::UpgradeItem item : given)
+            sent.append(static_cast<int>(item));
+    }
+    return sent;
+}
+
 // Registers the GUI bridge type and the core data types with the QML engine so
 // the QML test cases can instantiate QMdmmGameClient and inspect the Player
 // objects / enum values it exposes. Mirrors the registration done by MainWindow
@@ -170,6 +265,7 @@ public:
     QMdmmGuiTestSetup()
         : m_game(new QMdmmGameClient(this))
         , m_agentInventory(new QMdmmAgentInventory(this))
+        , m_bridgeDriver(new QMdmmBridgeDriver(this))
     {
         qmlRegisterUncreatableMetaObject(QMdmmCore::Data::staticMetaObject, "QMdmm.Core", 1, 0, "Data", u"Access to enums only"_s);
         qmlRegisterUncreatableType<QMdmmCore::Player>("QMdmm.Core", 1, 0, "Player", u"Player is created by the engine"_s);
@@ -201,6 +297,12 @@ public slots:
         // see QMdmmAgentInventory above for what it checks and why it lives here rather than in
         // a build step.
         engine->rootContext()->setContextProperty(u"agentInventory"_s, m_agentInventory);
+
+        // What drives a bridge from the far end -- see QMdmmBridgeDriver above. The cases that
+        // reach the upgrade request, the end of the match and the upgrade reply need it, because
+        // the client those are wired to is private to the bridge and the agent is not otherwise
+        // reachable from QML.
+        engine->rootContext()->setContextProperty(u"bridgeDriver"_s, m_bridgeDriver);
 
         // The two names a local game's ends have to agree on, for the case in tst_gameclient.qml
         // that compares them: the socket the bridge hands its own client and the bots it starts,
@@ -253,6 +355,7 @@ public slots:
 private:
     QMdmmGameClient *m_game = nullptr;
     QMdmmAgentInventory *m_agentInventory = nullptr;
+    QMdmmBridgeDriver *m_bridgeDriver = nullptr;
 };
 
 // The setup object is a fixture, not a test. Qt looks up two hooks on it by name -- applicationAvailable() and
