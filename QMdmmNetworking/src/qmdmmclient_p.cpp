@@ -729,8 +729,15 @@ void ClientP::notifyGameOver(const QJsonValue &value)
     // All other things (agents, room, players inside room) can be cleaned up during Client instance destruction
 
     if (socket != nullptr) {
+        // The connection ends here instead of in handleSocketGone(): that path is a peer that went
+        // away, this one is the client hanging up after the last hand. Both end the same
+        // connection, so both give up the three things that were measuring it -- the pings, the
+        // deadline their answers were awaited under, and the reading those answers produced. A
+        // reading left over from the game just played is not a reading of any live connection.
         heartbeatTimer->stop();
+        pongDeadline->stop();
         connected = false;
+        roundTripTime = -1;
         disconnect(socket);
         socket->disconnect(this);
 

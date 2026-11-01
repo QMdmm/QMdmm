@@ -67,6 +67,7 @@ private slots:
     void client_sendsHeartbeatPings();
     void client_measuresThePongRoundTrip();
     void client_givesUpWhenThePongsStopComing();
+    void client_clearsTheReadingWhenTheGameEnds();
     void client_disconnectsOnProtocolVersionMismatch();
     void client_reportsAVersionNumberMismatchAndSignsIn();
     void server_listenErrorAndClose();
@@ -1434,6 +1435,65 @@ void tst_QMdmmNetworking::client_givesUpWhenThePongsStopComing()
     QVERIFY2(!connectedWhenReported, "the client still reported itself connected when it gave up");
     // The reading goes with the connection it was measured on.
     QCOMPARE(client->roundTripTime(), qint64(-1));
+}
+
+// The third way a connection ends: the game does. The client hangs up on its own, and that teardown
+// is its own code path rather than handleSocketGone(), so the things the connection was measuring
+// have to be given up here too. The reading is what the public API promises to clear "when the
+// connection goes away" -- a value from the game just played, read after isConnected() has already
+// turned false, is a number about nothing. The deadline is the other half: left armed, it would
+// still run out ninety seconds into a connection that ended with the game.
+void tst_QMdmmNetworking::client_clearsTheReadingWhenTheGameEnds()
+{
+    QTcpServer rawServer;
+    QVERIFY(rawServer.listen(QHostAddress::LocalHost, 0));
+
+    // Answers the pings, so there is a reading to clear before the game ends, and keeps the socket
+    // it accepted so the game-over notify can be sent over that same connection.
+    QTcpSocket *peer = nullptr;
+    QObject::connect(&rawServer, &QTcpServer::newConnection, &rawServer, [&rawServer, &peer]() {
+        peer = rawServer.nextPendingConnection();
+        QObject::connect(peer, &QAbstractSocket::readyRead, peer, [peer]() {
+            while (peer->canReadLine()) {
+                const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(peer->readLine());
+                if (packet.type() != QMdmmCore::Protocol::TypeNotify || packet.notifyId() != QMdmmCore::Protocol::NotifyPingServer)
+                    continue;
+                // Echo the timestamp back, the way ServerP::pingServer does.
+                peer->write(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPongServer, packet.value()).serialize().append('\n'));
+            }
+        });
+    });
+
+    const QString host = u"qmdmm://127.0.0.1:%1"_s.arg(rawServer.serverPort());
+
+    auto *client = new Client(ClientConfiguration(), &rawServer);
+
+    QTimer *heartbeat = nullptr;
+    for (QTimer *timer : client->findChildren<QTimer *>()) {
+        if (!timer->isSingleShot())
+            heartbeat = timer;
+    }
+    QVERIFY2(heartbeat != nullptr, "the client has no repeating heartbeat timer");
+    QTimer *deadline = client->findChild<QTimer *>(u"pongDeadline"_s);
+    QVERIFY2(deadline != nullptr, "the client has no pong deadline");
+
+    QVERIFY(client->connectToHost(host, Data::StateOnline));
+    // Only the pings are run fast; the deadline keeps the interval it was built with.
+    heartbeat->setInterval(200);
+
+    QTRY_VERIFY_WITH_TIMEOUT(client->roundTripTime() >= 0, 5000);
+    QVERIFY2(deadline->isActive(), "the pong deadline was not measuring the connection before the game ended");
+    QVERIFY(client->isConnected());
+
+    // The last hand: one notify, and the client's own teardown follows it.
+    QTRY_VERIFY_WITH_TIMEOUT(peer != nullptr, 5000);
+    peer->write(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyGameOver, QJsonArray()).serialize().append('\n'));
+    peer->flush();
+
+    QTRY_VERIFY_WITH_TIMEOUT(!client->isConnected(), 5000);
+    // The reading goes with the connection it was measured on, and so does the deadline.
+    QCOMPARE(client->roundTripTime(), qint64(-1));
+    QVERIFY2(!deadline->isActive(), "the pong deadline outlived the connection the game over ended");
 }
 
 // A protocolVersion mismatch is a hard incompatibility, not a transient failure: the client must
