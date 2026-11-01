@@ -255,29 +255,41 @@ QSet<QString> storedSectionKeys(const QString &contents, const QString &header)
 }
 
 // The sections of the server's page that list the start-up settings of ServerConfiguration, and
-// nothing besides: every row in them is one of that class's keys. The page's remaining sections
-// are left out, and not for one reason. `### Game rules` lists settings as well, but of another
-// class -- its options are LogicConfiguration's, stored in the `[logic]` group -- and it spells
-// them as a table rather than one row per option, so this reading stays away from it rather than
-// forgetting it. `### Stopping` carries no option at all: it is prose about how a run ends and
-// which status it ends with. The others carry options that are not settings -- help and version,
-// the preset, saving and printing a configuration, the log level, the last of them being the one
-// the page itself calls the option with no stored key. A reading of the whole page would therefore
-// have to subtract a list of exceptions rather than compare two sets.
+// nothing besides: every row in them is one of that class's keys. `### Game rules` lists settings
+// as well, but of another class -- its options are LogicConfiguration's, stored in the `[logic]`
+// group -- so it is read into a set of its own rather than into this one, and held against that
+// class's keys instead (see `rulesSection` below). The page's remaining sections are left out, and
+// not for one reason. `### Stopping` carries no option at all: it is prose about how a run ends
+// and which status it ends with. The others carry options that are not settings -- help and
+// version, the preset, saving and printing a configuration, the log level, the last of them being
+// the one the page itself calls the option with no stored key. A reading of the whole page would
+// therefore have to subtract a list of exceptions rather than compare two sets.
 const std::array<const char *, 3> settingsSections {{
     "Network transports",
     "Control plane",
     "Room, connections and timeouts",
 }};
 
+// The one section of that page which lists settings of LogicConfiguration, and the one section read
+// as a table rather than as rows of its own. What a row looks like is why the two shapes are read
+// apart: a row here opens with a bar and carries a short option, both long spellings of an
+// attribute and its value range in the first cell, where a row of the three sections above opens
+// with "- `" and names one option. A reading built on the second shape therefore saw none of these
+// eleven keys at all -- the page held rows for them and nothing held those rows to anything.
+constexpr const char *rulesSection = "Game rules";
+
 // What the rows of those sections spell: one entry per row, in file order, and the headings they
 // were read under. The headings are part of the reading because a page whose sections were renamed
 // would otherwise come back as "the page documents nothing" -- indistinguishable, from the rows
-// alone, from a page that lost a row.
+// alone, from a page that lost a row. The rules' table is read on the same terms and kept apart:
+// one entry per long spelling its first cell carries, in file order, and the heading it was read
+// under.
 struct DocumentedSettings
 {
     QStringList options;
     QSet<QString> sections;
+    QStringList ruleOptions;
+    QSet<QString> ruleSections;
 };
 
 DocumentedSettings documentedSettings(const QString &page)
@@ -287,11 +299,13 @@ DocumentedSettings documentedSettings(const QString &page)
     DocumentedSettings ret;
     bool inServer = false;
     bool inSettings = false;
+    bool inRules = false;
     const QStringList lines = page.split(u'\n');
     for (const QString &line : lines) {
         if (line.startsWith(u"## ")) {
             inServer = line.trimmed() == u"## QMdmmServer"_s;
             inSettings = false;
+            inRules = false;
             continue;
         }
         if (!inServer)
@@ -299,6 +313,11 @@ DocumentedSettings documentedSettings(const QString &page)
         if (line.startsWith(u"### ")) {
             const QString heading = line.mid(4).trimmed();
             inSettings = false;
+            inRules = heading == QString::fromLatin1(rulesSection);
+            if (inRules) {
+                ret.ruleSections.insert(heading);
+                continue;
+            }
             for (const char *section : settingsSections) {
                 if (heading == QString::fromLatin1(section)) {
                     inSettings = true;
@@ -307,6 +326,25 @@ DocumentedSettings documentedSettings(const QString &page)
             }
             continue;
         }
+
+        // The rules' table: the option list is the first cell and nothing after the bar that closes
+        // it says anything about which option the row is about. The bar-opening check is what
+        // separates a row from the prose between and after the two tables; the heading row and the
+        // separator line are read along with the rows, and neither spells an option -- the first
+        // has no backticked word in that cell, the second does not open with a bar and a space.
+        if (inRules) {
+            if (!line.startsWith(u"| "))
+                continue;
+            const qsizetype cellEnd = line.indexOf(u'|', 1);
+            if (cellEnd < 0)
+                continue;
+
+            QRegularExpressionMatchIterator matches = longOption.globalMatch(line.mid(1, cellEnd - 1));
+            while (matches.hasNext())
+                ret.ruleOptions.append(matches.next().captured(1));
+            continue;
+        }
+
         if (!inSettings || !line.startsWith(u"- `"))
             continue;
 
@@ -341,8 +379,9 @@ DocumentedSettings documentedSettings(const QString &page)
 // exception in the same commit -- which is what the doxygen on ServerConfiguration says, too.
 //
 // The page lists settings of another class as well, the rules' own keys under `### Game rules`.
-// Those stay out of this table and out of the three comparisons above, for the reason
-// `settingsSections` gives: they are LogicConfiguration's keys, not this class's.
+// Those stay out of this table and out of the three comparisons above -- they are
+// LogicConfiguration's keys, not this class's -- and what holds them instead is their own table and
+// their own reading of the page (see `storedLogicKeys` and `rulesSection`).
 struct StoredServerKey
 {
     const char *property;
@@ -368,6 +407,44 @@ const std::array<StoredServerKey, 13> &storedServerKeys()
         {.property = "maximumPacketSize",  .key = "maximum-packet-size", .value = "2048",           .json = "2048"},
         {.property = "signInTimeout",      .key = "sign-in-timeout",     .value = "30",             .json = "30"},
         {.property = "maximumRooms",       .key = "maximum-rooms",       .value = "2",              .json = "2"},
+    }};
+    // clang-format on
+    return rows;
+}
+
+// The stored face of LogicConfiguration: the key a configuration file holds each rule under, in
+// the `[logic]` group, and the second long spelling four of those options answer to. The spellings
+// differ because the game was renamed around the settings rather than the other way round -- the
+// rules speak of slashing and kicking, the code of a knife and a horse -- and both are what the
+// page documents, so a spelling is a column here and the stored key stays one key.
+//
+// Two cases hold this table: `savedRules_carryEveryLogicKey` (the keys a run writes, which is the
+// same list the case above reads out of `[server]` for the other class) and
+// `documentedRuleKeys_areTheStoredOnes` (the rows the page devotes to them). Neither direction
+// subtracts anything on its side, so a rule added to the class has to arrive with its key and its
+// row in the same commit, and a row added to the page with no rule behind it goes red the other
+// way.
+struct StoredLogicKey
+{
+    const char *key;
+    const char *alsoSpelled; // nullptr where the option has one spelling
+};
+
+const std::array<StoredLogicKey, 11> &storedLogicKeys()
+{
+    // clang-format off
+    static const std::array<StoredLogicKey, 11> rows {{
+        {.key = "slash",                        .alsoSpelled = "knife"},
+        {.key = "maximum-slash",                .alsoSpelled = "maximum-knife"},
+        {.key = "kick",                         .alsoSpelled = "horse"},
+        {.key = "maximum-kick",                 .alsoSpelled = "maximum-horse"},
+        {.key = "maxhp",                        .alsoSpelled = nullptr},
+        {.key = "maximum-maxhp",                .alsoSpelled = nullptr},
+        {.key = "punish-hp-modifier",           .alsoSpelled = nullptr},
+        {.key = "punish-hp-round-strategy",     .alsoSpelled = nullptr},
+        {.key = "zero-hp-as-dead",              .alsoSpelled = nullptr},
+        {.key = "enable-let-move",              .alsoSpelled = nullptr},
+        {.key = "can-buy-only-in-initial-city", .alsoSpelled = nullptr},
     }};
     // clang-format on
     return rows;
@@ -499,6 +576,8 @@ private slots:
     void declaredConfigurationKeys_areTheStoredOnes();
     void documentedConfigurationKeys_areTheStoredOnes();
     void savedConfiguration_carriesEveryStoredKey();
+    void savedRules_carryEveryLogicKey();
+    void documentedRuleKeys_areTheStoredOnes();
     void outOfRangeValue_isRejected();
     void crossedPairs_areRejected_data();
     void crossedPairs_areRejected();
@@ -967,6 +1046,87 @@ void tst_QMdmmServer::savedConfiguration_carriesEveryStoredKey()
     QString message = u"the saved keys and the table disagree -- saved but not stored: ["_s + sortedWords(saved - stored);
     message += u"]; stored but not saved: ["_s + sortedWords(stored - saved) + u"]"_s;
     QVERIFY2(saved == stored, qPrintable(message));
+}
+
+// The rules' write side, on the same terms as the case above: `-c` prints the resolved
+// configuration, and a rule the class holds but the file leaves out would come back as its default
+// the moment a run replays that file. The section read is `[logic]`, the group config.cpp takes
+// those eleven keys out of.
+void tst_QMdmmServer::savedRules_carryEveryLogicKey()
+{
+    QTemporaryDir scratch;
+    const QString home = perUserCaseHome(scratch);
+    if (home.isEmpty())
+        QSKIP("the home does not follow the environment here and this machine is not one to be thrown away; a run would write the machine's own per-user file");
+
+    const PerUserFileRestore restore(home);
+
+    const RunResult result = runServer({u"-c"_s}, 60000, perUserCaseEnvironment(home));
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 0);
+
+    QFile file(perUserConfigurationFile(home));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+
+    const QSet<QString> saved = storedSectionKeys(QString::fromUtf8(file.readAll()), u"[logic]"_s);
+    QVERIFY2(!saved.isEmpty(), "the saved file has no [logic] section");
+
+    QSet<QString> stored;
+    for (const StoredLogicKey &row : storedLogicKeys())
+        stored.insert(QString::fromLatin1(row.key));
+
+    QString message = u"the rules' saved keys and their table disagree -- saved but not stored: ["_s + sortedWords(saved - stored);
+    message += u"]; stored but not saved: ["_s + sortedWords(stored - saved) + u"]"_s;
+    QVERIFY2(saved == stored, qPrintable(message));
+}
+
+// The rules' third face, and the one that was missing: the row doc/command-line.md devotes to each
+// of them. The page carried all eleven of those rows already, in a table whose first cell names a
+// short option, both long spellings and a range -- and no case read it, because it is a table where
+// the other sections are rows of their own. The page could therefore lose a row, gain one, or be
+// retitled with everything here green; what the reading holds the rows to is the table above, which
+// the saved section holds to what a run writes.
+void tst_QMdmmServer::documentedRuleKeys_areTheStoredOnes()
+{
+    QFile page(QString::fromLatin1(QMDMM_COMMAND_LINE_DOC));
+    QVERIFY2(page.open(QIODevice::ReadOnly), qPrintable(page.fileName() + u": "_s + page.errorString()));
+
+    const DocumentedSettings documented = documentedSettings(QString::fromUtf8(page.readAll()));
+
+    // The heading is looked at first, so that a retitled section fails as a section the reading did
+    // not find rather than as eleven options the page has allegedly stopped documenting.
+    const QSet<QString> expectedSections {QString::fromLatin1(rulesSection)};
+
+    QString sectionsMessage = u"the page was not read where it was expected to be read -- sections not found: ["_s + sortedWords(expectedSections - documented.ruleSections);
+    sectionsMessage += u"]; sections read: ["_s + sortedWords(documented.ruleSections) + u"]"_s;
+    QVERIFY2(documented.ruleSections == expectedSections, qPrintable(sectionsMessage));
+
+    // One spelling documented twice would read as two entries, and the set comparison below could
+    // not tell that from the page being right.
+    QStringList rows = documented.ruleOptions;
+    rows.sort();
+    QStringList deduplicated = rows;
+    deduplicated.removeDuplicates();
+    QCOMPARE(deduplicated, rows);
+
+    QSet<QString> documentedKeys;
+    for (const QString &option : rows)
+        documentedKeys.insert(option);
+
+    // Both spellings of an option are documented and only one of them is stored, so the documented
+    // side is held against both: a row that stopped naming `--knife` would be a page that no longer
+    // tells a reader the option they already know.
+    QSet<QString> stored;
+    for (const StoredLogicKey &row : storedLogicKeys()) {
+        stored.insert(QString::fromLatin1(row.key));
+        if (row.alsoSpelled)
+            stored.insert(QString::fromLatin1(row.alsoSpelled));
+    }
+
+    QString message = u"the rules' documented options and their stored keys disagree -- documented but not stored: ["_s + sortedWords(documentedKeys - stored);
+    message += u"]; stored but not documented: ["_s + sortedWords(stored - documentedKeys) + u"]"_s;
+    QVERIFY2(documentedKeys == stored, qPrintable(message));
 }
 
 // Each value the usage text promises a floor for is judged on its own, after the
