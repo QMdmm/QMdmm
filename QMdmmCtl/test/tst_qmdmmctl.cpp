@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 #include <QElapsedTimer>
+#include <QFile>
 #include <QHostAddress>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QScopeGuard>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTest>
+
+#include <algorithm>
+#include <array>
 
 // NOLINTBEGIN
 // Exempt from clang-tidy by policy; see AGENTS.md.
@@ -60,6 +65,38 @@ bool saidSomethingWentWrong(const QByteArray &standardError)
         || standardError.contains("did not finish") || standardError.contains("grew past") || standardError.contains("is not the snapshot");
 }
 
+// Every way a run can end without a snapshot, as one list: the words the program puts on stderr,
+// and the clause doc/command-line.md tells a reader about it.
+//
+// That list is copied out three times, and only a reader has ever kept the copies together -- the
+// six `*failure =` messages in main.cpp, the six reasons `saidSomethingWentWrong` asks for here,
+// and the six clauses of the page's own paragraph. A seventh way could be added to the program with
+// the page and this suite both still green, which is what the case at the end of this file is for.
+//
+// The two columns are written differently on purpose. The first is a fragment of the message, short
+// enough to be a substring of exactly one of them; the second is the page's phrasing, kept verbatim
+// because the case looks for it there and a paraphrase would read as the page having lost it.
+struct EndingWithoutASnapshot
+{
+    const char *reason;
+    const char *clause;
+};
+
+const std::array<EndingWithoutASnapshot, 6> &endingsWithoutASnapshot()
+{
+    // clang-format off
+    static const std::array<EndingWithoutASnapshot, 6> rows {{
+        {.reason = "nothing answered",                  .clause = "a port with nothing listening"},
+        {.reason = "ended before its header block did", .clause = "an answer that ends before its headers do"},
+        {.reason = "rather than the snapshot",          .clause = "a `404` from the control plane"},
+        {.reason = "did not finish",                    .clause = "an answer that does not finish within five seconds"},
+        {.reason = "grew past",                         .clause = "an answer that grows past 1 MiB without ending"},
+        {.reason = "is not the snapshot",               .clause = "a `200` whose body is not the snapshot"},
+    }};
+    // clang-format on
+    return rows;
+}
+
 quint16 freePort()
 {
     QTcpServer reservation;
@@ -104,15 +141,20 @@ private:
     QTcpServer m_server;
 };
 
-// An answer built the way the plane builds one: the headers it closes with, and a body of the
-// length it declares.
-QByteArray answerWith(const QByteArray &body)
+// An answer built the way the plane builds one, under the status line a case names: the headers it
+// closes with, and a body of the length it declares.
+QByteArray answerWithStatus(const QByteArray &statusLine, const QByteArray &body)
 {
-    QByteArray answer = "HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nContent-Length: ";
+    QByteArray answer = statusLine + "\r\nContent-Type: application/json\r\nContent-Length: ";
     answer += QByteArray::number(static_cast<qlonglong>(body.size()));
     answer += "\r\nConnection: close\r\n\r\n";
     answer += body;
     return answer;
+}
+
+QByteArray answerWith(const QByteArray &body)
+{
+    return answerWithStatus("HTTP/1.0 200 OK", body);
 }
 
 // Answers, closes, and waits for the close to have happened.
@@ -249,8 +291,11 @@ private slots:
     void answerThatKeepsGrowing_isGivenUpOn();
     void answersThatAreNotTheSnapshot_exitOne_data();
     void answersThatAreNotTheSnapshot_exitOne();
+    void answersThatStopShortOfTheSnapshot_exitOne_data();
+    void answersThatStopShortOfTheSnapshot_exitOne();
     void rejectedCommandLines_exitThree_data();
     void rejectedCommandLines_exitThree();
+    void everyEndingWithoutASnapshot_isDocumentedAndRecognised();
 };
 
 void tst_QMdmmCtl::help_printsTheTableAndExitsZero()
@@ -425,6 +470,43 @@ void tst_QMdmmCtl::answersThatAreNotTheSnapshot_exitOne()
     checkNoSnapshotWasReported(process, "is not the snapshot");
 }
 
+// The two ways of stopping short of a snapshot that the case above does not cover, and the two the
+// suite had no case for at all: a plane that answers with a status line other than 200, and one
+// that closes before its header block is done.
+//
+// They are read apart from the three above because the reason is a column here -- a caller has to
+// be able to tell "this port is something else" from "this answer is not a snapshot", and a case
+// that accepted either would pass on whichever check happened to fire first.
+void tst_QMdmmCtl::answersThatStopShortOfTheSnapshot_exitOne_data()
+{
+    QTest::addColumn<QByteArray>("answer");
+    QTest::addColumn<QByteArray>("reason");
+
+    // What the control plane answers a path it does not serve: its own text, under a status line
+    // that is not the one a snapshot arrives under.
+    QTest::newRow("notFound") << answerWithStatus("HTTP/1.0 404 Not Found", "no path here by that name\n") << QByteArray("rather than the snapshot");
+
+    // Headers that were begun and never closed: the exchange ended, so the run has an answer, and
+    // what it has is not one it can read a status line out of.
+    QTest::newRow("headerThatNeverClosed") << QByteArray("HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n") << QByteArray("ended before its header block did");
+}
+
+void tst_QMdmmCtl::answersThatStopShortOfTheSnapshot_exitOne()
+{
+    QFETCH(QByteArray, answer);
+    QFETCH(QByteArray, reason);
+
+    StandInPlane plane;
+
+    QProcess process;
+    startCtlAgainst(process, plane.port());
+    QTcpSocket *connection = plane.accept(15000);
+
+    answerAndClose(connection, answer);
+
+    checkNoSnapshotWasReported(process, reason);
+}
+
 // Everything the program refuses before it asks anything ends the same way: the reason on stderr,
 // nothing on stdout, exit 3. The set is what a caller that scripts this tool has to be able to tell
 // apart from a question that was asked and not answered.
@@ -451,6 +533,104 @@ void tst_QMdmmCtl::rejectedCommandLines_exitThree()
     QCOMPARE(result.exitCode, 3);
     QVERIFY2(result.standardOutput.isEmpty(), qPrintable(QString::fromLocal8Bit(result.standardOutput)));
     QVERIFY2(!result.standardError.isEmpty(), "a rejected run said nothing about why");
+}
+
+// The list of endings, held together from all three sides at once.
+//
+// Each copy drifts on its own: the program can grow a seventh way of giving up, this suite can stop
+// recognising one it has, and the page can lose the clause a reader would look the ending up under.
+// None of the three changes anything that runs, so nothing else here -- and nothing in the build --
+// would notice. That is what this case is for, and it is the reason the table at the top of this
+// file exists rather than the three copies being compared as text against each other.
+//
+// The program and the page are read as text, the way the server's suite reads its own source and
+// its page: neither is linked into this target, the six messages are string literals, and the page
+// is not a build input at all.
+void tst_QMdmmCtl::everyEndingWithoutASnapshot_isDocumentedAndRecognised()
+{
+    // The program's side. Every place it gives up is one `*failure = u"..."` line, so the count is
+    // looked at before the messages are placed: a seventh ending then fails as a seventh ending
+    // rather than as one message this case cannot account for.
+    QFile source(QString::fromLatin1(QMDMMCTL_SOURCE));
+    QVERIFY2(source.open(QIODevice::ReadOnly), qPrintable(source.fileName() + u": "_s + source.errorString()));
+
+    static const QRegularExpression failureLine(u"\\*failure = u\"([^\"]*)\""_s);
+
+    QStringList messages;
+    QRegularExpressionMatchIterator matches = failureLine.globalMatch(QString::fromLocal8Bit(source.readAll()));
+    while (matches.hasNext())
+        messages.append(matches.next().captured(1));
+
+    QVERIFY2(!messages.isEmpty(), "no failure message was read out of the program's source");
+    QCOMPARE(int(messages.size()), int(endingsWithoutASnapshot().size()));
+
+    // One message per ending: a message belonging to two of them would leave another message
+    // belonging to none, and the count above could still agree.
+    for (const QString &message : messages) {
+        QStringList claimed;
+        for (const EndingWithoutASnapshot &ending : endingsWithoutASnapshot()) {
+            const QString reason = QString::fromLatin1(ending.reason);
+            if (message.contains(reason))
+                claimed.append(reason);
+        }
+
+        QString claimMessage = u"the program's message '"_s + message + u"' is claimed by "_s;
+        claimMessage += QString::number(claimed.size()) + u" of this suite's reasons, not one: ["_s + claimed.join(u", "_s) + u"]"_s;
+        QVERIFY2(claimed.size() == 1, qPrintable(claimMessage));
+    }
+
+    // And no ending may be one the program no longer has: every reason has to turn up somewhere in
+    // that source, or the suite is asking for a message that is gone.
+    for (const EndingWithoutASnapshot &ending : endingsWithoutASnapshot()) {
+        const QString reason = QString::fromLatin1(ending.reason);
+        const bool anywhere = std::any_of(messages.cbegin(), messages.cend(), [&reason](const QString &message) { return message.contains(reason); });
+        QVERIFY2(anywhere, qPrintable(u"no failure message of the program carries '%1'"_s.arg(reason)));
+    }
+
+    // The page's side. Only the tool's own section is read, so that the server's section below it
+    // -- which documents endings of its own -- cannot answer for this one. The section is joined
+    // into a single run of text first: the page wraps its sentences, so a clause would otherwise be
+    // found or missed by where a line happens to break.
+    QFile page(QString::fromLatin1(QMDMM_COMMAND_LINE_DOC));
+    QVERIFY2(page.open(QIODevice::ReadOnly), qPrintable(page.fileName() + u": "_s + page.errorString()));
+
+    QString section;
+    bool inSection = false;
+    bool foundSection = false;
+    const QStringList lines = QString::fromUtf8(page.readAll()).split(u'\n');
+    for (const QString &line : lines) {
+        if (line.startsWith(u"## ")) {
+            if (foundSection)
+                break;
+            inSection = line.trimmed() == u"## QMdmmCtl"_s;
+            foundSection = inSection;
+            continue;
+        }
+        if (inSection)
+            section += line + u' ';
+    }
+
+    QVERIFY2(foundSection, "the page has no '## QMdmmCtl' section for this case to read");
+
+    static const QRegularExpression whitespace(u"\\s+"_s);
+    section.replace(whitespace, u" "_s);
+    QVERIFY2(!section.trimmed().isEmpty(), "the tool's section of the page came out empty");
+
+    for (const EndingWithoutASnapshot &ending : endingsWithoutASnapshot()) {
+        const QString clause = QString::fromLatin1(ending.clause);
+
+        QString message = u"the page no longer says how a run can end with '"_s + QString::fromLatin1(ending.reason);
+        message += u"' -- the clause '"_s + clause + u"' is not in its QMdmmCtl section"_s;
+        QVERIFY2(section.contains(clause), qPrintable(message));
+    }
+
+    // And this suite's own copy, which is what tells a run that ended this way apart from one that
+    // worked: none of the six may have slipped out of what the helper above looks for.
+    for (const EndingWithoutASnapshot &ending : endingsWithoutASnapshot()) {
+        const QByteArray reason(ending.reason);
+
+        QVERIFY2(saidSomethingWentWrong(reason), qPrintable(u"this suite does not recognise '%1' as a failure"_s.arg(QString::fromLatin1(reason))));
+    }
 }
 
 QTEST_GUILESS_MAIN(tst_QMdmmCtl)

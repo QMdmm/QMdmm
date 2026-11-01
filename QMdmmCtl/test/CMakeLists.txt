@@ -40,6 +40,16 @@ target_compile_definitions(tst_qmdmmctl6 PRIVATE
     "QMDMMSERVER_EXECUTABLE=\"$<TARGET_FILE:QMdmmServer6>\""
 )
 
+# Two of the cases hold the ways a run can end without a snapshot to one list: the messages the
+# program writes, the reasons this suite looks for, and the clauses doc/command-line.md devotes to
+# them. Both of those files are read as text -- the program is not linked into this target, and the
+# page is not a build input at all -- so their paths are named here rather than the cases guessing
+# at them, the same treatment the server's suite gives its own source and page.
+target_compile_definitions(tst_qmdmmctl6 PRIVATE
+    "QMDMMCTL_SOURCE=\"${CMAKE_CURRENT_SOURCE_DIR}/../src/main.cpp\""
+    "QMDMM_COMMAND_LINE_DOC=\"${PROJECT_SOURCE_DIR}/doc/command-line.md\""
+)
+
 # The junit report is what a failing case leaves behind when the plain output does not reach the CI
 # log; the second -o keeps the plain reading on stdout as well. Same shape as the server's suite.
 add_test(NAME "QMdmmCtl - ctl cli - Qt6" COMMAND tst_qmdmmctl6 "-o" "-,txt" "-o" "tst_QMdmmCtlCli${Qt6_VERSION_MAJOR}.xml,junitxml")
