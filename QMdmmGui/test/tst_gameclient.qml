@@ -15,6 +15,24 @@ TestCase {
 
     property var game: null
 
+    // What the second contested round is waited for, in the match's own unit: how many times the
+    // match has asked this side for a throw. A round is contested in about a third of the cases
+    // (see the orders case below), so the second contest is anything from a couple of rounds away
+    // to a dozen -- six runs on a development tree came in at 5, 6, 8, 9, 9 and 19 asks. A number
+    // of milliseconds cannot bound that: a runner plays far fewer rounds in the same time, so the
+    // fifty seconds this wait used to have ran out while the match was still going. The case
+    // itself read 68.19 s on the Windows Release cell of run 40559027778, where its neighbours in
+    // that suite read 10.6 to 15.8 s against 0.5 to 1.8 s locally, and the ubuntu Debug cell of
+    // run 41340588818 failed at 91.49 s. Forty asks is twice the worst of the six runs above.
+    readonly property int throwAsksToWaitForOrders: 40
+
+    // What a match that has stopped asking is given before the case calls it: without this the
+    // loop below would spin until the suite's own bound reported a timeout and named no case. It
+    // is clear of what it guards -- the slowest of those six runs took 3.3 s for the whole case --
+    // and well inside the 360 s the suite has, which reads 41.95 s on an ubuntu Debug cell and
+    // 262.81 s / 263.95 s on Windows Release ones.
+    readonly property int watchdogDeadlineMs: 60000
+
     function cleanup() {
         if (game !== null) {
             game.disconnectAll();
@@ -548,7 +566,9 @@ TestCase {
         // always leaves one winner, who takes every order without being asked. Which rounds
         // leave two winners is up to the throw -- about a third of them -- so the match is
         // played on until this side has been asked twice rather than the first round being
-        // taken for granted.
+        // taken for granted. How long that takes is the draw and not the machine, which is why
+        // the bound is a number of asks (see throwAsksToWaitForOrders above) and the deadline
+        // beside it only covers a match that stops asking altogether.
         var orderAsked = createTemporaryObject(signalSpyComponent, testCase, {
                                                    target: game,
                                                    signalName: "requestActionOrder"
@@ -576,7 +596,14 @@ TestCase {
         var answeredUpTo = 0;
         var waiting = 0;
         var resolvedBefore = 0;
-        for (var i = 0; i < 500 && answeredUpTo < 2; ++i) {
+        var startedAt = Date.now();
+        while (answeredUpTo < 2) {
+            if (throwAsked.count >= throwAsksToWaitForOrders)
+                break;
+            if (Date.now() - startedAt >= watchdogDeadlineMs)
+                break;
+            if (game.gameState !== "playing")
+                break;
             if (throwAsked.count > answeredThrows) {
                 answeredThrows = throwAsked.count;
                 game.replyRps(0);
@@ -607,7 +634,11 @@ TestCase {
             }
             wait(100);
         }
-        compare(answeredUpTo, 2, "both answers have to leave the orders confirmed");
+        // The counts go into the message: a run that runs out of asks, out of the deadline or out
+        // of match has a different repair, and only these numbers tell them apart.
+        var waited = Date.now() - startedAt;
+        var reading = waited + " ms, " + throwAsked.count + " throws asked, " + orderAsked.count + " orders offered";
+        compare(answeredUpTo, 2, "both answers have to leave the orders confirmed: " + reading);
     }
 
     function test_theActionsOfferedAreBuiltFromTheLiveRoom() {
