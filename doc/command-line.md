@@ -80,11 +80,17 @@ the comparison above to explain away.
 
 An answer that carries no snapshot is not printed: a `404` from the control
 plane, an answer that ends before its headers do, an answer that does not finish
-within five seconds, an answer that grows past 1 MiB without ending, a `200`
-whose body is not the snapshot, and a port with nothing listening all end the
-run the same way -- the reason on stderr, nothing on stdout, and status 1. A
+within five seconds, an answer that reaches past the 1 MiB this program holds, a
+`200` whose body is not the snapshot, and a port with nothing listening all end
+the run the same way -- the reason on stderr, nothing on stdout, and status 1. A
 peer that sends rather than answers reaches that bound well inside the five
 seconds, so the size is bounded as well as the time.
+
+The size is a bound on what this program holds, not a statement about the peer:
+an answer that would have ended, but only after more than that, is given up on
+the same way. The reason says how many bytes had arrived when the program
+stopped reading, and does not claim either way that the answer had ended --
+stopping at the bound is what happens instead of waiting to find out.
 
 A command line that is refused -- no command, more than one, an unknown one,
 `status` without `--control-port`, or a value that is not a port -- is reported

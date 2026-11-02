@@ -32,6 +32,10 @@ constexpr int answerTimeout = 5000;
 // the number of rooms rather than with anything the peer chooses; an answer past this is a peer
 // that is sending rather than answering, and how far the buffer behind it would grow is its choice
 // rather than this program's.
+//
+// Reads are cut to what is left of this bound, so the buffer cannot outgrow it while an answer is
+// still being taken in: one byte past the bound is read on purpose, and is all that is needed to
+// see that the answer went past it.
 constexpr qsizetype answerSizeLimit = static_cast<qsizetype>(1024) * 1024;
 
 // What a rejected run ends with: the same 3 the two long-running programs use for a configuration
@@ -138,12 +142,23 @@ QByteArray fetchSnapshot(quint16 port, QString *failure)
     // Only the close ends the loop. Running out of the deadline does not count as an answer that
     // ended: a peer that holds the connection open and says nothing is the one shape a caller
     // cannot tell from a slow answer, so it is reported as no answer rather than parsed as one.
+    //
+    // What is taken in at one time is cut to what is left of the bound rather than being whatever
+    // the socket has buffered: a read that took the lot could put an arbitrarily large piece into
+    // the answer before the check below ever saw it, and the bound would then be the point at which
+    // this program gives up rather than one it holds to while the answer arrives.
+    //
+    // The reason reports what had arrived when it gave up, because that is the only reading from
+    // outside of how much was held. It says nothing about whether the answer would have ended --
+    // this program stops reading at the bound and does not wait to find out.
     QByteArray answer;
     for (;;) {
         if (socket.bytesAvailable() > 0) {
-            answer += socket.readAll();
+            answer += socket.read(answerSizeLimit + 1 - answer.size());
             if (answer.size() > answerSizeLimit) {
-                *failure = u"the answer from 127.0.0.1:%1 grew past %2 bytes without ending"_s.arg(static_cast<int>(port)).arg(static_cast<qlonglong>(answerSizeLimit));
+                *failure = u"the answer from 127.0.0.1:%1 reached %2 bytes, past the %3 bytes this program holds"_s.arg(static_cast<int>(port))
+                               .arg(static_cast<qlonglong>(answer.size()))
+                               .arg(static_cast<qlonglong>(answerSizeLimit));
                 return {};
             }
             continue;

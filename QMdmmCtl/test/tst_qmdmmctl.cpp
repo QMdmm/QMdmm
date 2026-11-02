@@ -62,7 +62,28 @@ RunResult runCtl(const QStringList &arguments)
 bool saidSomethingWentWrong(const QByteArray &standardError)
 {
     return standardError.contains("nothing answered") || standardError.contains("ended before its header block did") || standardError.contains("rather than the snapshot")
-        || standardError.contains("did not finish") || standardError.contains("grew past") || standardError.contains("is not the snapshot");
+        || standardError.contains("did not finish") || standardError.contains("this program holds") || standardError.contains("is not the snapshot");
+}
+
+// The most of an answer the program holds, written out here rather than linked in from it.
+//
+// The program's own constant is a line of its source and not something this target can call, so
+// the number appears twice; the case below is what would notice the two drifting apart, because it
+// asks the program how much it had taken in and compares that with this.
+constexpr qsizetype heldAnswerSize = static_cast<qsizetype>(1024) * 1024;
+
+// How much of an answer the program says it had taken in when it gave up, read out of the reason it
+// wrote. Nothing else a caller can see carries that number: the streams say a run failed and why,
+// and this is the one place the size of what was held shows up outside the program.
+//
+// A reason without the number reads as -1, which no case can mistake for a size that arrived.
+qlonglong bytesInTheReason(const QByteArray &standardError)
+{
+    static const QRegularExpression reason(u"reached (\\d+) bytes"_s);
+    const QRegularExpressionMatch match = reason.match(QString::fromLocal8Bit(standardError));
+    if (!match.hasMatch())
+        return -1;
+    return match.captured(1).toLongLong();
 }
 
 // Every way a run can end without a snapshot, as one list: the words the program puts on stderr,
@@ -90,7 +111,7 @@ const std::array<EndingWithoutASnapshot, 6> &endingsWithoutASnapshot()
         {.reason = "ended before its header block did", .clause = "an answer that ends before its headers do"},
         {.reason = "rather than the snapshot",          .clause = "a `404` from the control plane"},
         {.reason = "did not finish",                    .clause = "an answer that does not finish within five seconds"},
-        {.reason = "grew past",                         .clause = "an answer that grows past 1 MiB without ending"},
+        {.reason = "this program holds",                .clause = "an answer that reaches past the 1 MiB this program holds"},
         {.reason = "is not the snapshot",               .clause = "a `200` whose body is not the snapshot"},
     }};
     // clang-format on
@@ -289,6 +310,7 @@ private slots:
     void status_exitsNonZeroWhenNothingAnswers();
     void answerThatNeverEnds_exitsOneWithinTheDeadline();
     void answerThatKeepsGrowing_isGivenUpOn();
+    void anAnswerPastTheBound_isGivenUpOnWithoutAGuess();
     void answersThatAreNotTheSnapshot_exitOne_data();
     void answersThatAreNotTheSnapshot_exitOne();
     void answersThatStopShortOfTheSnapshot_exitOne_data();
@@ -438,7 +460,61 @@ void tst_QMdmmCtl::answerThatKeepsGrowing_isGivenUpOn()
         QTest::qWait(1);
     }
 
-    checkNoSnapshotWasReported(process, "grew past");
+    // The socket this side holds goes away before the child is collected: the run gave up, the
+    // connection closed, and the exit status is read once it is there rather than assumed to be.
+    if (process.state() != QProcess::NotRunning)
+        QVERIFY(process.waitForFinished(60000));
+
+    QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(process.exitCode(), 1);
+    const QByteArray standardOutput = process.readAllStandardOutput();
+    const QByteArray standardError = process.readAllStandardError();
+    QVERIFY2(standardOutput.isEmpty(), qPrintable(QString::fromLocal8Bit(standardOutput)));
+    QVERIFY2(standardError.contains("this program holds"), qPrintable(QString::fromLocal8Bit(standardError)));
+
+    // And it gave up at the bound rather than somewhere past it: what the reason reports having
+    // taken in is the bound plus the one byte that says the answer went past it. A read that took
+    // whatever the socket had buffered would report more than that, by however much had piled up.
+    QCOMPARE(bytesInTheReason(standardError), heldAnswerSize + 1);
+}
+
+// An answer bigger than the bound is given up on whether or not it would have ended.
+//
+// This peer hands over the whole of its answer in one piece: the only thing wrong with it is its
+// size, and nothing about it is still arriving at the moment the program stops. What the program
+// says about it must not pretend to know either way -- stopping at the bound is what happens
+// instead of finding out -- and it must not read as one of the answers that never ended or one that
+// ran out of time, because those two point a reader at a different problem.
+void tst_QMdmmCtl::anAnswerPastTheBound_isGivenUpOnWithoutAGuess()
+{
+    StandInPlane plane;
+
+    QProcess process;
+    startCtlAgainst(process, plane.port());
+    QTcpSocket *connection = plane.accept(15000);
+
+    // Honest headers and an honest length: this answer is complete on its own terms, and bigger
+    // than the program holds.
+    connection->write(answerWith(QByteArray(heldAnswerSize + 64 * 1024, 'x')));
+    connection->flush();
+
+    QElapsedTimer timer;
+    timer.start();
+    while (process.state() != QProcess::NotRunning) {
+        QVERIFY2(timer.elapsed() <= 30000, "the run kept holding an answer past its bound");
+        QTest::qWait(1);
+    }
+
+    QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(process.exitCode(), 1);
+    const QByteArray standardOutput = process.readAllStandardOutput();
+    const QByteArray standardError = process.readAllStandardError();
+    QVERIFY2(standardOutput.isEmpty(), qPrintable(QString::fromLocal8Bit(standardOutput)));
+    QVERIFY2(standardError.contains("this program holds"), qPrintable(QString::fromLocal8Bit(standardError)));
+
+    const QString reason = QString::fromLocal8Bit(standardError);
+    QVERIFY2(!reason.contains(u"without ending"_s) && !reason.contains(u"did not finish"_s), qPrintable(reason));
+    QCOMPARE(bytesInTheReason(standardError), heldAnswerSize + 1);
 }
 
 // A 200 is not the snapshot. Each of these is an answer the program used to print and report as a
