@@ -15,22 +15,22 @@ TestCase {
 
     property var game: null
 
-    // What the second contested round is waited for, in the match's own unit: how many times the
-    // match has asked this side for a throw. A round is contested in about a third of the cases
-    // (see the orders case below), so the second contest is anything from a couple of rounds away
-    // to a dozen -- six runs on a development tree came in at 5, 6, 8, 9, 9 and 19 asks. A number
-    // of milliseconds cannot bound that: a runner plays far fewer rounds in the same time, so the
-    // fifty seconds this wait used to have ran out while the match was still going. The case
-    // itself read 68.19 s on the Windows Release cell of run 40559027778, where its neighbours in
-    // that suite read 10.6 to 15.8 s against 0.5 to 1.8 s locally, and the ubuntu Debug cell of
-    // run 41340588818 failed at 91.49 s. Forty asks is twice the worst of the six runs above.
-    readonly property int throwAsksToWaitForOrders: 40
+    // What one match is given to offer this side an order, in the match's own unit: how many
+    // times it asked for a throw. A round is contested in about a third of the cases (see the
+    // orders case below), so the first contest is a couple of rounds away -- six runs on a
+    // development tree settled two contests in 5, 6, 8, 9, 9 and 19 asks, and the arm cell of
+    // run 41490034141 settled one in forty. A number of milliseconds cannot bound that: a runner
+    // plays far fewer rounds in the same time, which is why the fifty seconds this wait used to
+    // have ran out while the match was still going -- the case read 68.19 s on the Windows
+    // Release cell of run 40559027778 and 91.49 s on the ubuntu Debug cell of run 41340588818.
+    // Eighty asks is four times the worst local reading above and twice the runner's forty.
+    readonly property int throwAsksToWaitForAnOrder: 80
 
     // What a match that has stopped asking is given before the case calls it: without this the
     // loop below would spin until the suite's own bound reported a timeout and named no case. It
-    // is clear of what it guards -- the slowest of those six runs took 3.3 s for the whole case --
-    // and well inside the 360 s the suite has, which reads 41.95 s on an ubuntu Debug cell and
-    // 262.81 s / 263.95 s on Windows Release ones.
+    // is clear of what it guards -- the slowest of those six runs took 3.3 s for a whole case --
+    // and two of these, one per match the case plays, stay well inside the 360 s the suite has,
+    // which reads 41.95 s on an ubuntu Debug cell and 262.81 s / 263.95 s on Windows Release ones.
     readonly property int watchdogDeadlineMs: 60000
 
     function cleanup() {
@@ -563,12 +563,13 @@ TestCase {
         // the round to go on.
         //
         // A room of three is what makes the negotiation contested at all: with two the throw
-        // always leaves one winner, who takes every order without being asked. Which rounds
-        // leave two winners is up to the throw -- about a third of them -- so the match is
-        // played on until this side has been asked twice rather than the first round being
-        // taken for granted. How long that takes is the draw and not the machine, which is why
-        // the bound is a number of asks (see throwAsksToWaitForOrders above) and the deadline
-        // beside it only covers a match that stops asking altogether.
+        // always leaves one winner, who takes every order without being asked. That is also why
+        // one match cannot be relied on for both replies -- once a seat dies, the throw among the
+        // two that are left always leaves one winner, so the match may never offer a second
+        // contest. Run 41490034141 (ubuntu-26.04-arm, MinSizeRel) read forty throws asked and one
+        // order offered for exactly that reason. Each reply therefore gets a match of its own,
+        // where all three seats are alive again: the first names an order, the second gives the
+        // whole negotiation up.
         var orderAsked = createTemporaryObject(signalSpyComponent, testCase, {
                                                    target: game,
                                                    signalName: "requestActionOrder"
@@ -586,59 +587,61 @@ TestCase {
                                                    signalName: "requestRockPaperScissors"
                                                });
 
-        game.playerCount = 3;
-        game.startLocalGame("Tester");
-        tryCompare(game, "gameState", "playing", 15000);
-
         var answeredThrows = 0;
         var answeredActions = 0;
-        var seen = 0;
-        var answeredUpTo = 0;
-        var waiting = 0;
-        var resolvedBefore = 0;
-        var startedAt = Date.now();
-        while (answeredUpTo < 2) {
-            if (throwAsked.count >= throwAsksToWaitForOrders)
-                break;
-            if (Date.now() - startedAt >= watchdogDeadlineMs)
-                break;
-            if (game.gameState !== "playing")
-                break;
-            if (throwAsked.count > answeredThrows) {
-                answeredThrows = throwAsked.count;
-                game.replyRps(0);
-            }
-            if (actionAsked.count > answeredActions) {
-                answeredActions = actionAsked.count;
-                game.replyAction(0, "", -1);
-            }
-            if (seen < 2 && orderAsked.count > seen) {
-                ++seen;
-                var offer = orderAsked.signalArguments[seen - 1];
-                verify(offer[0].length >= 1, "there has to be an order to pick from: " + JSON.stringify(offer));
-                verify(offer[1] >= 1, "the range the orders come from has to be told: " + JSON.stringify(offer));
-                verify(offer[2] >= 1, "at least one selection is asked of this player: " + JSON.stringify(offer));
+        for (var match = 0; match < 2; ++match) {
+            var giveItUp = match === 1;
+            var replyName = giveItUp ? "the give-up" : "a named order";
 
-                resolvedBefore = resolved.count;
-                waiting = seen;
-                // The first ask is answered by naming an order, the second by giving the whole
-                // negotiation up: the two are the replies the view can send.
-                if (seen === 1)
-                    game.replyActionOrder([offer[0][0]]);
-                else
-                    game.yieldActionOrder(offer[2]);
+            game.playerCount = 3;
+            game.startLocalGame("Tester");
+            tryCompare(game, "gameState", "playing", 15000);
+
+            var throwsBefore = throwAsked.count;
+            var offersBefore = orderAsked.count;
+            var taken = false;
+            var settleFrom = 0;
+            var settled = false;
+            var startedAt = Date.now();
+            while (!settled) {
+                if (throwAsked.count - throwsBefore >= throwAsksToWaitForAnOrder)
+                    break;
+                if (Date.now() - startedAt >= watchdogDeadlineMs)
+                    break;
+                if (game.gameState !== "playing")
+                    break;
+                if (throwAsked.count > answeredThrows) {
+                    answeredThrows = throwAsked.count;
+                    game.replyRps(0);
+                }
+                if (actionAsked.count > answeredActions) {
+                    answeredActions = actionAsked.count;
+                    game.replyAction(0, "", -1);
+                }
+                if (!taken && orderAsked.count > offersBefore) {
+                    taken = true;
+                    var offer = orderAsked.signalArguments[orderAsked.count - 1];
+                    verify(offer[0].length >= 1, "there has to be an order to pick from: " + JSON.stringify(offer));
+                    verify(offer[1] >= 1, "the range the orders come from has to be told: " + JSON.stringify(offer));
+                    verify(offer[2] >= 1, "at least one selection is asked of this player: " + JSON.stringify(offer));
+
+                    settleFrom = resolved.count;
+                    if (giveItUp)
+                        game.yieldActionOrder(offer[2]);
+                    else
+                        game.replyActionOrder([offer[0][0]]);
+                }
+                if (taken && resolved.count > settleFrom)
+                    settled = true;
+                wait(100);
             }
-            if (waiting > 0 && resolved.count > resolvedBefore) {
-                answeredUpTo = waiting;
-                waiting = 0;
-            }
-            wait(100);
+            // The counts go into the message: a run that runs out of asks, out of the deadline or
+            // out of match has a different repair, and only these numbers tell them apart.
+            var waited = Date.now() - startedAt;
+            var reading = replyName + " over " + waited + " ms, " + (throwAsked.count - throwsBefore) + " throws asked, " + (orderAsked.count - offersBefore) + " orders offered";
+            verify(settled, reading + " has to leave the orders confirmed");
+            game.disconnectAll();
         }
-        // The counts go into the message: a run that runs out of asks, out of the deadline or out
-        // of match has a different repair, and only these numbers tell them apart.
-        var waited = Date.now() - startedAt;
-        var reading = waited + " ms, " + throwAsked.count + " throws asked, " + orderAsked.count + " orders offered";
-        compare(answeredUpTo, 2, "both answers have to leave the orders confirmed: " + reading);
     }
 
     function test_theActionsOfferedAreBuiltFromTheLiveRoom() {
