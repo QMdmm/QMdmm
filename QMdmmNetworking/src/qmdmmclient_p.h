@@ -65,6 +65,11 @@ public:
     // Round trip of the last ping that came back, in milliseconds, or -1 while no measurement
     // exists for the current connection. Backs Client::roundTripTime().
     qint64 roundTripTime;
+    // The timestamp of the ping that reading came from -- the pong echoes it, so it doubles as the
+    // identity of the ping being answered. An answer older than this one is a late answer to an
+    // older ping, not a newer reading. -1 while no answer has been used on this connection: the
+    // stamps compared are epoch milliseconds, so -1 is below any of them.
+    qint64 newestAnsweredPing;
 
     QMdmmCore::Protocol::RequestId currentRequest;
     QMdmmCore::Data::AgentState initialState;

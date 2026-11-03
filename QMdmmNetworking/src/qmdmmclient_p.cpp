@@ -77,6 +77,7 @@ ClientP::ClientP(ClientConfiguration clientConfiguration, Client *q)
     , reconnectInProgress(false)
     , connected(false)
     , roundTripTime(-1)
+    , newestAnsweredPing(-1)
     , currentRequest(QMdmmCore::Protocol::RequestInvalid)
     , initialState(QMdmmCore::Data::StateOffline)
     , lastRoundEventSeq(0)
@@ -275,7 +276,19 @@ void ClientP::notifyPongServer(const QJsonValue &value)
     // clock alone -- no clock on the other side takes part in it. It is the reading
     // Client::roundTripTime() reports, and it is the only thing a stuck server cannot produce:
     // the answer restarts the deadline, so a peer that stops answering is found by its absence.
-    roundTripTime = elapsed;
+    //
+    // That echoed stamp is also the identity of the ping being answered, and the answers need not
+    // arrive in the order their pings were sent: a pong that was late enough can land after the
+    // answer to a newer ping, and it would then put its own older, larger round trip in place of a
+    // newer one. The pings are thirty seconds apart and nothing on the way back promises to keep
+    // that spacing, so the case is the ordering of the two stamps rather than the timing of the
+    // network. Only an answer that is not older than the one this reading came from replaces it;
+    // the deadline is restarted either way, because a stale answer is stale as a measurement and
+    // still current as proof of life.
+    if (newestAnsweredPing < 0 || pongTime >= newestAnsweredPing) {
+        roundTripTime = elapsed;
+        newestAnsweredPing = pongTime;
+    }
     pongDeadline->start();
 
     onRet_.dismiss();
@@ -738,6 +751,7 @@ void ClientP::notifyGameOver(const QJsonValue &value)
         pongDeadline->stop();
         connected = false;
         roundTripTime = -1;
+        newestAnsweredPing = -1;
         disconnect(socket);
         socket->disconnect(this);
 
@@ -1035,6 +1049,7 @@ void ClientP::handleSocketGone(const QString &errorString)
     pongDeadline->stop();
     connected = false;
     roundTripTime = -1;
+    newestAnsweredPing = -1;
 
     // Detach first so a second signal from the same socket (error + disconnected
     // often fire back to back) can't re-enter this handler.

@@ -68,6 +68,7 @@ private slots:
     void client_measuresThePongRoundTrip();
     void client_givesUpWhenThePongsStopComing();
     void client_clearsTheReadingWhenTheGameEnds();
+    void client_keepsTheNewerReadingWhenAnOlderPongArrivesLate();
     void client_disconnectsOnProtocolVersionMismatch();
     void client_reportsAVersionNumberMismatchAndSignsIn();
     void server_listenErrorAndClose();
@@ -1494,6 +1495,105 @@ void tst_QMdmmNetworking::client_clearsTheReadingWhenTheGameEnds()
     // The reading goes with the connection it was measured on, and so does the deadline.
     QCOMPARE(client->roundTripTime(), qint64(-1));
     QVERIFY2(!deadline->isActive(), "the pong deadline outlived the connection the game over ended");
+}
+
+// The answers to the pings are not promised to come back in the order the pings were sent: a pong
+// can land after the answer to a newer ping, and it carries the older ping's timestamp back with it.
+// As proof of life it is as good as any other -- the deadline restarts on it -- but as a measurement
+// it is older than the reading already in place, and letting it land would report a round trip from
+// before the one already known. This peer sets that order itself: it holds one answer back, answers
+// a later ping first, then releases the older answer, so the two arrive out of order on a connection
+// that reorders nothing by itself.
+//
+// The two candidate readings are told apart by the two delays this case imposes, not by anything
+// about the machine: the newer answer is held back newerAnswerDelayMs before it is written, so the
+// reading that belongs to it is at least that much, while the older answer is held back longer than
+// heldBackMs, so whatever it would produce reads at least heldBackMs. A measured duration cannot
+// come back sooner than the hold that produced it -- that is the whole of both numbers.
+void tst_QMdmmNetworking::client_keepsTheNewerReadingWhenAnOlderPongArrivesLate()
+{
+    constexpr int newerAnswerDelayMs = 800;
+    constexpr int heldBackMs = 3000;
+
+    QTcpServer rawServer;
+    QVERIFY(rawServer.listen(QHostAddress::LocalHost, 0));
+
+    QTcpSocket *peer = nullptr;
+    // The ping whose answer this case writes itself, and the switches that decide what this peer
+    // does with the pings that follow.
+    qint64 heldPingStamp = -1;
+    bool holdNextPing = false;
+    bool answerAtAll = true;
+    int answerDelayMs = 0;
+
+    QObject::connect(&rawServer, &QTcpServer::newConnection, &rawServer, [&rawServer, &peer, &heldPingStamp, &holdNextPing, &answerAtAll, &answerDelayMs]() {
+        peer = rawServer.nextPendingConnection();
+        QObject::connect(peer, &QAbstractSocket::readyRead, peer, [peer, &heldPingStamp, &holdNextPing, &answerAtAll, &answerDelayMs]() {
+            while (peer->canReadLine()) {
+                const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(peer->readLine());
+                if (packet.type() != QMdmmCore::Protocol::TypeNotify || packet.notifyId() != QMdmmCore::Protocol::NotifyPingServer)
+                    continue;
+                const qint64 stamp = packet.value().toVariant().toLongLong();
+                if (holdNextPing) {
+                    holdNextPing = false;
+                    heldPingStamp = stamp; // nothing is written for this one; the case releases it later
+                    continue;
+                }
+                if (!answerAtAll)
+                    continue;
+                // Echo the timestamp back the way ServerP::pingServer does, only late enough for the
+                // reading to be the delay rather than a zero.
+                QTimer::singleShot(answerDelayMs, peer,
+                                   [peer, stamp]() { peer->write(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPongServer, QJsonValue(stamp)).serialize().append('\n')); });
+            }
+        });
+    });
+
+    const QString host = u"qmdmm://127.0.0.1:%1"_s.arg(rawServer.serverPort());
+
+    auto *client = new Client(ClientConfiguration(), &rawServer);
+
+    QTimer *heartbeat = nullptr;
+    for (QTimer *timer : client->findChildren<QTimer *>()) {
+        if (!timer->isSingleShot())
+            heartbeat = timer;
+    }
+    QVERIFY2(heartbeat != nullptr, "the client has no repeating heartbeat timer");
+    QTimer *deadline = client->findChild<QTimer *>(u"pongDeadline"_s);
+    QVERIFY2(deadline != nullptr, "the client has no pong deadline");
+
+    QVERIFY(client->connectToHost(host, Data::StateOnline));
+    // Only the pings are run fast; the deadline keeps the interval it was built with.
+    heartbeat->setInterval(200);
+
+    // A first reading, so the two later ones are not compared against "nothing measured yet".
+    QTRY_VERIFY_WITH_TIMEOUT(client->roundTripTime() >= 0, 5000);
+
+    // From here the next ping's answer is held, and the ones after it are answered with a delay.
+    holdNextPing = true;
+    answerDelayMs = newerAnswerDelayMs;
+    QTRY_VERIFY_WITH_TIMEOUT(heldPingStamp >= 0, 5000);
+
+    // The delayed answer reaches the reading, so the newer measurement is in place.
+    QTRY_VERIFY_WITH_TIMEOUT(client->roundTripTime() >= newerAnswerDelayMs, 5000);
+
+    // Freeze the peer, then let the pipe drain: from here no answer is written, and the hold below
+    // is long enough that anything already scheduled has been written and processed before it ends.
+    // So the deadline's next restart can only be the held answer's.
+    answerAtAll = false;
+    QTest::qWait(heldBackMs);
+
+    deadline->stop();
+    const qint64 newer = client->roundTripTime();
+    QVERIFY2(newer < heldBackMs, qPrintable(u"the newer reading is already %1 ms, which the held answer's cannot be told apart from"_s.arg(newer)));
+
+    peer->write(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPongServer, QJsonValue(heldPingStamp)).serialize().append('\n'));
+    peer->flush();
+
+    // The held answer is processed when the deadline restarts.
+    QTRY_VERIFY_WITH_TIMEOUT(deadline->isActive(), 5000);
+    QVERIFY2(client->roundTripTime() < heldBackMs,
+             qPrintable(u"the reading went to %1 ms on an answer for an older ping, over the %2 ms the newer one read"_s.arg(client->roundTripTime()).arg(newer)));
 }
 
 // A protocolVersion mismatch is a hard incompatibility, not a transient failure: the client must
