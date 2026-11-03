@@ -19,9 +19,19 @@ using namespace Qt::StringLiterals;
 namespace {
 
 // How long the whole exchange gets: one connect, one request line, one answer. The control plane
-// answers one short request per connection and closes, it is reached over the loopback interface,
-// and it gives a peer that has not spoken five seconds before it drops it -- so this is longer than
-// everything the far end does and short enough that a run pointed at nothing does not hang.
+// answers one short request per connection and closes, and it is reached over the loopback
+// interface -- one connect, one request line and one answer there are nowhere near five seconds,
+// which is what this number rests on, and it is short enough that a run pointed at nothing does
+// not hang.
+//
+// Not "longer than what the far end does": that side arms its own five seconds against a connection
+// that has not asked anything yet (`controlRequestTimeout` in `qmdmmserver_p.cpp`), the same 5000
+// ms this holds. The two look ordered only because they start at different points -- this one
+// before the connection is attempted, that one once the connection is accepted -- so against a peer
+// that never speaks this clock always runs out first and the far end's drop never gets to happen.
+// Written as a size relation, the sentence would send the next reader to move one of the two, and
+// setting that side to three seconds would make it true by accident and hide that these two numbers
+// have never had an order to keep.
 //
 // It is one deadline for the exchange and not one per read: a peer that drips a byte at a time
 // would never run out of reads, and a run any peer can keep waiting for as long as it likes is a
