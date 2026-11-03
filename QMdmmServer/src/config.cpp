@@ -110,6 +110,7 @@ Logging:
                                        info                info and above
                                        warning             warning and above
                                        critical            critical and above
+                                     The names are matched without regard to case.
 
 Value ranges: <min~> means "at least min"; <0,min~> means "0, or at least min".
 Each maximum must be at least its own initial value, so for example --slash must not

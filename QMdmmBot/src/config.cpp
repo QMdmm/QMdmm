@@ -45,6 +45,7 @@ Logging:
                                        info                info and above
                                        warning             warning and above
                                        critical            critical and above
+                                     The names are matched without regard to case.
 )help"_s;
     return text;
 }
