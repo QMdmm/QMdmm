@@ -112,12 +112,19 @@ add_test(NAME "QMdmmBot - headless game - Qt6" COMMAND tst_qmdmmheadlessgame6)
 #
 # The match bound is the one that moved. It was 20 s for a set of bots' runs, taken from a local
 # reading where a match is over in a fraction of a second; on ubuntu a match runs at a round or
-# more per second, so every Linux cell of the run that carried it failed with the second room
-# still playing. What a case may wait for is therefore set from the slowest reading CI has given,
-# and the bound below from the sum, with room for a case that has to be killed rather than stuck.
+# more per second, so every Linux cell of run 39777175206 failed with the second room still
+# playing, at round eleven to fifteen. The 120 s is set from the runners, then: a round costs
+# about a second there and a match is thirty-odd rounds. The suite as a whole reads 8 s here and
+# 94.13 s on the slowest cell of run 41701155852 (ubuntu-latest, MinSizeRel) -- the two are not
+# close, which is what the bound is for. The 600 s below is the sum of those waits, with room for
+# a case that has to be killed rather than stuck.
 set_tests_properties("QMdmmBot - headless game - Qt6" PROPERTIES TIMEOUT 600)
 
 # See the note in QMdmmCore/test/CMakeLists.txt for how the bound is chosen. This case drives
-# whole games through the three styles, which is what its 34.59 s reading is; six times that
-# rounds up to 240 s.
+# whole games through the three styles, so its reading is the runners', not this machine's:
+# 34.59 s on ubuntu-26.04-arm, Release, the slowest of the twelve cells of run 38263304890 (the
+# two probe jobs aside), and that is the reading the bound was set from. Six times it is 207.5 s;
+# the bound below is 240 s, four whole minutes. The band has held since -- 32.80 s on the same
+# cell in run 41701155852. Here it reads 2.68 s on one run and 0.72 s on the next, which is how
+# little a local timing says about any of this.
 set_tests_properties("QMdmmBot - bot - Qt6" PROPERTIES TIMEOUT 240)
