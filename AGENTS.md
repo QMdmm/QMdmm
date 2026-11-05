@@ -268,3 +268,32 @@ Read these before touching code:
   yourself -- it cannot come back sooner than the time you held it -- but not
   against a ceiling, because a ceiling is a statement about the machine, and
   the machine the assertion runs on is not the one it was written on.
+
+### Counts in comments and documentation
+
+- A comment or a page that says how many of something there are -- how many
+  kinds of configuration section, how many stored keys, how many ways a
+  program can end -- is a claim about the code, and it goes false as soon as
+  another one is added. Nothing notices: the tree still compiles, the tests
+  still pass, and the sentence goes on asserting a count that no longer holds
+  until somebody happens to reread it. Either give the enumeration a gate, or
+  name the items and write no count at all.
+- A gate is a test that reads the text and holds it against the code, so that
+  adding one without the other turns it red. `QMdmmServer`'s
+  `documentedSettings()` does that for the settings page; the endings
+  `QMdmmCtl` reports do it for the command-line page. Both were written after
+  the sentence they replace had already gone false.
+- Without a gate, name each item and drop the number. `7fa2732` is the shape
+  of that failure: a comment counted the kinds of section the page leaves
+  out, a correction kept the count and was still wrong, and the fix named
+  each leftover section with its own reason, adding that a section written
+  later cannot make the sentence false.
+- The count is not the only hand-written answer that rots. A page that leaves
+  out a member the program takes (`260c94a`), a division of labour between
+  exit statuses that does not hold (`bc05248`), a shape predicted for a pair
+  of counts that they then did not have (`e1be8bf`) -- each was settled by
+  reading the fact off the code instead. Derive it where a gate can hold the
+  derivation; where nothing can, name the items and let the number go.
+- A position in a list is a claim of the same kind -- "the second exit", "the
+  last one" -- and moves as soon as something is added before it. Name the
+  item instead.
