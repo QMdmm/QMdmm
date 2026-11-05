@@ -415,16 +415,19 @@ jobs:
     # yet. Those counts are a reading of one tree on one platform, not a
     # promise, and the cell below prints its own.
     #
-    # The Linux count is a reading of the same kind. Five runs of this cell --
-    # none of them a change to the logic thread it is about, the trees they
-    # were read on differing in everything else -- came to 13061 (40129922777,
+    # The Linux count is a reading of the same kind. Runs of this cell -- none
+    # of them a change to the logic thread it is about, the trees they were
+    # read on differing in everything else -- came to 13061 (40129922777,
     # 3bd786e), 15081 (40693870527, 13f235d), 16114 (40870679259, ca800af),
-    # 13618 (40889324251, e1be8bf) and 13540 (41883387985, 3a34298), with the
-    # positive control between 355 and 363 in all five. The widest two are 3053
-    # reports apart, 23% of the smaller, so what this count measures is what a
-    # run happened to see rather than what the tree holds. The 13061 above and
-    # the 344 read on macOS are then two samples, on two platforms, and not a
-    # factor of 38.
+    # 13618 (40889324251, e1be8bf), 13540 (41883387985, 3a34298) and 17022
+    # (41894296029, bf8058b), the positive control between 355 and 363 in
+    # every one of them. That list is closed, so the widest pair within it --
+    # 13061 and 17022, 3961 reports apart, 30% of the smaller -- is a floor
+    # rather than a measurement: the count says what a run happened to see
+    # rather than what the tree holds, so take the spread as at least a
+    # quarter of the smaller and expect later runs to widen it. The 13061
+    # above and the 344 read on macOS are then two samples, on two platforms,
+    # and not a factor of 38.
     #
     # Two suites are left out, and the positive control is a third. Both excluded
     # suites drive other programs built with the same flags, and both stop at a
