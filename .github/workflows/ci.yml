@@ -616,7 +616,12 @@ jobs:
           # The two "QMdmmNetworking - Smoke" entries run a hand-written driver
           # and print no "Totals:" line; every other suite this leg keeps is
           # QtTest and prints one. Both are in the run, which is why the count of
-          # suites the cases are expected from is the one ctest reports less two.
+          # suites the cases are expected from is the one ctest reports less
+          # their number. That number is counted off the test list instead of
+          # being written down: a literal 2 keeps the denominator where it was
+          # when another such entry joins the tree, and a ratio off by a suite
+          # reads exactly like one that is not. Neither is among the suites -E
+          # drops, so the whole list is the right one to count in.
           # A third one can go missing without anyone leaving anything out: the
           # runtime aborts the process it is in when its own thread registry
           # trips -- "CHECK failed: sanitizer_thread_registry.cpp:186" in
@@ -627,7 +632,12 @@ jobs:
           # one, both by that same abort. A number below 14 therefore says a
           # suite did not reach its end, not that the cases shrank -- and the
           # case count on this leg is a lower bound for the same reason.
-          qtTestSuites=$((total - 2))
+          smokeName='QMdmmNetworking - Smoke'
+          smokeEntry="^[[:space:]]*Test[[:space:]]+#[0-9]+: ${smokeName}"
+          nonTotalsSuites=$(ctest --test-dir build -N 2>/dev/null |
+            grep -cE "$smokeEntry" || true)
+          nonTotalsSuites=${nonTotalsSuites:-0}
+          qtTestSuites=$((total - nonTotalsSuites))
           if [ "$qtTestSuites" -lt 0 ]; then qtTestSuites=0; fi
           echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} control=${{ steps.control.outcome }} test=${{ steps.test.outcome }} cases=${casePassed}/${caseRan} suites-reported=${suitesReported}/${qtTestSuites} suites=$((total - failed))/${total} ${names} thread-reports=${reports} positive-control=${control}"
 
