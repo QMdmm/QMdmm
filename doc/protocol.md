@@ -181,6 +181,10 @@ its own. Nothing coming back for three intervals ends the connection the way a c
 does -- reported through `Client::socketConnectionLost()` and followed by the reconnect
 below.
 
+As this is written the reading reaches nobody by itself: nothing logs it, no front end shows
+it, and no program in the tree reads it. It is there for a caller that wants to measure the
+link, and calling `Client::roundTripTime()` is the only way to get the number.
+
 That deadline only speaks about a question it asked. It runs out three intervals after a
 pong, and a client whose own event loop was away for longer than that comes back with the
 heartbeat and the deadline both overdue: the ping goes out on the way back and the deadline
