@@ -613,25 +613,26 @@ jobs:
           if [ -f "$controlLog" ]; then
             control=$(grep -c 'WARNING: ThreadSanitizer' "$controlLog" || true)
           fi
-          # The two "QMdmmNetworking - Smoke" entries run a hand-written driver
-          # and print no "Totals:" line; every other suite this leg keeps is
-          # QtTest and prints one. Both are in the run, which is why the count of
+          # The "QMdmmNetworking - Smoke" entries run a hand-written driver and
+          # print no "Totals:" line; every other suite this leg keeps is QtTest
+          # and prints one. They are all in the run, which is why the count of
           # suites the cases are expected from is the one ctest reports less
           # their number. That number is counted off the test list instead of
-          # being written down: a literal 2 keeps the denominator where it was
-          # when another such entry joins the tree, and a ratio off by a suite
-          # reads exactly like one that is not. Neither is among the suites -E
-          # drops, so the whole list is the right one to count in.
-          # A third one can go missing without anyone leaving anything out: the
-          # runtime aborts the process it is in when its own thread registry
+          # being written down: a number written down keeps the denominator
+          # where it was when another such entry joins the tree, and a ratio off
+          # by a suite reads exactly like one that is not. None of them is among
+          # the suites -E drops, so the whole list is the right one to count in.
+          # Another suite can go missing without anyone leaving anything out:
+          # the runtime aborts the process it is in when its own thread registry
           # trips -- "CHECK failed: sanitizer_thread_registry.cpp:186" in
           # CreateThread -- so a suite can end without ever printing its line,
-          # however it played. Run 40870679259 read 11/14, and 13 (QMdmmBot -
-          # bot, right after a race summary) and 15 (QMdmmGui - gui smoke, after
-          # its cases had all passed) were two of the three that ended without
-          # one, both by that same abort. A number below 14 therefore says a
-          # suite did not reach its end, not that the cases shrank -- and the
-          # case count on this leg is a lower bound for the same reason.
+          # however it played. Run 40870679259 read 11/14: among the suites that
+          # ended without printing one were "QMdmmBot - bot", right after a race
+          # summary, and "QMdmmGui - gui smoke", after its cases had all passed
+          # -- both by that same abort. A "suites-reported" short of the QtTest
+          # suites this leg runs therefore says a suite did not reach its end,
+          # not that the cases shrank -- and the case count on this leg is a
+          # lower bound for the same reason.
           smokeName='QMdmmNetworking - Smoke'
           smokeEntry="^[[:space:]]*Test[[:space:]]+#[0-9]+: ${smokeName}"
           nonTotalsSuites=$(ctest --test-dir build -N 2>/dev/null |
