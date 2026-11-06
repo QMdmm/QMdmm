@@ -181,6 +181,14 @@ its own. Nothing coming back for three intervals ends the connection the way a c
 does -- reported through `Client::socketConnectionLost()` and followed by the reconnect
 below.
 
+That deadline only speaks about a question it asked. It runs out three intervals after a
+pong, and a client whose own event loop was away for longer than that comes back with the
+heartbeat and the deadline both overdue: the ping goes out on the way back and the deadline
+runs out behind it, before anything could have been answered. A window whose pings were all
+that recent is therefore given another one instead of a verdict, so that "the server stopped
+answering pings" keeps meaning what it says. A server that really is not answering takes the
+connection on the expiry after that.
+
 ## Reconnecting
 
 A client that loses its connection may open a new one and sign in again with the same

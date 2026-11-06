@@ -70,6 +70,11 @@ public:
     // older ping, not a newer reading. -1 while no answer has been used on this connection: the
     // stamps compared are epoch milliseconds, so -1 is below any of them.
     qint64 newestAnsweredPing;
+    // When the first ping of the window the deadline is judging went out, in epoch milliseconds, or
+    // -1 while no ping has gone out since that deadline was last armed. A deadline that runs out
+    // says the server did not answer, which is only true of a window in which a question was left
+    // standing long enough to be answered (see pongDeadlinePassed).
+    qint64 firstPingInDeadlineWindow;
 
     QMdmmCore::Protocol::RequestId currentRequest;
     QMdmmCore::Data::AgentState initialState;
@@ -106,6 +111,8 @@ public:
     bool applyUpgrade(const QHash<QString, QList<QMdmmCore::Data::UpgradeItem>> &upgrades);
 
     bool connectSocket();
+    // Restart the pong deadline, opening a fresh window for it to judge.
+    void armPongDeadline();
     void handleSocketGone(const QString &errorString);
     void scheduleReconnect();
 

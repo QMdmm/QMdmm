@@ -67,6 +67,7 @@ private slots:
     void client_sendsHeartbeatPings();
     void client_measuresThePongRoundTrip();
     void client_givesUpWhenThePongsStopComing();
+    void client_doesNotBlameTheServerForItsOwnStall();
     void client_clearsTheReadingWhenTheGameEnds();
     void client_keepsTheNewerReadingWhenAnOlderPongArrivesLate();
     void client_disconnectsOnProtocolVersionMismatch();
@@ -1436,6 +1437,89 @@ void tst_QMdmmNetworking::client_givesUpWhenThePongsStopComing()
     QVERIFY2(!connectedWhenReported, "the client still reported itself connected when it gave up");
     // The reading goes with the connection it was measured on.
     QCOMPARE(client->roundTripTime(), qint64(-1));
+}
+
+// The same deadline, with the silence on the other side of it. An answer can only be missing if a
+// question was left standing, and a client whose own event loop was away for longer than the
+// deadline has the shape of a silent server from the inside while nothing is wrong with the server
+// at all: on the way back the heartbeat sends a ping and the deadline runs out behind it, before
+// that ping could have been answered. This peer answers every ping it is given, so what the case
+// asks is whether the client waited for that answer or reported the server instead.
+//
+// The timers are shortened rather than the case waiting out ninety seconds, and the ratio between
+// them is kept -- it is the rule, and the deadline is the one that follows it. The stall begins
+// after an answer has been read, so no ping of the client's is in flight when it starts: the next
+// one is a whole heartbeat away, which is an order of magnitude more than the loop needs to get
+// from that answer to the stall.
+void tst_QMdmmNetworking::client_doesNotBlameTheServerForItsOwnStall()
+{
+    constexpr int heartbeatMs = 500;
+    constexpr int deadlineMs = 3 * heartbeatMs;
+    constexpr int stallMs = 4000;
+
+    QTcpServer rawServer;
+    QVERIFY(rawServer.listen(QHostAddress::LocalHost, 0));
+
+    int pings = 0;
+    QObject::connect(&rawServer, &QTcpServer::newConnection, &rawServer, [&rawServer, &pings]() {
+        QTcpSocket *accepted = rawServer.nextPendingConnection();
+        QObject::connect(accepted, &QAbstractSocket::readyRead, accepted, [accepted, &pings]() {
+            while (accepted->canReadLine()) {
+                const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(accepted->readLine());
+                if (packet.type() != QMdmmCore::Protocol::TypeNotify || packet.notifyId() != QMdmmCore::Protocol::NotifyPingServer)
+                    continue;
+                ++pings;
+                // Echo the timestamp back the way ServerP::pingServer does: this peer is alive, and
+                // the case is about what the client does when it cannot hear that for a while.
+                accepted->write(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPongServer, packet.value()).serialize().append('\n'));
+            }
+        });
+    });
+
+    const QString host = u"qmdmm://127.0.0.1:%1"_s.arg(rawServer.serverPort());
+
+    auto *client = new Client(ClientConfiguration(), &rawServer);
+
+    QTimer *heartbeat = nullptr;
+    for (QTimer *timer : client->findChildren<QTimer *>()) {
+        if (!timer->isSingleShot())
+            heartbeat = timer;
+    }
+    QVERIFY2(heartbeat != nullptr, "the client has no repeating heartbeat timer");
+    QTimer *deadline = client->findChild<QTimer *>(u"pongDeadline"_s);
+    QVERIFY2(deadline != nullptr, "the client has no pong deadline");
+
+    // Shortened before connecting, so the connection arms the deadline with the interval this case
+    // runs on rather than ninety seconds.
+    heartbeat->setInterval(heartbeatMs);
+    deadline->setInterval(deadlineMs);
+
+    QString lost;
+    connect(client, &Client::socketConnectionLost, &rawServer, [&lost](const QString &errorString) { lost = errorString; });
+
+    QVERIFY(client->connectToHost(host, Data::StateOnline));
+
+    // One answer read and in place: the connection is known good, and the next ping is a heartbeat
+    // away.
+    QTRY_VERIFY_WITH_TIMEOUT(client->roundTripTime() >= 0, 5000);
+
+    // The client's own event loop is what was away -- nothing of the client runs here, which is what
+    // a modal dialog or a suspended machine does to it. No ping goes out while it is away, so the
+    // server has nothing to answer.
+    QTest::qSleep(stallMs);
+
+    // The deadline is now long overdue. It must not report the server, and the heartbeat must be
+    // back: this peer counting another ping is the proof that the connection is still the one the
+    // stall began on.
+    const int pingsBefore = pings;
+    QTRY_VERIFY_WITH_TIMEOUT(pings > pingsBefore, 5000);
+    QVERIFY2(lost.isEmpty(), qPrintable(u"a client that was away reported: %1"_s.arg(lost)));
+    QVERIFY(client->isConnected());
+
+    // And it stays: with the answers coming again, no later expiry can take it either.
+    QTest::qWait(deadlineMs);
+    QVERIFY2(lost.isEmpty(), qPrintable(u"the connection was given up on after the stall: %1"_s.arg(lost)));
+    QVERIFY(client->isConnected());
 }
 
 // The third way a connection ends: the game does. The client hangs up on its own, and that teardown

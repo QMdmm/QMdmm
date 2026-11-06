@@ -78,6 +78,7 @@ ClientP::ClientP(ClientConfiguration clientConfiguration, Client *q)
     , connected(false)
     , roundTripTime(-1)
     , newestAnsweredPing(-1)
+    , firstPingInDeadlineWindow(-1)
     , currentRequest(QMdmmCore::Protocol::RequestInvalid)
     , initialState(QMdmmCore::Data::StateOffline)
     , lastRoundEventSeq(0)
@@ -289,7 +290,7 @@ void ClientP::notifyPongServer(const QJsonValue &value)
         roundTripTime = elapsed;
         newestAnsweredPing = pongTime;
     }
-    pongDeadline->start();
+    armPongDeadline();
 
     onRet_.dismiss();
 }
@@ -1088,7 +1089,7 @@ bool ClientP::connectSocket()
         // And the deadline those pings are answered within: a server that never answers the first
         // one is as gone as one that stops answering later, so the clock starts here rather than
         // at the first pong.
-        pongDeadline->start();
+        armPongDeadline();
         return true;
     }
 
@@ -1128,22 +1129,52 @@ void ClientP::reconnectTimeout()
     emit q->socketErrorDisconnected(u"Reconnect failed"_s, Client::QPrivateSignal());
 }
 
+void ClientP::armPongDeadline()
+{
+    // A pong, or a new connection, is the start of a window: the pings that follow are the questions
+    // the deadline will be judging. Whatever the previous window sent is not part of it.
+    firstPingInDeadlineWindow = -1;
+    pongDeadline->start();
+}
+
 // NOLINTNEXTLINE(readability-make-member-function-const)
 void ClientP::heartbeatTimeout()
 {
-    if (socket != nullptr)
-        emit socket->sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPingServer, QDateTime::currentMSecsSinceEpoch()));
+    if (socket == nullptr)
+        return;
+
+    const qint64 sentAt = QDateTime::currentMSecsSinceEpoch();
+    if (firstPingInDeadlineWindow < 0)
+        firstPingInDeadlineWindow = sentAt;
+    emit socket->sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPingServer, sentAt));
 }
 
 // NOLINTNEXTLINE(readability-make-member-function-const)
 void ClientP::pongDeadlinePassed()
 {
-    // Nothing came back for three heartbeat intervals. This is not the socket's own error path --
-    // the socket is still open, which is exactly the case it exists for: the peer is a live process
-    // that is no longer serving. Take the way out a drop takes, so the operation side gets the
-    // report and the reconnect it already handles, and the error string says which of the two
-    // happened.
-    handleSocketGone(u"the server stopped answering pings"_s);
+    // Nothing came back for three heartbeat intervals -- but an answer can only be missing if a
+    // question was left standing, and this deadline is the only thing here that can tell the two
+    // apart. A peer that is a live process no longer serving is the case it exists for: the socket
+    // is still open, which is exactly what a kernel acknowledges while nothing behind it answers.
+    // The other case has the same shape from the inside and the opposite cause: a client whose own
+    // event loop was away for longer than the deadline -- a modal dialog, a long synchronous call,
+    // a machine that was suspended -- comes back with both timers overdue, the heartbeat sends a
+    // ping on the way back and the deadline runs out right behind it, before anything could have
+    // answered. Reporting that as "the server stopped answering" is a wrong answer to the one
+    // question this path exists to answer, and the error string is all a reader gets to tell them
+    // apart.
+    //
+    // So the window is judged only once one of its pings has had a whole heartbeat interval to be
+    // answered in. One that has not is a client that never really asked: it gets another window
+    // rather than a verdict. A server that is really silent takes the connection on the expiry
+    // after that, and one that is alive answers the ping the heartbeat just sent and restarts the
+    // deadline before it can run out again.
+    if (firstPingInDeadlineWindow >= 0 && QDateTime::currentMSecsSinceEpoch() - firstPingInDeadlineWindow >= heartbeatTimer->interval()) {
+        handleSocketGone(u"the server stopped answering pings"_s);
+        return;
+    }
+
+    armPongDeadline();
 }
 
 } // namespace p
