@@ -429,13 +429,14 @@ jobs:
     # above and the 344 read on macOS are then two samples, on two platforms,
     # and not a factor of 38.
     #
-    # Two suites are left out, and the positive control is a third. Both excluded
-    # suites drive other programs built with the same flags, and both stop at a
-    # bound of their own rather than at a bound this leg could lengthen:
-    # "QMdmmServer - server cli - Qt6" has TIMEOUT 60 for a suite that takes 107 s
-    # instrumented, and "QMdmmBot - headless game - Qt6" waits 120 s for a match
-    # that takes longer (measured on macOS, where the whole set goes from 150 s to
-    # 596 s). Those numbers are the cost of the flags, not a finding, and a cell
+    # "QMdmmServer - server cli - Qt6" and "QMdmmBot - headless game - Qt6" are
+    # left out, and the positive control is left out with them. Each drives
+    # other programs built with the same flags, and each stops at a bound of its
+    # own rather than at a bound this leg could lengthen: "QMdmmServer - server
+    # cli - Qt6" has TIMEOUT 60 for a suite that takes 107 s instrumented, and
+    # "QMdmmBot - headless game - Qt6" waits 120 s for a match that takes longer
+    # (measured on macOS, where the whole set goes from 150 s to 596 s). Those
+    # numbers are the cost of the flags, not a finding, and a cell
     # that reported them on every run would be the red nobody can act on. What
     # they cover is the same code the cases kept here cover in process, and the
     # sanitizer cells still run them at native speed. The control is left out of
@@ -554,8 +555,9 @@ jobs:
           # every case passed read as 0/16. The case numbers come from the
           # "Totals:" line each QtTest suite prints about itself (under -V it
           # arrives prefixed with the suite's number), so a suite that is not
-          # QtTest -- the two smoke suites -- adds nothing to either number; that
-          # it was there is what the suite count says.
+          # QtTest -- such as the "QMdmmNetworking - Smoke" entries -- adds
+          # nothing to either number; that it was there is what the suite count
+          # says.
           #
           # "suites-reported" is what says how much of that happened: the suites
           # that printed a "Totals:" line against the suites that are QtTest and
