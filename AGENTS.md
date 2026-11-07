@@ -297,3 +297,18 @@ Read these before touching code:
 - A position in a list is a claim of the same kind -- "the second exit", "the
   last one" -- and moves as soon as something is added before it. Name the
   item instead.
+
+### Test stand-ins and the platform that can tell
+
+- A case that stands in for a program, a console, a socket or a line ending can
+  find that stand-in behaving differently on another platform: an answer that
+  leaves with the reset because the request was never read (`ef9e732`), a line
+  handed to a debugger because no console is attached (`042f007`), an "other"
+  line ending that is the same bytes where that is the ending written
+  (`566a92f`). The assertion then holds something other than what it was
+  written for, and the machine the case was written on is the one that cannot
+  tell -- each of those had to be shown there by breaking something on
+  purpose, because the reading the other platform gives cannot be had on it.
+  When a stand-in rests on what a platform does, the comment names the
+  platform that discriminates, so that a green in front of you says what it is
+  worth.
