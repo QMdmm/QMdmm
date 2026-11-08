@@ -841,15 +841,16 @@ jobs:
           # test, so neither the case that failed nor what it compared is
           # anywhere in it. The reading is one level down instead -- every QtTest
           # entry is started with -o <name>6.xml,junitxml, and those reports carry
-          # the case name and quote its message. The eleven binaries with a shared
-          # test main get it from that main; the smoke runner, the server cli and
-          # the two GUI binaries are given it by their own add_test.
+          # the case name and quote its message. The binaries built on the shared
+          # test main get it from that main; the server cli, the ctl cli and
+          # QMdmmGui's gui smoke and application entries are given it by their own
+          # add_test.
           #
-          # Two of the sixteen entries still write none -- the smoke runner's two,
-          # whose main is a hand-written game loop rather than a QtTest one and so
-          # takes no -o at all. The census below is over the fourteen that do, and
-          # it is read as such rather than as a process that died before it could
-          # write anything.
+          # The "QMdmmNetworking - Smoke" entries still write none, their main
+          # being a hand-written game loop rather than a QtTest one and so taking
+          # no -o at all. The census below is over the entries that do, and it is
+          # read as such rather than as a process that died before it could write
+          # anything.
           shopt -s globstar nullglob
           reports=(build/**/*6.xml)
           failing=()
@@ -871,14 +872,14 @@ jobs:
       - name: Re-run the failing tests verbosely
         if: failure() && steps.test.outcome == 'failure'
         run: |
-          # The census in the step above leaves out the two entries whose main is not a
-          # QtTest one -- the smoke runner's two -- so a failure in those has no report to
-          # read. Re-running just the entries that failed, with -V, is what is left for
-          # them: it prints ctest's own reading of each one (the command, the working
-          # directory, the environment, the time it took). The tests' own output is not
-          # expected here -- on this runner it reaches neither this log nor the census --
-          # and it is not asked for. It costs the time of the tests that failed and only a
-          # red cell pays it.
+          # The census in the step above leaves out the entries whose main is not a
+          # QtTest one -- the "QMdmmNetworking - Smoke" ones -- so a failure in those
+          # has no report to read. Re-running just the entries that failed, with -V, is
+          # what is left for them: it prints ctest's own reading of each one (the
+          # command, the working directory, the environment, the time it took). The
+          # tests' own output is not expected here -- on this runner it reaches neither
+          # this log nor the census -- and it is not asked for. It costs the time of
+          # the tests that failed and only a red cell pays it.
           #
           # failure() is not redundant here. A step condition that names no status function is
           # taken as success() && that condition, so on its own the comparison below never
