@@ -445,6 +445,13 @@ jobs:
     #
     continue-on-error: true
     runs-on: ubuntu-latest
+    env:
+      # Named once because two steps have to agree on it: the run drops these
+      # suites, and the reading counts its denominator off the list the run
+      # was given. Written twice, the second copy is what goes stale -- a Smoke
+      # entry added to one of them would shrink the run without moving the
+      # count, and the line would read as a suite that never handed in its own.
+      QMDMM_TSAN_DROPPED: '^(QMdmmServer - server cli - Qt6|QMdmmBot - headless game - Qt6|QMdmmCore - tst_qmdmmrace.cpp - Qt6)$'
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -535,7 +542,7 @@ jobs:
           # control among them.
           set -o pipefail
           ctest --test-dir build -V --timeout 1020 \
-            -E '^(QMdmmServer - server cli - Qt6|QMdmmBot - headless game - Qt6|QMdmmCore - tst_qmdmmrace.cpp - Qt6)$' 2>&1 |
+            -E "$QMDMM_TSAN_DROPPED" 2>&1 |
             tee "${RUNNER_TEMP}/tsan.log"
 
       - name: Report the reading
@@ -622,8 +629,10 @@ jobs:
           # their number. That number is counted off the test list instead of
           # being written down: a number written down keeps the denominator
           # where it was when another such entry joins the tree, and a ratio off
-          # by a suite reads exactly like one that is not. None of them is among
-          # the suites -E drops, so the whole list is the right one to count in.
+          # by a suite reads exactly like one that is not. The list is taken
+          # with the same -E the run was given, so both numbers are about the
+          # same set of suites by construction rather than by one of them
+          # happening to sit outside that list today.
           # Another suite can go missing without anyone leaving anything out:
           # the runtime aborts the process it is in when its own thread registry
           # trips -- "CHECK failed: sanitizer_thread_registry.cpp:186" in
@@ -637,12 +646,26 @@ jobs:
           # lower bound for the same reason.
           smokeName='QMdmmNetworking - Smoke'
           smokeEntry="^[[:space:]]*Test[[:space:]]+#[0-9]+: ${smokeName}"
-          nonTotalsSuites=$(ctest --test-dir build -N 2>/dev/null |
+          testList=$(ctest --test-dir build -N \
+            -E "$QMDMM_TSAN_DROPPED" 2>/dev/null || true)
+          listedTests=$(printf '%s\n' "$testList" |
+            grep -cE '^[[:space:]]*Test[[:space:]]+#[0-9]+: ' || true)
+          listedTests=${listedTests:-0}
+          nonTotalsSuites=$(printf '%s\n' "$testList" |
             grep -cE "$smokeEntry" || true)
           nonTotalsSuites=${nonTotalsSuites:-0}
           qtTestSuites=$((total - nonTotalsSuites))
           if [ "$qtTestSuites" -lt 0 ]; then qtTestSuites=0; fi
           echo "reading: configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} control=${{ steps.control.outcome }} test=${{ steps.test.outcome }} cases=${casePassed}/${caseRan} suites-reported=${suitesReported}/${qtTestSuites} suites=$((total - failed))/${total} ${names} thread-reports=${reports} positive-control=${control}"
+          # After the line, not before it: a list that came back empty costs
+          # only the denominator, so the rest of the reading is still worth
+          # having. Only a run that reported suites can have one -- with
+          # nothing run there is nothing to divide, and this must not turn into
+          # a red on a build that never got that far.
+          if [ "$listedTests" -eq 0 ] && [ "$total" -gt 0 ]; then
+            echo "::error::the run reported suites but the test list came back empty, so suites-reported has no denominator"
+            exit 1
+          fi
 
   fuzz:
     name: Fuzz (ubuntu-latest, inbound decoding)
