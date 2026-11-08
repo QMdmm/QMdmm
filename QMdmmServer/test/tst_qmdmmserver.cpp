@@ -278,24 +278,43 @@ const std::array<const char *, 3> settingsSections {{
 // eleven keys at all -- the page held rows for them and nothing held those rows to anything.
 constexpr const char *rulesSection = "Game rules";
 
+// The long options @p text names, in the order they appear. A row spells each long name inside
+// backticks, so the reading takes the name out of those and stops there: a value list or a range
+// inside the same ticks is not part of the name.
+QStringList longOptionsOf(const QString &text)
+{
+    static const QRegularExpression longOption(u"`--([A-Za-z0-9-]+)(?:[^`]*)`"_s);
+
+    QStringList ret;
+    QRegularExpressionMatchIterator matches = longOption.globalMatch(text);
+    while (matches.hasNext())
+        ret.append(matches.next().captured(1));
+    return ret;
+}
+
 // What the rows of those sections spell: one entry per row, in file order, and the headings they
 // were read under. The headings are part of the reading because a page whose sections were renamed
 // would otherwise come back as "the page documents nothing" -- indistinguishable, from the rows
 // alone, from a page that lost a row. The rules' table is read on the same terms and kept apart:
 // one entry per long spelling its first cell carries, in file order, and the heading it was read
 // under.
+//
+// `everyOptions` is the whole of the program's section rather than those places in it: every row
+// under every heading, in file order, whether the row documents a stored setting, a rule or an
+// option that is neither -- the help pair, the preset, the ones that save or print a configuration,
+// the log level. Those last ones are what the other readings leave out, and leaving them out was
+// the point of reading sections at all, so a case that wants the lot reads it from here.
 struct DocumentedSettings
 {
     QStringList options;
     QSet<QString> sections;
     QStringList ruleOptions;
     QSet<QString> ruleSections;
+    QStringList everyOptions;
 };
 
 DocumentedSettings documentedSettings(const QString &page)
 {
-    static const QRegularExpression longOption(u"`--([A-Za-z0-9-]+)(?:[^`]*)`"_s);
-
     DocumentedSettings ret;
     bool inServer = false;
     bool inSettings = false;
@@ -332,32 +351,58 @@ DocumentedSettings documentedSettings(const QString &page)
         // separates a row from the prose between and after the two tables; the heading row and the
         // separator line are read along with the rows, and neither spells an option -- the first
         // has no backticked word in that cell, the second does not open with a bar and a space.
-        if (inRules) {
-            if (!line.startsWith(u"| "))
-                continue;
+        //
+        // Every other section offers its options as one bullet per option, and a row is a row
+        // whichever subsection it sits under, so what both shapes spell is collected once here and
+        // handed to whichever reading asked for it.
+        QStringList rowOptions;
+        if (line.startsWith(u"- `")) {
+            // A row spells its option list first and its description after a spaced double dash, so
+            // the reading stops where the description starts: the description names options of its
+            // own -- "--timeout + 60" in the timeout row, "--players=4" in the shorthand row -- that
+            // are not what that row documents.
+            const qsizetype separator = line.indexOf(u" -- "_s);
+            rowOptions = longOptionsOf(separator < 0 ? line : line.left(separator));
+            if (inSettings)
+                ret.options += rowOptions;
+        } else if (inRules && line.startsWith(u"| ")) {
             const qsizetype cellEnd = line.indexOf(u'|', 1);
             if (cellEnd < 0)
                 continue;
-
-            QRegularExpressionMatchIterator matches = longOption.globalMatch(line.mid(1, cellEnd - 1));
-            while (matches.hasNext())
-                ret.ruleOptions.append(matches.next().captured(1));
+            rowOptions = longOptionsOf(line.mid(1, cellEnd - 1));
+            ret.ruleOptions += rowOptions;
+        } else {
             continue;
         }
 
-        if (!inSettings || !line.startsWith(u"- `"))
-            continue;
+        ret.everyOptions += rowOptions;
+    }
+    return ret;
+}
 
-        // A row spells its option list first and its description after a spaced double dash, so the
-        // reading stops where the description starts: the description names options of its own --
-        // "--timeout + 60" in the timeout row, "--players=4" in the shorthand row -- that are not
-        // what that row documents.
-        const qsizetype separator = line.indexOf(u" -- "_s);
-        const QString optionList = separator < 0 ? line : line.left(separator);
+// The long names config.cpp hands the option parser, in file order: what a run actually accepts on
+// its command line.
+//
+// Every other copy of that list is written by hand as well -- the usage text the parser prints, the
+// page a reader goes by, the table of stored keys -- and the registrations are the copy the program
+// obeys, so this is the one a reading of the others has to be held to. A one-character name is a
+// short form -- the digits a room size is spelled with are short forms too -- so only the longer
+// ones come back.
+QStringList registeredLongOptions(const QString &source)
+{
+    static const QRegularExpression registration(u"QCommandLineOption\\(QStringList \\{([^}]*)\\}"_s);
+    static const QRegularExpression name(u"u\"([^\"]+)\"_s"_s);
 
-        QRegularExpressionMatchIterator matches = longOption.globalMatch(optionList);
-        while (matches.hasNext())
-            ret.options.append(matches.next().captured(1));
+    QStringList ret;
+    QRegularExpressionMatchIterator registered = registration.globalMatch(source);
+    while (registered.hasNext()) {
+        const QString names = registered.next().captured(1);
+        QRegularExpressionMatchIterator spelled = name.globalMatch(names);
+        while (spelled.hasNext()) {
+            const QString option = spelled.next().captured(1);
+            if (option.size() > 1)
+                ret.append(option);
+        }
     }
     return ret;
 }
@@ -565,6 +610,7 @@ class tst_QMdmmServer : public QObject
 private slots:
     void help_printsTheUsageAndExitsZero();
     void freeShortOptions_areTheOnesNoOptionClaims();
+    void documentedOptions_areTheRegisteredOnes();
     void savingToBothInstances_isRejected();
     void savingPerUserConfiguration_writesTheFileUnderHome();
     void savingPerUserConfiguration_reportsASaveThatCannotReachItsHome();
@@ -690,6 +736,59 @@ void tst_QMdmmServer::freeShortOptions_areTheOnesNoOptionClaims()
     QString message = u"the free-slot table and the options disagree -- listed but already taken: ["_s + sortedLetters(listed - expected);
     message += u"]; free but not listed: ["_s + sortedLetters(expected - listed) + u"]"_s;
     QVERIFY2(listed == expected, qPrintable(message));
+}
+
+// The other copy of the option list, and the one nothing read: what config.cpp registers is what a
+// run accepts, and the page is what a reader believes a run accepts. Both are written by hand, so a
+// registration can go with the page still offering its option -- a value the documentation asks for
+// and the program then turns down as unknown, with every case here green. The gates beside this one
+// do not reach it: they hold the page to the stored keys and the keys to the properties, and an
+// option that is neither a stored setting nor a rule belongs to nothing. The help pair, the preset,
+// the ones that save or print a configuration and the log level are exactly those.
+//
+// Both halves are read as text, config.cpp the way the free-slot case above reads it and the page
+// the way the `documented...` cases below read it, since neither is linked into this target and the
+// page is not a build input.
+void tst_QMdmmServer::documentedOptions_areTheRegisteredOnes()
+{
+    QFile source(QString::fromLatin1(QMDMMSERVER_CONFIG_SOURCE));
+    QVERIFY2(source.open(QIODevice::ReadOnly), qPrintable(source.fileName() + u": "_s + source.errorString()));
+
+    const QString text = QString::fromLocal8Bit(source.readAll());
+
+    QSet<QString> registered;
+    for (const QString &option : registeredLongOptions(text))
+        registered.insert(option);
+
+    QVERIFY2(!registered.isEmpty(), "no option was read out of the source");
+
+    // Every registration in the file has to be one that reading saw. A registration spelled in a
+    // shape it does not know would drop out of both sides when it is also undocumented, so the two
+    // counts are held together before either set is compared.
+    const qsizetype registrations = text.count(u"addOption("_s);
+    const qsizetype readable = text.count(u"QCommandLineOption(QStringList {"_s);
+    QString registrationMessage = u"the reading did not see every registration in the source -- addOption calls: %1"_s.arg(registrations);
+    registrationMessage += u"; registrations it can read: %1"_s.arg(readable);
+    QVERIFY2(registrations == readable, qPrintable(registrationMessage));
+
+    // The version option is Qt's own, so the file does not register it, and the page documents it
+    // all the same. It is added here on the same terms as the free-slot case adds its letter.
+    if (text.contains(u"addVersionOption()"_s))
+        registered.insert(u"version"_s);
+
+    QFile page(QString::fromLatin1(QMDMM_COMMAND_LINE_DOC));
+    QVERIFY2(page.open(QIODevice::ReadOnly), qPrintable(page.fileName() + u": "_s + page.errorString()));
+
+    const DocumentedSettings documented = documentedSettings(QString::fromUtf8(page.readAll()));
+    QVERIFY2(!documented.everyOptions.isEmpty(), "no option was read out of the page");
+
+    QSet<QString> documentedOptions;
+    for (const QString &option : documented.everyOptions)
+        documentedOptions.insert(option);
+
+    QString message = u"the documented options and the registered ones disagree -- documented but not registered: ["_s + sortedWords(documentedOptions - registered);
+    message += u"]; registered but not documented: ["_s + sortedWords(registered - documentedOptions) + u"]"_s;
+    QVERIFY2(documentedOptions == registered, qPrintable(message));
 }
 
 // -c and -C name two different destinations for one run's worth of configuration,
