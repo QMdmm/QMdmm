@@ -94,6 +94,11 @@ ClientP::ClientP(ClientConfiguration clientConfiguration, Client *q)
     constexpr int heartbeatInterval = 30000;
     heartbeatTimer->setInterval(heartbeatInterval);
     heartbeatTimer->setSingleShot(false);
+    // Named for the reason the pong deadline below is: a reader that has to change this timer's
+    // schedule in a test should say which timer it means, rather than pick out the one that
+    // repeats. The day another one repeats, that pick is silently the wrong timer, and the case
+    // fails as if the client were wrong.
+    heartbeatTimer->setObjectName(u"heartbeat"_s);
     connect(heartbeatTimer, &QTimer::timeout, this, &ClientP::heartbeatTimeout);
 
     // The same rule, in the direction the server does not watch: a peer whose event loop is stuck

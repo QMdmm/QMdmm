@@ -1252,14 +1252,11 @@ void tst_QMdmmNetworking::client_sendsHeartbeatPings()
 
     auto *client = new Client(ClientConfiguration(), &rawServer);
 
-    // The client owns two timers and only the heartbeat repeats (the reconnect timer is
-    // single-shot), so the repeating one is the heartbeat.
-    QTimer *heartbeat = nullptr;
-    for (QTimer *timer : client->findChildren<QTimer *>()) {
-        if (!timer->isSingleShot())
-            heartbeat = timer;
-    }
-    QVERIFY2(heartbeat != nullptr, "the client has no repeating heartbeat timer");
+    // By name, like the pong deadline: picking the heartbeat out by "the timer that repeats"
+    // would go on choosing something after a second repeating timer appears, and the case would
+    // then move the schedule of a timer it was not written for.
+    QTimer *heartbeat = client->findChild<QTimer *>(u"heartbeat"_s);
+    QVERIFY2(heartbeat != nullptr, "the client has no heartbeat timer");
     QCOMPARE(heartbeat->interval(), 30000);
 
     QVERIFY(client->connectToHost(host, Data::StateOnline));
@@ -1319,12 +1316,8 @@ void tst_QMdmmNetworking::client_measuresThePongRoundTrip()
 
     auto *client = new Client(ClientConfiguration(), &rawServer);
 
-    QTimer *heartbeat = nullptr;
-    for (QTimer *timer : client->findChildren<QTimer *>()) {
-        if (!timer->isSingleShot())
-            heartbeat = timer;
-    }
-    QVERIFY2(heartbeat != nullptr, "the client has no repeating heartbeat timer");
+    QTimer *heartbeat = client->findChild<QTimer *>(u"heartbeat"_s);
+    QVERIFY2(heartbeat != nullptr, "the client has no heartbeat timer");
 
     QTimer *deadline = client->findChild<QTimer *>(u"pongDeadline"_s);
     QVERIFY2(deadline != nullptr, "the client has no pong deadline");
@@ -1411,12 +1404,8 @@ void tst_QMdmmNetworking::client_givesUpWhenThePongsStopComing()
             lost = errorString;
     });
 
-    QTimer *heartbeat = nullptr;
-    for (QTimer *timer : client->findChildren<QTimer *>()) {
-        if (!timer->isSingleShot())
-            heartbeat = timer;
-    }
-    QVERIFY2(heartbeat != nullptr, "the client has no repeating heartbeat timer");
+    QTimer *heartbeat = client->findChild<QTimer *>(u"heartbeat"_s);
+    QVERIFY2(heartbeat != nullptr, "the client has no heartbeat timer");
     QTimer *deadline = client->findChild<QTimer *>(u"pongDeadline"_s);
     QVERIFY2(deadline != nullptr, "the client has no pong deadline");
 
@@ -1480,12 +1469,8 @@ void tst_QMdmmNetworking::client_doesNotBlameTheServerForItsOwnStall()
 
     auto *client = new Client(ClientConfiguration(), &rawServer);
 
-    QTimer *heartbeat = nullptr;
-    for (QTimer *timer : client->findChildren<QTimer *>()) {
-        if (!timer->isSingleShot())
-            heartbeat = timer;
-    }
-    QVERIFY2(heartbeat != nullptr, "the client has no repeating heartbeat timer");
+    QTimer *heartbeat = client->findChild<QTimer *>(u"heartbeat"_s);
+    QVERIFY2(heartbeat != nullptr, "the client has no heartbeat timer");
     QTimer *deadline = client->findChild<QTimer *>(u"pongDeadline"_s);
     QVERIFY2(deadline != nullptr, "the client has no pong deadline");
 
@@ -1553,12 +1538,8 @@ void tst_QMdmmNetworking::client_clearsTheReadingWhenTheGameEnds()
 
     auto *client = new Client(ClientConfiguration(), &rawServer);
 
-    QTimer *heartbeat = nullptr;
-    for (QTimer *timer : client->findChildren<QTimer *>()) {
-        if (!timer->isSingleShot())
-            heartbeat = timer;
-    }
-    QVERIFY2(heartbeat != nullptr, "the client has no repeating heartbeat timer");
+    QTimer *heartbeat = client->findChild<QTimer *>(u"heartbeat"_s);
+    QVERIFY2(heartbeat != nullptr, "the client has no heartbeat timer");
     QTimer *deadline = client->findChild<QTimer *>(u"pongDeadline"_s);
     QVERIFY2(deadline != nullptr, "the client has no pong deadline");
 
@@ -1637,12 +1618,8 @@ void tst_QMdmmNetworking::client_keepsTheNewerReadingWhenAnOlderPongArrivesLate(
 
     auto *client = new Client(ClientConfiguration(), &rawServer);
 
-    QTimer *heartbeat = nullptr;
-    for (QTimer *timer : client->findChildren<QTimer *>()) {
-        if (!timer->isSingleShot())
-            heartbeat = timer;
-    }
-    QVERIFY2(heartbeat != nullptr, "the client has no repeating heartbeat timer");
+    QTimer *heartbeat = client->findChild<QTimer *>(u"heartbeat"_s);
+    QVERIFY2(heartbeat != nullptr, "the client has no heartbeat timer");
     QTimer *deadline = client->findChild<QTimer *>(u"pongDeadline"_s);
     QVERIFY2(deadline != nullptr, "the client has no pong deadline");
 
