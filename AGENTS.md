@@ -294,6 +294,14 @@ Read these before touching code:
   of counts that they then did not have (`e1be8bf`) -- each was settled by
   reading the fact off the code instead. Derive it where a gate can hold the
   derivation; where nothing can, name the items and let the number go.
+- An absolute claim is a count with the number left off, and it goes
+  false the same way. The paragraph written for the protocol page said
+  no program in the tree read the round trip time (`887ea08`); the test
+  suite read it throughout, and the commit that wrote the sentence had
+  itself counted that file among the readers. The correction gave the
+  claim a surface that can be checked -- no program that ships reads it
+  -- and named its caller (`f24a7a9`). Name the readers, or scope the
+  claim to a set you can check; "nothing" is no safer than a number.
 - A position in a list is a claim of the same kind -- "the second exit", "the
   last one" -- and moves as soon as something is added before it. Name the
   item instead.
