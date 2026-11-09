@@ -190,6 +190,7 @@ void Client::disconnectFromHost()
     d->connected = false;
     d->roundTripTime = -1;
     d->newestAnsweredPing = -1;
+    d->firstPingInDeadlineWindow = -1;
     d->currentRequest = QMdmmCore::Protocol::RequestInvalid;
 
     if (d->socket != nullptr) {

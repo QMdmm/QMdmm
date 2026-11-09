@@ -103,10 +103,13 @@ ClientP::ClientP(ClientConfiguration clientConfiguration, Client *q)
 
     // The same rule, in the direction the server does not watch: a peer whose event loop is stuck
     // still has a kernel that acknowledges, so a connection can look up while nothing behind it
-    // answers. The deadline is armed with the connection and restarted by every pong; three
-    // intervals without one is a connection this client no longer has (see pongDeadlinePassed).
-    // Named so that a reader of the client's timers can tell it apart from the heartbeat's repeat
-    // and the reconnect timer's backoff without knowing either interval.
+    // answers. The deadline is armed with the connection and restarted by every pong; no answer
+    // across a whole one of these deadlines is a connection this client no longer has. A window
+    // whose pings never had a full interval to be answered in is not that -- it gets another round
+    // instead of a verdict, so a peer that is really silent is given up on one deadline late at
+    // worst (see pongDeadlinePassed). Named so that a reader of the client's timers can tell it
+    // apart from the heartbeat's repeat and the reconnect timer's backoff without knowing either
+    // interval.
     pongDeadline->setInterval(3 * heartbeatInterval);
     pongDeadline->setSingleShot(true);
     pongDeadline->setObjectName(u"pongDeadline"_s);
@@ -750,14 +753,16 @@ void ClientP::notifyGameOver(const QJsonValue &value)
     if (socket != nullptr) {
         // The connection ends here instead of in handleSocketGone(): that path is a peer that went
         // away, this one is the client hanging up after the last hand. Both end the same
-        // connection, so both give up the three things that were measuring it -- the pings, the
-        // deadline their answers were awaited under, and the reading those answers produced. A
-        // reading left over from the game just played is not a reading of any live connection.
+        // connection, so both give up everything that was measuring it -- the pings, the deadline
+        // their answers were awaited under, the window that deadline judges, and the reading those
+        // answers produced. A reading left over from the game just played is not a reading of any
+        // live connection.
         heartbeatTimer->stop();
         pongDeadline->stop();
         connected = false;
         roundTripTime = -1;
         newestAnsweredPing = -1;
+        firstPingInDeadlineWindow = -1;
         disconnect(socket);
         socket->disconnect(this);
 
@@ -1050,12 +1055,13 @@ void ClientP::handleSocketGone(const QString &errorString)
     // The heartbeat belongs to the connection it pings: disarm it together with the socket, so a
     // disconnected client stops pinging and can never address a socket that is going away.
     // connectSocket() re-arms it once there is a connection again. The pong deadline goes with it,
-    // and so does the reading it was measuring.
+    // and so do the window that deadline judges and the reading it was measuring.
     heartbeatTimer->stop();
     pongDeadline->stop();
     connected = false;
     roundTripTime = -1;
     newestAnsweredPing = -1;
+    firstPingInDeadlineWindow = -1;
 
     // Detach first so a second signal from the same socket (error + disconnected
     // often fire back to back) can't re-enter this handler.
