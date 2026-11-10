@@ -13,6 +13,18 @@ import QMdmm.Gui 1.0
 TestCase {
     id: testCase
 
+    // What the match is given to ask this side to act, in milliseconds. Nothing can be read off
+    // the action list until it does: the match plays its throws first, every throw asked of this
+    // side is answered meanwhile, and a round that comes out level is thrown again -- so neither
+    // a number of throws nor one of rounds bounds this, wall clock does. The ask itself is the
+    // first one the match cannot avoid once a throw has been won: three runs on a development
+    // tree reached it in 203 / 406 / 726 ms with 2 / 4 / 7 throws answered, and the case as a
+    // whole reads 0.9 to 1.5 s. CI keeps no per-case time to quote here -- its junit report
+    // stays in the build tree -- so this is twenty times the worst of those rather than a
+    // number a runner gave; the same suite reads 42.59 s on the ubuntu Debug cell and 290.41 s on
+    // the Windows Debug cell of run 42862469909, against 67 to 71 s on this tree, and a cell that
+    // runs this wait out reports it through the failure below.
+    readonly property int firstActionAskBudgetMs: 15000
     property var game: null
 
     // What one match is given to offer this side an order, in the match's own unit: how many
@@ -32,19 +44,6 @@ TestCase {
     // and two of these, one per match the case plays, stay well inside the 360 s the suite has,
     // which reads 41.95 s on an ubuntu Debug cell and 262.81 s / 263.95 s on Windows Release ones.
     readonly property int watchdogDeadlineMs: 60000
-
-    // What the match is given to ask this side to act, in milliseconds. Nothing can be read off
-    // the action list until it does: the match plays its throws first, every throw asked of this
-    // side is answered meanwhile, and a round that comes out level is thrown again -- so neither
-    // a number of throws nor one of rounds bounds this, wall clock does. The ask itself is the
-    // first one the match cannot avoid once a throw has been won: three runs on a development
-    // tree reached it in 203 / 406 / 726 ms with 2 / 4 / 7 throws answered, and the case as a
-    // whole reads 0.9 to 1.5 s. CI keeps no per-case time to quote here -- its junit report
-    // stays in the build tree -- so this is twenty times the worst of those rather than a
-    // number a runner gave; the same suite reads 42.59 s on the ubuntu Debug cell and 290.41 s on
-    // the Windows Debug cell of run 42862469909, against 67 to 71 s on this tree, and a cell that
-    // runs this wait out reports it through the failure below.
-    readonly property int firstActionAskBudgetMs: 15000
 
     function cleanup() {
         if (game !== null) {
