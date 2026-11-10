@@ -291,10 +291,11 @@ void ClientP::notifyPongServer(const QJsonValue &value)
     // answer to a newer ping, and it would then put its own older, larger round trip in place of a
     // newer one. The pings are thirty seconds apart and nothing on the way back promises to keep
     // that spacing, so the case is the ordering of the two stamps rather than the timing of the
-    // network. Only an answer that is not older than the one this reading came from replaces it;
-    // the deadline is restarted either way, because a stale answer is stale as a measurement and
-    // still current as proof of life.
-    if (newestAnsweredPing < 0 || pongTime >= newestAnsweredPing) {
+    // network. The same stamp twice is the same answer, not a newer one: a repeated answer would
+    // lengthen the reading by however late the repeat arrived. So only an answer whose stamp is
+    // past the one this reading came from replaces it; the deadline is restarted either way,
+    // because a stale answer is stale as a measurement and still current as proof of life.
+    if (newestAnsweredPing < 0 || pongTime > newestAnsweredPing) {
         roundTripTime = elapsed;
         newestAnsweredPing = pongTime;
     }

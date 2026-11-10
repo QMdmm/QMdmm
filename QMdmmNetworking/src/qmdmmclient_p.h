@@ -66,8 +66,9 @@ public:
     // exists for the current connection. Backs Client::roundTripTime().
     qint64 roundTripTime;
     // The timestamp of the ping that reading came from -- the pong echoes it, so it doubles as the
-    // identity of the ping being answered. An answer older than this one is a late answer to an
-    // older ping, not a newer reading. -1 while no answer has been used on this connection: the
+    // identity of the ping being answered. Only an answer whose stamp is past this one is a newer
+    // reading: an older stamp is a late answer to an older ping, and the same stamp again is a
+    // repeat of the answer already taken. -1 while no answer has been used on this connection: the
     // stamps compared are epoch milliseconds, so -1 is below any of them.
     qint64 newestAnsweredPing;
     // When the first ping of the window the deadline is judging went out, in epoch milliseconds, or

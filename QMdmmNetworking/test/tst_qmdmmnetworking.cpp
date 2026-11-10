@@ -70,6 +70,7 @@ private slots:
     void client_doesNotBlameTheServerForItsOwnStall();
     void client_clearsTheReadingWhenTheGameEnds();
     void client_keepsTheNewerReadingWhenAnOlderPongArrivesLate();
+    void client_keepsTheReadingWhenTheSameAnswerArrivesAgain();
     void client_disconnectsOnProtocolVersionMismatch();
     void client_reportsAVersionNumberMismatchAndSignsIn();
     void server_listenErrorAndClose();
@@ -1655,6 +1656,96 @@ void tst_QMdmmNetworking::client_keepsTheNewerReadingWhenAnOlderPongArrivesLate(
     QTRY_VERIFY_WITH_TIMEOUT(deadline->isActive(), 5000);
     QVERIFY2(client->roundTripTime() < heldBackMs,
              qPrintable(u"the reading went to %1 ms on an answer for an older ping, over the %2 ms the newer one read"_s.arg(client->roundTripTime()).arg(newer)));
+}
+
+// The other way two answers can be out of order: the same answer twice. A repeated pong for one
+// ping is the answer already taken, arriving late -- it is still proof of life, so the deadline
+// restarts, but it is not a newer measurement, and taking it would lengthen the reading by however
+// late the repeat was. Nothing answers the pings but the case itself, so the same ping can be
+// answered twice with a known gap between the two.
+void tst_QMdmmNetworking::client_keepsTheReadingWhenTheSameAnswerArrivesAgain()
+{
+    constexpr int repeatGapMs = 1200;
+    constexpr int newerAnswerHoldMs = 700;
+
+    QTcpServer rawServer;
+    QVERIFY(rawServer.listen(QHostAddress::LocalHost, 0));
+
+    QTcpSocket *peer = nullptr;
+    int pings = 0;
+    qint64 newestPingStamp = -1;
+
+    QObject::connect(&rawServer, &QTcpServer::newConnection, &rawServer, [&rawServer, &peer, &pings, &newestPingStamp]() {
+        peer = rawServer.nextPendingConnection();
+        QObject::connect(peer, &QAbstractSocket::readyRead, peer, [peer, &pings, &newestPingStamp]() {
+            while (peer->canReadLine()) {
+                const QMdmmCore::Packet packet = QMdmmCore::Packet::fromJson(peer->readLine());
+                if (packet.type() != QMdmmCore::Protocol::TypeNotify || packet.notifyId() != QMdmmCore::Protocol::NotifyPingServer)
+                    continue;
+                ++pings;
+                newestPingStamp = packet.value().toVariant().toLongLong();
+                // Taken note of rather than answered: it is the case that decides when an answer
+                // is written and which ping it belongs to.
+            }
+        });
+    });
+
+    const QString host = u"qmdmm://127.0.0.1:%1"_s.arg(rawServer.serverPort());
+
+    auto *client = new Client(ClientConfiguration(), &rawServer);
+
+    QTimer *heartbeat = client->findChild<QTimer *>(u"heartbeat"_s);
+    QVERIFY2(heartbeat != nullptr, "the client has no heartbeat timer");
+    QTimer *deadline = client->findChild<QTimer *>(u"pongDeadline"_s);
+    QVERIFY2(deadline != nullptr, "the client has no pong deadline");
+
+    QCOMPARE(client->roundTripTime(), qint64(-1)); // nothing has been measured before the first pong
+
+    QVERIFY(client->connectToHost(host, Data::StateOnline));
+    // Only the pings are run fast; the deadline keeps the interval it was built with, and the case
+    // stops it and watches for its restart to see when an answer has been taken.
+    heartbeat->setInterval(200);
+
+    QTRY_VERIFY_WITH_TIMEOUT(newestPingStamp >= 0, 5000);
+    const qint64 answeredStamp = newestPingStamp;
+
+    // The first answer to that ping. The deadline is stopped first so that its restart says the
+    // answer has been processed -- the reading is written before the restart, in the same slot.
+    deadline->stop();
+    peer->write(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPongServer, QJsonValue(answeredStamp)).serialize().append('\n'));
+    peer->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(deadline->isActive(), 5000);
+
+    const qint64 first = client->roundTripTime();
+    QVERIFY2(first >= 0, qPrintable(u"the first answer left no reading, it reads %1 ms"_s.arg(first)));
+
+    QTest::qWait(repeatGapMs);
+
+    // The same answer again, a while later. The deadline restarts again -- it is proof of life --
+    // and the reading must not: it is the measurement already taken, not a newer one.
+    deadline->stop();
+    peer->write(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPongServer, QJsonValue(answeredStamp)).serialize().append('\n'));
+    peer->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(deadline->isActive(), 5000);
+
+    QVERIFY2(client->roundTripTime() == first, qPrintable(u"a repeated answer for the same ping moved the reading from %1 ms to %2 ms"_s.arg(first).arg(client->roundTripTime())));
+
+    // And a newer ping's answer still replaces it: the strictness above is about the same answer
+    // arriving again, not about turning away the answers that come after it. Held back long enough
+    // that the reading it produces cannot be mistaken for the one already there.
+    QTRY_VERIFY_WITH_TIMEOUT(newestPingStamp > answeredStamp, 5000);
+    const qint64 newerStamp = newestPingStamp;
+    QTest::qWait(newerAnswerHoldMs);
+
+    deadline->stop();
+    peer->write(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPongServer, QJsonValue(newerStamp)).serialize().append('\n'));
+    peer->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(deadline->isActive(), 5000);
+
+    QVERIFY2(client->roundTripTime() >= newerAnswerHoldMs,
+             qPrintable(u"the answer to a newer ping read %1 ms, under the %2 ms it was held back"_s.arg(client->roundTripTime()).arg(newerAnswerHoldMs)));
+
+    QVERIFY2(pings >= 5, "the pings stopped going out");
 }
 
 // A protocolVersion mismatch is a hard incompatibility, not a transient failure: the client must
