@@ -72,6 +72,21 @@ bool saidSomethingWentWrong(const QByteArray &standardError)
 // asks the program how much it had taken in and compares that with this.
 constexpr qsizetype heldAnswerSize = static_cast<qsizetype>(1024) * 1024;
 
+// How long the run in answerThatNeverEnds_exitsOneWithinTheDeadline() is given before it reads as one
+// that restarted its clock on every read rather than keeping one over the exchange.
+//
+// This is not a claim about how fast a machine is: the two endings are seconds apart -- a run with
+// one clock gives up about five seconds in, and one that restarted the clock on the byte written at
+// four and a half goes on to about nine and a half -- so the bound sits in that gap. What the room
+// above the five buys is the part of the elapsed time that is not the program's own waiting:
+// starting it and connecting to the stand-in plane.
+//
+// Readings: on the machine this was written on the case ends at 5.03 s (junit time="5.032",
+// 2026-11-11). The figure published for the suite that holds it is 10.36 s in the slowest cell of
+// run 42679855189 (windows Debug; the Linux cells read 5.32 and 5.34), and this case accounts for
+// no less than the five seconds it holds an answer out of.
+constexpr int giveUpDeadlineMs = 8000;
+
 // How much of an answer the program says it had taken in when it gave up, read out of the reason it
 // wrote. Nothing else a caller can see carries that number: the streams say a run failed and why,
 // and this is the one place the size of what was held shows up outside the program.
@@ -429,8 +444,9 @@ void tst_QMdmmCtl::answerThatNeverEnds_exitsOneWithinTheDeadline()
     QVERIFY2(standardError.contains("did not finish"), qPrintable(QString::fromLocal8Bit(standardError)));
 
     // And what bounded it was the deadline over the exchange: restarting the five seconds on every
-    // read would have put the end of this run a second of silence past this point.
-    QVERIFY2(elapsed.elapsed() < 8000, qPrintable(u"the run took %1 ms to give up"_s.arg(elapsed.elapsed())));
+    // read would have put the end of this run five seconds past that byte rather than half a second
+    // past it, and giveUpDeadlineMs is set between those two endings.
+    QVERIFY2(elapsed.elapsed() < giveUpDeadlineMs, qPrintable(u"the run took %1 ms to give up"_s.arg(elapsed.elapsed())));
 }
 
 // An answer that keeps growing is a peer that is sending rather than answering. The deadline alone
