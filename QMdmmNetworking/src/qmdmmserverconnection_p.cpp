@@ -81,6 +81,12 @@ ServerConnectionP::ServerConnectionP(Agent *agent, const QMdmmCore::LogicConfigu
     // value set here goes unused.
     requestTimer->setInterval((requestTimeout + requestTimeoutGracePeriod) * 1000);
     requestTimer->setSingleShot(true);
+    // Named for the same reason the deadline below is: a reader that wants this timer can ask for
+    // it by name. Taking it as whatever is left once the silence deadline is set aside works only
+    // while the class owns exactly two timers, and starts naming the wrong one the day a third
+    // arrives -- the interval it then changes and the armed state it then reads belong to a timer
+    // nobody meant.
+    requestTimer->setObjectName(u"request"_s);
     connect(requestTimer, &QTimer::timeout, this, &ServerConnectionP::requestTimeout);
 
     heartbeatDeadline->setInterval(heartbeatSilenceTimeout * 1000);

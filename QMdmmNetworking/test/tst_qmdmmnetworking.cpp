@@ -2305,19 +2305,16 @@ void tst_QMdmmNetworking::server_requestTimeoutDisconnectsASilentClient()
 
     // Fire every live connection's request timer. The class name is spelled out because the type
     // itself is private to the library; findChildren still hands over the live objects, and each of
-    // them owns the request timer plus the silence deadline, which is the one named here and left
-    // alone -- firing that one would test the heartbeat instead of the timer this case is about.
+    // them owns the request timer plus the silence deadline. The request timer is asked for by
+    // name, so firing the silence deadline instead -- which would test the heartbeat rather than
+    // the timer this case is about -- is not something this loop can do.
     int fired = 0;
     const QList<QObject *> children = server.findChildren<QObject *>();
     for (QObject *child : children) {
         if (!QString::fromLatin1(child->metaObject()->className()).endsWith(u"ServerConnectionP"_s))
             continue;
-        QTimer *requestTimer = nullptr;
-        for (QTimer *timer : child->findChildren<QTimer *>()) {
-            if (timer->objectName() != u"heartbeatDeadline"_s)
-                requestTimer = timer;
-        }
-        QVERIFY(requestTimer != nullptr);
+        QTimer *requestTimer = child->findChild<QTimer *>(u"request"_s);
+        QVERIFY2(requestTimer != nullptr, "the connection has no request timer");
         ++fired;
         requestTimer->setInterval(0);
         requestTimer->start();
@@ -2331,8 +2328,8 @@ void tst_QMdmmNetworking::server_requestTimeoutDisconnectsASilentClient()
 // A requestTimeout of 0 means the request timer is never armed: the server waits on a reply for as
 // long as the client takes, however long its silence lasts (feedback 86). The observable is that
 // timer itself. It is not the whole of the connection's silence handling -- the heartbeat deadline
-// below judges silence independently and stays armed at 0 -- which is why this case reads the
-// request timer out of the two the connection owns rather than whatever timer happens to be there.
+// below judges silence independently and stays armed at 0 -- which is why this case asks for the
+// request timer by name rather than taking whatever timer happens to be there.
 // Driven the same way as the sibling case above, through the public Server / Client API with both
 // clients staying silent; the request going out proves the connection walked the normal request
 // path.
@@ -2371,20 +2368,17 @@ void tst_QMdmmNetworking::server_zeroRequestTimeoutNeverArmsTheTimer()
     // p2 fills the room, the game starts, and the first RPS request goes out to both.
     QTRY_VERIFY_WITH_TIMEOUT(requestsSeen >= 1, 5000);
 
-    // With the timeout off the request timer of every live connection must be unarmed -- the
-    // connection still owns the silence deadline, which is named here so it is not mistaken for it.
-    // The class name is spelled out because the type itself is private to the library.
+    // With the timeout off the request timer of every live connection must be unarmed. It is asked
+    // for by name, so the silence deadline this connection also owns -- which stays armed at 0 --
+    // cannot be mistaken for it. The class name is spelled out because the type itself is private
+    // to the library.
     int connections = 0;
     const QList<QObject *> children = server.findChildren<QObject *>();
     for (QObject *child : children) {
         if (!QString::fromLatin1(child->metaObject()->className()).endsWith(u"ServerConnectionP"_s))
             continue;
-        QTimer *requestTimer = nullptr;
-        for (QTimer *timer : child->findChildren<QTimer *>()) {
-            if (timer->objectName() != u"heartbeatDeadline"_s)
-                requestTimer = timer;
-        }
-        QVERIFY(requestTimer != nullptr);
+        QTimer *requestTimer = child->findChild<QTimer *>(u"request"_s);
+        QVERIFY2(requestTimer != nullptr, "the connection has no request timer");
         ++connections;
         QVERIFY(!requestTimer->isActive());
     }
