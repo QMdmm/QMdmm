@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 #include <QMdmmGlobal>
+#include <QMdmmRoom>
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -9,6 +10,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMetaEnum>
 #include <QNetworkInterface>
 #include <QProcess>
 #include <QProcessEnvironment>
@@ -276,6 +278,11 @@ const std::array<const char *, 3> settingsSections {{
 // attribute and its value range in the first cell, where a row of the three sections above opens
 // with "- `" and names one option. A reading built on the second shape therefore saw none of these
 // eleven keys at all -- the page held rows for them and nothing held those rows to anything.
+//
+// The section holds two tables and neither of them is read the other's way: the one above spells an
+// option in every row, the one under the sentence about `-R` spells a value and no option at all.
+// Both are read here, each into its own list, and each held against the enumeration it belongs to --
+// a table of names is a claim about the code whichever of the two lists it is.
 constexpr const char *rulesSection = "Game rules";
 
 // The long options @p text names, in the order they appear. A row spells each long name inside
@@ -292,12 +299,23 @@ QStringList longOptionsOf(const QString &text)
     return ret;
 }
 
+// The value a row of the rules' second table names, or a null string where that cell names
+// something else. The whole cell is anchored rather than searched: the two tables under the heading
+// differ in exactly this, one spelling an option list in its first cell and the other a single word,
+// so a cell that carries anything besides that one word belongs to the table of options.
+QString valueNameIn(const QString &cell)
+{
+    static const QRegularExpression singleWord(u"^`([A-Za-z0-9]+)`$"_s);
+
+    return singleWord.match(cell.trimmed()).captured(1);
+}
+
 // What the rows of those sections spell: one entry per row, in file order, and the headings they
 // were read under. The headings are part of the reading because a page whose sections were renamed
 // would otherwise come back as "the page documents nothing" -- indistinguishable, from the rows
-// alone, from a page that lost a row. The rules' table is read on the same terms and kept apart:
-// one entry per long spelling its first cell carries, in file order, and the heading it was read
-// under.
+// alone, from a page that lost a row. The rules' section is read on the same terms and kept apart:
+// one entry per long spelling its first table carries, in file order, one entry per value its second
+// table names, and the heading both were read under.
 //
 // `everyOptions` is the whole of the program's section rather than those places in it: every row
 // under every heading, in file order, whether the row documents a stored setting, a rule or an
@@ -309,6 +327,7 @@ struct DocumentedSettings
     QStringList options;
     QSet<QString> sections;
     QStringList ruleOptions;
+    QStringList ruleValues;
     QSet<QString> ruleSections;
     QStringList everyOptions;
 };
@@ -346,11 +365,12 @@ DocumentedSettings documentedSettings(const QString &page)
             continue;
         }
 
-        // The rules' table: the option list is the first cell and nothing after the bar that closes
-        // it says anything about which option the row is about. The bar-opening check is what
-        // separates a row from the prose between and after the two tables; the heading row and the
-        // separator line are read along with the rows, and neither spells an option -- the first
-        // has no backticked word in that cell, the second does not open with a bar and a space.
+        // The rules' tables: the option or the value is the first cell and nothing after the bar
+        // that closes it says anything about which one the row is about. The bar-opening check is
+        // what separates a row from the prose between and after the two tables; the heading rows and
+        // the separator lines are read along with the rows, and neither spells anything -- the
+        // headings have no backticked word in that cell, the separators do not open with a bar and a
+        // space.
         //
         // Every other section offers its options as one bullet per option, and a row is a row
         // whichever subsection it sits under, so what both shapes spell is collected once here and
@@ -369,7 +389,17 @@ DocumentedSettings documentedSettings(const QString &page)
             const qsizetype cellEnd = line.indexOf(u'|', 1);
             if (cellEnd < 0)
                 continue;
-            rowOptions = longOptionsOf(line.mid(1, cellEnd - 1));
+            const QString firstCell = line.mid(1, cellEnd - 1);
+            // The second table under this heading names a value in every row and an option in none,
+            // so a first cell that holds one backticked word and nothing else belongs to it. A value
+            // is not an option and does not go on to the option reading: it is the name of a
+            // setting's value, and what holds it is the enumeration behind that setting.
+            const QString value = valueNameIn(firstCell);
+            if (!value.isNull()) {
+                ret.ruleValues.append(value);
+                continue;
+            }
+            rowOptions = longOptionsOf(firstCell);
             ret.ruleOptions += rowOptions;
         } else {
             continue;
@@ -624,6 +654,7 @@ private slots:
     void savedConfiguration_carriesEveryStoredKey();
     void savedRules_carryEveryLogicKey();
     void documentedRuleKeys_areTheStoredOnes();
+    void documentedRoundings_areTheEnumOnes();
     void outOfRangeValue_isRejected();
     void crossedPairs_areRejected_data();
     void crossedPairs_areRejected();
@@ -1228,6 +1259,56 @@ void tst_QMdmmServer::documentedRuleKeys_areTheStoredOnes()
     QString message = u"the rules' documented options and their stored keys disagree -- documented but not stored: ["_s + sortedWords(documentedKeys - stored);
     message += u"]; stored but not documented: ["_s + sortedWords(stored - documentedKeys) + u"]"_s;
     QVERIFY2(documentedKeys == stored, qPrintable(message));
+}
+
+// The names the rules' second table offers are the values the rounding enumeration declares. The
+// case above does not reach them: it reads the rows that spell an option, and this table spells a
+// value in every row and an option in none, so a rounding added to the page or renamed in the class
+// left both of its sides as they were -- the page went on offering a name the parser has never
+// heard of, or stopped offering one it still takes, with every case green.
+//
+// The enumeration is the side held against the page rather than the parser's own table of names,
+// which is a third copy of the same list: what a reader of the page is owed is that the names are
+// the values, and the other `documented...` cases are held against classes for the same reason. A
+// name this case accepts and a run then turns down is a question about that copy.
+void tst_QMdmmServer::documentedRoundings_areTheEnumOnes()
+{
+    QFile page(QString::fromLatin1(QMDMM_COMMAND_LINE_DOC));
+    QVERIFY2(page.open(QIODevice::ReadOnly), qPrintable(page.fileName() + u": "_s + page.errorString()));
+
+    const DocumentedSettings documented = documentedSettings(QString::fromUtf8(page.readAll()));
+
+    // The heading is looked at first, for the reason the case above gives: a retitled section
+    // otherwise comes back as a reading that found nothing to compare.
+    const QSet<QString> expectedSections {QString::fromLatin1(rulesSection)};
+
+    QString sectionsMessage = u"the page was not read where it was expected to be read -- sections not found: ["_s + sortedWords(expectedSections - documented.ruleSections);
+    sectionsMessage += u"]; sections read: ["_s + sortedWords(documented.ruleSections) + u"]"_s;
+    QVERIFY2(documented.ruleSections == expectedSections, qPrintable(sectionsMessage));
+
+    // One value documented twice would read as two entries, and the set comparison below could not
+    // tell that from the page being right.
+    QStringList rows = documented.ruleValues;
+    rows.sort();
+    QStringList deduplicated = rows;
+    deduplicated.removeDuplicates();
+    QCOMPARE(deduplicated, rows);
+
+    QSet<QString> documentedValues;
+    for (const QString &value : rows)
+        documentedValues.insert(value);
+
+    const QMetaEnum rounding = QMetaEnum::fromType<QMdmmCore::LogicConfiguration::PunishHpRoundStrategy>();
+    QVERIFY(rounding.isValid());
+
+    QSet<QString> declared;
+    for (int i = 0; i < rounding.keyCount(); ++i)
+        declared.insert(QString::fromLatin1(rounding.key(i)));
+
+    QString message
+        = u"the roundings the page offers and the values the enumeration declares disagree -- documented but not declared: ["_s + sortedWords(documentedValues - declared);
+    message += u"]; declared but not documented: ["_s + sortedWords(declared - documentedValues) + u"]"_s;
+    QVERIFY2(documentedValues == declared, qPrintable(message));
 }
 
 // Each value the usage text promises a floor for is judged on its own, after the

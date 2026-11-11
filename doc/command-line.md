@@ -218,9 +218,10 @@ transports put on a peer that never finishes a packet.
 
 ### Game rules
 
-Three stats can be upgraded -- knife damage, horse damage and max HP. Each one
-starts at its initial value, is raised toward its maximum by spending upgrade
-points during a round, and the first player to max out all three wins.
+The stats that can be upgraded are knife damage, horse damage and max HP. Each
+one starts at its initial value, is raised toward its maximum by spending
+upgrade points during a round, and the first player to max out all of them
+wins.
 
 | Option | Sets | Default | With `-1` |
 |---|---|---|---|
@@ -236,8 +237,8 @@ points during a round, and the first player to max out all three wins.
 | `-f`, `--enable-let-move <true/false>` | whether a player may send another player moving, and not only themselves | `true` | `false` |
 | `-i`, `--can-buy-only-in-initial-city <true/false>` | whether a knife or a horse may be bought only in the place a player started in, rather than anywhere outside the village | `false` | `false` |
 
-`-R` takes one of four names, each of which says what becomes of the fraction
-before it is applied:
+`-R` takes one of the names below, each of which says what becomes of the
+fraction before it is applied:
 
 | Value | Rounding |
 |---|---|
