@@ -628,6 +628,8 @@ private slots:
     void crossedPairs_areRejected_data();
     void crossedPairs_areRejected();
     void unknownPunishHpRoundStrategy_isRejected();
+    void punishHpRoundStrategySpellings_reachThePrintedConfiguration_data();
+    void punishHpRoundStrategySpellings_reachThePrintedConfiguration();
     void unknownArgument_isRejected();
     void unparsableOptionValue_isRejected_data();
     void unparsableOptionValue_isRejected();
@@ -1292,6 +1294,36 @@ void tst_QMdmmServer::unknownPunishHpRoundStrategy_isRejected()
 
     QVERIFY(result.standardError.contains(u"punish-hp-round-strategy"_s));
     QVERIFY(result.standardError.contains(u"can't be parsed"_s));
+}
+
+// The other half of the case above: a strategy the tree does know is taken in any case, which is
+// what doc/command-line.md tells a reader. Nothing held that promise -- the only case naming a
+// strategy named one that does not exist, so making the match case-sensitive left the tree
+// compiling and every case here green while the page had become a lie.
+//
+// What a row reads is the value the run resolves to, not that it exited zero: a run that fell back
+// to the default would exit zero as well. PlusOne is read off instead of the default
+// RoundToNearest45, and a run given no rule prints no rule at all, so the value cannot come from
+// the defaults either. The first row is the page's own spelling, so a row that disagrees says
+// whether the option stopped being read or only stopped being read in that case.
+void tst_QMdmmServer::punishHpRoundStrategySpellings_reachThePrintedConfiguration_data()
+{
+    QTest::addColumn<QString>("spelling");
+
+    QTest::newRow("as the page spells it") << u"PlusOne"_s;
+    QTest::newRow("lower case") << u"plusone"_s;
+    QTest::newRow("mixed case") << u"PlUsOnE"_s;
+}
+
+void tst_QMdmmServer::punishHpRoundStrategySpellings_reachThePrintedConfiguration()
+{
+    QFETCH(QString, spelling);
+
+    const RunResult result = runServer({u"-R"_s, spelling, u"-d"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 0);
+    QVERIFY2(result.standardOutput.contains(u"\"punishHpRoundStrategy\": 3"_s), qPrintable(u"-R "_s + spelling + u" printed: "_s + result.standardOutput));
 }
 
 // A word that names no option is left over as a positional argument. The run then has
