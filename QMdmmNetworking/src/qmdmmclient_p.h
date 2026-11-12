@@ -74,8 +74,8 @@ public:
     // When the first ping of the window the deadline is judging went out, in epoch milliseconds, or
     // -1 while no ping has gone out since that deadline was last armed, and once the connection it
     // belonged to has ended. A deadline that runs out says the server did not answer, which is only
-    // true of a window in which a question was left standing long enough to be answered (see
-    // pongDeadlinePassed).
+    // true of a window in which a question was left standing long enough to be answered, and then
+    // only about what has been read rather than what has arrived (see pongDeadlinePassed).
     qint64 firstPingInDeadlineWindow;
 
     QMdmmCore::Protocol::RequestId currentRequest;

@@ -194,6 +194,12 @@ that recent is therefore given another one instead of a verdict, so that "the se
 answering pings" keeps meaning what it says. A server that really is not answering takes the
 connection on the expiry after that.
 
+The deadline itself only speaks about what has been read. An answer that arrived while the
+client was away waits in the socket buffer until a read takes it off, and whether those
+pending bytes or the overdue timer is dispatched first is not specified on either platform. A
+client that comes back to both -- the pong already in hand -- can therefore still be told the
+server stopped answering.
+
 ## Reconnecting
 
 A client that loses its connection may open a new one and sign in again with the same

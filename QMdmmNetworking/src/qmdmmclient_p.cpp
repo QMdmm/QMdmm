@@ -1164,23 +1164,31 @@ void ClientP::heartbeatTimeout()
 // NOLINTNEXTLINE(readability-make-member-function-const)
 void ClientP::pongDeadlinePassed()
 {
-    // Nothing came back for three heartbeat intervals -- but an answer can only be missing if a
-    // question was left standing, and this deadline is the only thing here that can tell the two
-    // apart. A peer that is a live process no longer serving is the case it exists for: the socket
-    // is still open, which is exactly what a kernel acknowledges while nothing behind it answers.
-    // The other case has the same shape from the inside and the opposite cause: a client whose own
-    // event loop was away for longer than the deadline -- a modal dialog, a long synchronous call,
-    // a machine that was suspended -- comes back with both timers overdue, the heartbeat sends a
-    // ping on the way back and the deadline runs out right behind it, before anything could have
-    // answered. Reporting that as "the server stopped answering" is a wrong answer to the one
-    // question this path exists to answer, and the error string is all a reader gets to tell them
-    // apart.
+    // Nothing has been read back for three heartbeat intervals -- but an answer can only be missing
+    // if a question was left standing, and this deadline is the only thing here that can tell the
+    // two apart. A peer that is a live process no longer serving is the case it exists for: the
+    // socket is still open, which is exactly what a kernel acknowledges while nothing behind it
+    // answers. The other case has the same shape from the inside and the opposite cause: a client
+    // whose own event loop was away for longer than the deadline -- a modal dialog, a long
+    // synchronous call, a machine that was suspended -- comes back with both timers overdue, the
+    // heartbeat sends a ping on the way back and the deadline runs out right behind it, before
+    // anything could have answered. Reporting that as "the server stopped answering" is a wrong
+    // answer to the one question this path exists to answer, and the error string is all a reader
+    // gets to tell them apart.
     //
     // So the window is judged only once one of its pings has had a whole heartbeat interval to be
     // answered in. One that has not is a client that never really asked: it gets another window
     // rather than a verdict. A server that is really silent takes the connection on the expiry
     // after that, and one that is alive answers the ping the heartbeat just sent and restarts the
     // deadline before it can run out again.
+    //
+    // What is judged is what has been read, not what has arrived. A client that was away with an
+    // answer already in the socket buffer comes back to a deadline that runs out with the pong in
+    // hand and no read that has taken it off the socket, and from here that cannot be told apart
+    // from a server that never answered. Whether the pending bytes or the overdue timer is
+    // dispatched first is not specified on either platform, so that one window can still be judged
+    // as silence; a fix would have to ask the socket whether anything is waiting there before it
+    // calls the question unanswered.
     if (firstPingInDeadlineWindow >= 0 && QDateTime::currentMSecsSinceEpoch() - firstPingInDeadlineWindow >= heartbeatTimer->interval()) {
         handleSocketGone(u"the server stopped answering pings"_s);
         return;
