@@ -11,6 +11,7 @@
 #include <QMdmmProtocol>
 #include <QMdmmRoom>
 
+#include <QElapsedTimer>
 #include <QLocalSocket>
 #include <QPointer>
 #include <QTcpSocket>
@@ -71,12 +72,16 @@ public:
     // repeat of the answer already taken. -1 while no answer has been used on this connection: the
     // stamps compared are epoch milliseconds, so -1 is below any of them.
     qint64 newestAnsweredPing;
-    // When the first ping of the window the deadline is judging went out, in epoch milliseconds, or
-    // -1 while no ping has gone out since that deadline was last armed, and once the connection it
-    // belonged to has ended. A deadline that runs out says the server did not answer, which is only
-    // true of a window in which a question was left standing long enough to be answered, and then
-    // only about what has been read rather than what has arrived (see pongDeadlinePassed).
-    qint64 firstPingInDeadlineWindow;
+    // How long the window the deadline is judging has been open: started when the first ping of
+    // that window goes out, and invalid while no ping has gone out since the deadline was last
+    // armed, and once the connection it belonged to has ended. A deadline that runs out says the
+    // server did not answer, which is only true of a window in which a question was left standing
+    // long enough to be answered, and then only about what has been read rather than what has
+    // arrived (see pongDeadlinePassed). An elapsed-time clock rather than a point on the wall
+    // clock: the deadline it is read against runs on the monotonic clock too, and an adjustment of
+    // the wall clock in between would otherwise make the window look younger than it is and hold
+    // the verdict back until the clock caught up.
+    QElapsedTimer pongWindow;
 
     QMdmmCore::Protocol::RequestId currentRequest;
     QMdmmCore::Data::AgentState initialState;

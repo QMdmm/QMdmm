@@ -78,7 +78,6 @@ ClientP::ClientP(ClientConfiguration clientConfiguration, Client *q)
     , connected(false)
     , roundTripTime(-1)
     , newestAnsweredPing(-1)
-    , firstPingInDeadlineWindow(-1)
     , currentRequest(QMdmmCore::Protocol::RequestInvalid)
     , initialState(QMdmmCore::Data::StateOffline)
     , lastRoundEventSeq(0)
@@ -763,7 +762,7 @@ void ClientP::notifyGameOver(const QJsonValue &value)
         connected = false;
         roundTripTime = -1;
         newestAnsweredPing = -1;
-        firstPingInDeadlineWindow = -1;
+        pongWindow.invalidate();
         disconnect(socket);
         socket->disconnect(this);
 
@@ -1062,7 +1061,7 @@ void ClientP::handleSocketGone(const QString &errorString)
     connected = false;
     roundTripTime = -1;
     newestAnsweredPing = -1;
-    firstPingInDeadlineWindow = -1;
+    pongWindow.invalidate();
 
     // Detach first so a second signal from the same socket (error + disconnected
     // often fire back to back) can't re-enter this handler.
@@ -1145,7 +1144,7 @@ void ClientP::armPongDeadline()
 {
     // A pong, or a new connection, is the start of a window: the pings that follow are the questions
     // the deadline will be judging. Whatever the previous window sent is not part of it.
-    firstPingInDeadlineWindow = -1;
+    pongWindow.invalidate();
     pongDeadline->start();
 }
 
@@ -1155,9 +1154,12 @@ void ClientP::heartbeatTimeout()
     if (socket == nullptr)
         return;
 
+    // The stamp below goes out to the server and comes back on the pong, so it is the wall clock:
+    // it is half of the reading, not a duration measured here. The window's age is read off its own
+    // clock instead, and that one is elapsed time (see pongWindow).
     const qint64 sentAt = QDateTime::currentMSecsSinceEpoch();
-    if (firstPingInDeadlineWindow < 0)
-        firstPingInDeadlineWindow = sentAt;
+    if (!pongWindow.isValid())
+        pongWindow.start();
     emit socket->sendPacket(QMdmmCore::Packet(QMdmmCore::Protocol::NotifyPingServer, sentAt));
 }
 
@@ -1189,7 +1191,12 @@ void ClientP::pongDeadlinePassed()
     // dispatched first is not specified on either platform, so that one window can still be judged
     // as silence; a fix would have to ask the socket whether anything is waiting there before it
     // calls the question unanswered.
-    if (firstPingInDeadlineWindow >= 0 && QDateTime::currentMSecsSinceEpoch() - firstPingInDeadlineWindow >= heartbeatTimer->interval()) {
+    //
+    // The age of the window is read off an elapsed-time clock, and so is the deadline it is read
+    // against. The wall clock the ping carries would answer this question too, and would answer it
+    // wrongly after an adjustment: set back by an interval, it makes a window that has been open
+    // for a while look younger than it is, and the verdict arrives once the clock has caught up.
+    if (pongWindow.isValid() && pongWindow.hasExpired(heartbeatTimer->interval())) {
         handleSocketGone(u"the server stopped answering pings"_s);
         return;
     }
