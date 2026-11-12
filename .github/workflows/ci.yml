@@ -362,19 +362,23 @@ jobs:
     #
     # What that costs is accepted rather than worked around. A suite that
     # reported anything aborts on its way out, so ctest counts the suite failed
-    # while the cases inside it ran and passed: on macOS, 4 of the 16 suites end
-    # that way, and all 502 cases the 14 QtTest suites hold pass. exitcode does
-    # not enter into it: the same tree and the same suite die of SIGABRT with the
+    # while the cases inside it ran and passed: on macOS, four of the suites end
+    # that way, and every case the QtTest suites hold passes. exitcode does not
+    # enter into it: the same tree and the same suite die of SIGABRT with the
     # option unset and with exitcode=66 alike, so pinning it would only suggest a
     # knob exists. The reading counts the two units apart instead -- "cases"
     # summed from each suite's own "Totals:" line, "suites" from ctest's summary.
+    # How many suites and cases that comes to is not written here: the line
+    # below counts both off the run it just did, so a number kept in this
+    # comment would be a second copy of what the line already says, and the
+    # copy is the one that rots.
     #
     # No suppression list, and deliberately not an empty one either. A list is
     # worth keeping only once someone has read what it would cover, and what
     # this one would cover is a reading of how the tests wait, not the density
     # of races in the tree. One reading of one tree -- macOS, the options
     # below, the test step at --output-on-failure as it stood in d73b560, over
-    # the 16 suites this leg keeps: 344 reports in 29 distinct summaries -- 33
+    # every suite that run reached: 344 reports in 29 distinct summaries -- 33
     # of them at five sites in this repository
     # (ServerConnectionP::sendRockPaperScissorsNotified 14,
     # sendActionOrderRequested 8, sendUpgradeNotified 1,
