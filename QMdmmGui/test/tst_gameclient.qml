@@ -38,11 +38,17 @@ TestCase {
     // Eighty asks is four times the worst local reading above and twice the runner's forty.
     readonly property int throwAsksToWaitForAnOrder: 80
 
-    // What a match that has stopped asking is given before the case calls it: without this the
-    // loop below would spin until the suite's own bound reported a timeout and named no case. It
-    // is clear of what it guards -- the slowest of those six runs took 3.3 s for a whole case --
-    // and two of these, one per match the case plays, stay well inside the 360 s the suite has,
-    // which reads 41.95 s on an ubuntu Debug cell and 262.81 s / 263.95 s on Windows Release ones.
+    // What a match that has stopped asking is given before the case calls it, in milliseconds of
+    // silence: without this the loop below would spin until the suite's own bound reported a
+    // timeout and named no case. It is a bound on silence and not on the case, because a runner
+    // plays far fewer rounds in the same time and a bound on the case cuts a match that is still
+    // going, then reports it as one that stopped -- the arm Release cell of run 43478855105 read
+    // twelve throws asked inside the sixty seconds this used to allow, all of them answered, with
+    // a second order offered and unanswered when the case gave up. Sixty seconds of silence is
+    // clear of what it guards -- the slowest of those six runs above took 3.3 s for a whole case
+    // -- and two of these, one per match the case plays, stay well inside the 360 s the suite
+    // has, which reads 41.95 s on an ubuntu Debug cell and 262.81 s / 263.95 s on Windows
+    // Release ones.
     readonly property int watchdogDeadlineMs: 60000
 
     function cleanup() {
@@ -582,6 +588,12 @@ TestCase {
         // order offered for exactly that reason. Each reply therefore gets a match of its own,
         // where all three seats are alive again: the first names an order, the second gives the
         // whole negotiation up.
+        //
+        // The negotiation can ask more than once, too: an order two players name is settled by a
+        // throw of its own, and a throw that comes out level asks both of them again. Every ask is
+        // therefore answered, not only the first -- one left unanswered holds its round open for
+        // the rest of the match, which reads as a case that ran out of time rather than one that
+        // stopped answering.
         var orderAsked = createTemporaryObject(signalSpyComponent, testCase, {
                                                    target: game,
                                                    signalName: "requestActionOrder"
@@ -611,17 +623,28 @@ TestCase {
 
             var throwsBefore = throwAsked.count;
             var offersBefore = orderAsked.count;
+            var answeredOffers = 0;
             var taken = false;
             var settleFrom = 0;
             var settled = false;
             var startedAt = Date.now();
+            var lastAskAt = startedAt;
+            var asksSeen = throwAsked.count + actionAsked.count + orderAsked.count;
             while (!settled) {
                 if (throwAsked.count - throwsBefore >= throwAsksToWaitForAnOrder)
                     break;
-                if (Date.now() - startedAt >= watchdogDeadlineMs)
+                if (Date.now() - lastAskAt >= watchdogDeadlineMs)
                     break;
                 if (game.gameState !== "playing")
                     break;
+                // Anything the match asks of this side is the match going on, and it is what the
+                // bound above gives it time to do: a round costs a runner seconds, so a bound on
+                // how long the case has run is not the same as a bound on silence.
+                var asks = throwAsked.count + actionAsked.count + orderAsked.count;
+                if (asks > asksSeen) {
+                    asksSeen = asks;
+                    lastAskAt = Date.now();
+                }
                 if (throwAsked.count > answeredThrows) {
                     answeredThrows = throwAsked.count;
                     game.replyRps(0);
@@ -630,14 +653,17 @@ TestCase {
                     answeredActions = actionAsked.count;
                     game.replyAction(0, "", -1);
                 }
-                if (!taken && orderAsked.count > offersBefore) {
-                    taken = true;
+                if (orderAsked.count > offersBefore + answeredOffers) {
                     var offer = orderAsked.signalArguments[orderAsked.count - 1];
-                    verify(offer[0].length >= 1, "there has to be an order to pick from: " + JSON.stringify(offer));
-                    verify(offer[1] >= 1, "the range the orders come from has to be told: " + JSON.stringify(offer));
-                    verify(offer[2] >= 1, "at least one selection is asked of this player: " + JSON.stringify(offer));
+                    if (!taken) {
+                        taken = true;
+                        verify(offer[0].length >= 1, "there has to be an order to pick from: " + JSON.stringify(offer));
+                        verify(offer[1] >= 1, "the range the orders come from has to be told: " + JSON.stringify(offer));
+                        verify(offer[2] >= 1, "at least one selection is asked of this player: " + JSON.stringify(offer));
 
-                    settleFrom = resolved.count;
+                        settleFrom = resolved.count;
+                    }
+                    ++answeredOffers;
                     if (giveItUp)
                         game.yieldActionOrder(offer[2]);
                     else
@@ -648,9 +674,11 @@ TestCase {
                 wait(100);
             }
             // The counts go into the message: a run that runs out of asks, out of the deadline or
-            // out of match has a different repair, and only these numbers tell them apart.
+            // out of match has a different repair, and only these numbers tell them apart. The
+            // silence is counted too, the deadline above being a bound on it.
             var waited = Date.now() - startedAt;
-            var reading = replyName + " over " + waited + " ms, " + (throwAsked.count - throwsBefore) + " throws asked, " + (orderAsked.count - offersBefore) + " orders offered";
+            var reading = replyName + " over " + waited + " ms, " + (throwAsked.count - throwsBefore) + " throws asked, " + (orderAsked.count - offersBefore) + " orders offered ("
+                    + answeredOffers + " answered), " + (Date.now() - lastAskAt) + " ms since the last ask";
             verify(settled, reading + " has to leave the orders confirmed");
             game.disconnectAll();
         }
