@@ -273,16 +273,18 @@ const std::array<const char *, 3> settingsSections {{
 }};
 
 // The one section of that page which lists settings of LogicConfiguration, and the one section read
-// as a table rather than as rows of its own. What a row looks like is why the two shapes are read
+// as a table rather than as rows of its own. What a row looks like is why the shapes are read
 // apart: a row here opens with a bar and carries a short option, both long spellings of an
-// attribute and its value range in the first cell, where a row of the three sections above opens
-// with "- `" and names one option. A reading built on the second shape therefore saw none of these
-// eleven keys at all -- the page held rows for them and nothing held those rows to anything.
+// attribute and its value range in the first cell, where a row of the settings sections above opens
+// with "- `" and names one option. A reading built on the bullet shape therefore saw none of these
+// keys at all -- the page held rows for them and nothing held those rows to anything.
 //
-// The section holds two tables and neither of them is read the other's way: the one above spells an
-// option in every row, the one under the sentence about `-R` spells a value and no option at all.
-// Both are read here, each into its own list, and each held against the enumeration it belongs to --
-// a table of names is a claim about the code whichever of the two lists it is.
+// The tables under this heading are not read each other's way: the one headed by `Option` spells an
+// option in every row, the one the sentence about `-R` introduces, headed by `Value`, spells a
+// rounding and no option at all. Each is read here into a list of its own and held against the
+// enumeration it belongs to -- a table of names is a claim about the code whichever list it lands
+// in. A further table put under this heading joins whichever reading its first cell fits, so these
+// sentences stay true of the columns they name rather than of how many tables the page holds.
 constexpr const char *rulesSection = "Game rules";
 
 // The long options @p text names, in the order they appear. A row spells each long name inside
@@ -299,10 +301,10 @@ QStringList longOptionsOf(const QString &text)
     return ret;
 }
 
-// The value a row of the rules' second table names, or a null string where that cell names
-// something else. The whole cell is anchored rather than searched: the two tables under the heading
-// differ in exactly this, one spelling an option list in its first cell and the other a single word,
-// so a cell that carries anything besides that one word belongs to the table of options.
+// The rounding a row of the table the `-R` sentence introduces names, or a null string where that
+// cell names something else. The whole cell is anchored rather than searched: a row of the option
+// table spells its option list in the first cell where a row of this one spells a single word, so a
+// cell that carries anything besides that one word belongs among the options.
 QString valueNameIn(const QString &cell)
 {
     static const QRegularExpression singleWord(u"^`([A-Za-z0-9]+)`$"_s);
@@ -314,8 +316,8 @@ QString valueNameIn(const QString &cell)
 // were read under. The headings are part of the reading because a page whose sections were renamed
 // would otherwise come back as "the page documents nothing" -- indistinguishable, from the rows
 // alone, from a page that lost a row. The rules' section is read on the same terms and kept apart:
-// one entry per long spelling its first table carries, in file order, one entry per value its second
-// table names, and the heading both were read under.
+// one entry per long spelling the option table carries, in file order, one entry per name the
+// rounding table offers, and the heading both were read under.
 //
 // `everyOptions` is the whole of the program's section rather than those places in it: every row
 // under every heading, in file order, whether the row documents a stored setting, a rule or an
@@ -367,7 +369,7 @@ DocumentedSettings documentedSettings(const QString &page)
 
         // The rules' tables: the option or the value is the first cell and nothing after the bar
         // that closes it says anything about which one the row is about. The bar-opening check is
-        // what separates a row from the prose between and after the two tables; the heading rows and
+        // what separates a row from the prose around the tables; the heading rows and
         // the separator lines are read along with the rows, and neither spells anything -- the
         // headings have no backticked word in that cell, the separators do not open with a bar and a
         // space.
@@ -390,10 +392,10 @@ DocumentedSettings documentedSettings(const QString &page)
             if (cellEnd < 0)
                 continue;
             const QString firstCell = line.mid(1, cellEnd - 1);
-            // The second table under this heading names a value in every row and an option in none,
-            // so a first cell that holds one backticked word and nothing else belongs to it. A value
-            // is not an option and does not go on to the option reading: it is the name of a
-            // setting's value, and what holds it is the enumeration behind that setting.
+            // The rounding table under this heading names a value in every row and an option in
+            // none, so a first cell that holds one backticked word and nothing else belongs to it.
+            // A value is not an option and does not go on to the option reading: it is the name of
+            // a setting's value, and what holds it is the enumeration behind that setting.
             const QString value = valueNameIn(firstCell);
             if (!value.isNull()) {
                 ret.ruleValues.append(value);
@@ -1183,7 +1185,7 @@ void tst_QMdmmServer::savedConfiguration_carriesEveryStoredKey()
 // The rules' write side, on the same terms as the case above: `-c` prints the resolved
 // configuration, and a rule the class holds but the file leaves out would come back as its default
 // the moment a run replays that file. The section read is `[logic]`, the group config.cpp takes
-// those eleven keys out of.
+// those keys out of.
 void tst_QMdmmServer::savedRules_carryEveryLogicKey()
 {
     QTemporaryDir scratch;
@@ -1261,7 +1263,7 @@ void tst_QMdmmServer::documentedRuleKeys_areTheStoredOnes()
     QVERIFY2(documentedKeys == stored, qPrintable(message));
 }
 
-// The names the rules' second table offers are the values the rounding enumeration declares. The
+// The names the rules' rounding table offers are the values the rounding enumeration declares. The
 // case above does not reach them: it reads the rows that spell an option, and this table spells a
 // value in every row and an option in none, so a rounding added to the page or renamed in the class
 // left both of its sides as they were -- the page went on offering a name the parser has never
