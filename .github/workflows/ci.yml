@@ -369,9 +369,10 @@ jobs:
     # knob exists. The reading counts the two units apart instead -- "cases"
     # summed from each suite's own "Totals:" line, "suites" from ctest's summary.
     # How many suites and cases that comes to is not written here: the line
-    # below counts both off the run it just did, so a number kept in this
-    # comment would be a second copy of what the line already says, and the
-    # copy is the one that rots.
+    # below counts them, off the log it just wrote and off the test list it
+    # took with the same -E, so a number kept in this comment would be a
+    # second copy of what the line already says, and the copy is the one
+    # that rots.
     #
     # No suppression list, and deliberately not an empty one either. A list is
     # worth keeping only once someone has read what it would cover, and what
