@@ -13,18 +13,20 @@ import QMdmm.Gui 1.0
 TestCase {
     id: testCase
 
-    // What the match is given to ask this side to act, in milliseconds. Nothing can be read off
-    // the action list until it does: the match plays its throws first, every throw asked of this
-    // side is answered meanwhile, and a round that comes out level is thrown again -- so neither
-    // a number of throws nor one of rounds bounds this, wall clock does. The ask itself is the
-    // first one the match cannot avoid once a throw has been won: three runs on a development
-    // tree reached it in 203 / 406 / 726 ms with 2 / 4 / 7 throws answered, and the case as a
-    // whole reads 0.9 to 1.5 s. CI keeps no per-case time to quote here -- its junit report
-    // stays in the build tree -- so this is twenty times the worst of those rather than a
-    // number a runner gave; the same suite reads 42.59 s on the ubuntu Debug cell and 290.41 s on
-    // the Windows Debug cell of run 42862469909, against 67 to 71 s on this tree, and a cell that
-    // runs this wait out reports it through the failure below.
-    readonly property int firstActionAskBudgetMs: 15000
+    // What the match is given to stay quiet before this side takes it that it will not be asked to
+    // act, in milliseconds of silence: every throw it asks of this side restarts the clock, so what
+    // this bounds is the gap between two asks rather than the wait as a whole. A round costs a
+    // runner seconds, so a bound on how long the wait has run cuts a match that is still asking and
+    // then reports it as one that never asked -- the same reason the orders case below bounds its
+    // own wait by silence.
+    //
+    // Five runs on a development tree reached the action ask in 103 to 410 ms, having answered one
+    // to four throws, and no gap between two asks read above 105 ms. CI keeps no per-case time to
+    // quote here -- its junit report stays in the build tree -- so fifteen seconds is an estimate
+    // rather than a number a runner gave: the arm Release cell of run 43478855105 read twelve
+    // throws asked across sixty seconds, about five seconds apiece, and this is three of those. A
+    // cell that runs it out reports the silence it saw, which is the number to correct this with.
+    readonly property int firstActionSilenceMs: 15000
     property var game: null
 
     // What one match is given to offer this side an order, in the match's own unit: how many
@@ -706,17 +708,25 @@ TestCase {
         tryCompare(game, "gameState", "playing", 15000);
         // The match waits for this side's throw before anybody is asked to act, and a round of
         // throws that comes out level is thrown again -- so every throw asked of this side is
-        // answered, not only the first, until the match asks for the action itself.
+        // answered, not only the first, until the match asks for the action itself. Each of those
+        // throws is also what gives this wait its time: the clock restarts on every ask, so what
+        // is bounded below is silence, not the length of this loop.
         var answered = 0;
         var askBeganAt = Date.now();
-        while (asked.count === 0 && Date.now() - askBeganAt < firstActionAskBudgetMs) {
+        var lastAskAt = askBeganAt;
+        while (asked.count === 0 && Date.now() - lastAskAt < firstActionSilenceMs) {
             if (throwAsked.count > answered) {
                 answered = throwAsked.count;
+                lastAskAt = Date.now();
                 game.replyRps(0);
             }
             wait(100);
         }
-        verify(asked.count >= 1, "the match has to ask this side to act");
+        // The message carries the silence, which is what the bound above measures: the first cell
+        // to run it out hands back the number this estimate is to be corrected against.
+        var waited = Date.now() - askBeganAt;
+        var reading = answered + " throws answered over " + waited + " ms, " + (Date.now() - lastAskAt) + " ms since the last ask";
+        verify(asked.count >= 1, "the match has to ask this side to act: " + reading);
 
         var options = game.getActionOptions();
         verify(options.length >= 2, "the room has to offer more than one thing to do: " + JSON.stringify(options));
