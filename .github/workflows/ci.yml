@@ -460,11 +460,11 @@ jobs:
     continue-on-error: true
     runs-on: ubuntu-latest
     env:
-      # Named once because two steps have to agree on it: the run drops these
-      # suites, and the reading counts its denominator off the list the run
-      # was given. Written twice, the second copy is what goes stale -- a Smoke
-      # entry added to one of them would shrink the run without moving the
-      # count, and the line would read as a suite that never handed in its own.
+      # Named once because every step that reads it has to agree on it: the
+      # run drops these suites, and the reading counts its denominator off the
+      # list the run was given. A copy written on its own is what goes stale --
+      # a Smoke entry added to it would shrink the run without moving the count,
+      # and the line would read as a suite that never handed in its own.
       QMDMM_TSAN_DROPPED: '^(QMdmmServer - server cli - Qt6|QMdmmBot - headless game - Qt6|QMdmmCore - tst_qmdmmrace.cpp - Qt6)$'
     steps:
       - name: Checkout
