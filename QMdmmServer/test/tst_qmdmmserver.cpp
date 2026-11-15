@@ -490,13 +490,13 @@ const std::array<StoredServerKey, 13> &storedServerKeys()
 }
 
 // The stored face of LogicConfiguration: the key a configuration file holds each rule under, in
-// the `[logic]` group, and the second long spelling four of those options answer to. The spellings
-// differ because the game was renamed around the settings rather than the other way round -- the
-// rules speak of slashing and kicking, the code of a knife and a horse -- and both are what the
-// page documents, so a spelling is a column here and the stored key stays one key.
+// the `[logic]` group, and, where an option has one, the second long spelling it answers to. The
+// spellings differ because the game was renamed around the settings rather than the other way
+// round -- the rules speak of slashing and kicking, the code of a knife and a horse -- and both
+// are what the page documents, so a spelling is a column here and the stored key stays one key.
 //
-// Two cases hold this table: `savedRules_carryEveryLogicKey` (the keys a run writes, which is the
-// same list the case above reads out of `[server]` for the other class) and
+// This table is held by `savedRules_carryEveryLogicKey` (the keys a run writes, which is the same
+// list the case above reads out of `[server]` for the other class) and
 // `documentedRuleKeys_areTheStoredOnes` (the rows the page devotes to them). Neither direction
 // subtracts anything on its side, so a rule added to the class has to arrive with its key and its
 // row in the same commit, and a row added to the page with no rule behind it goes red the other
@@ -701,12 +701,12 @@ void tst_QMdmmServer::help_printsTheUsageAndExitsZero()
     QVERIFY(result.standardOutput.contains(u"--log-level"_s));
 }
 
-// config.cpp carries three short lines above its option list holding the letters that are still
-// free -- a lookup table for whoever adds the next option, so that nobody has to walk the usage
-// text looking for a slot. Nothing keeps it honest but a reader's attention: register an option
-// and forget the table, and the next reader takes a letter that is already spent. This case is
-// that attention written down -- the letters the table holds have to be exactly the ones the
-// options in that same file do not claim.
+// config.cpp keeps the letters that are still free in a table above its option list -- a lookup
+// table for whoever adds the next option, so that nobody has to walk the usage text looking for a
+// slot. Nothing keeps it honest but a reader's attention: register an option and forget the
+// table, and the next reader takes a letter that is already spent. This case is that attention
+// written down -- the letters the table holds have to be exactly the ones the options in that
+// same file do not claim.
 //
 // Both halves are read out of config.cpp as text, the way QMdmmCore's protocol case reads its
 // page: the configuration code is not linked into this target, and the table is a comment.
@@ -1103,7 +1103,7 @@ void tst_QMdmmServer::documentedConfigurationKeys_areTheStoredOnes()
     const DocumentedSettings documented = documentedSettings(QString::fromUtf8(page.readAll()));
 
     // The headings are looked at first, so that a renamed section fails as a section the reading did
-    // not find rather than as thirteen keys the page has allegedly stopped documenting.
+    // not find rather than as every stored key the page has allegedly stopped documenting.
     QSet<QString> expectedSections;
     for (const char *section : settingsSections)
         expectedSections.insert(QString::fromLatin1(section));
@@ -1216,7 +1216,7 @@ void tst_QMdmmServer::savedRules_carryEveryLogicKey()
 }
 
 // The rules' third face, and the one that was missing: the row doc/command-line.md devotes to each
-// of them. The page carried all eleven of those rows already, in a table whose first cell names a
+// of them. The page carried a row for each of them already, in a table whose first cell names a
 // short option, both long spellings and a range -- and no case read it, because it is a table where
 // the other sections are rows of their own. The page could therefore lose a row, gain one, or be
 // retitled with everything here green; what the reading holds the rows to is the table above, which
@@ -1229,7 +1229,7 @@ void tst_QMdmmServer::documentedRuleKeys_areTheStoredOnes()
     const DocumentedSettings documented = documentedSettings(QString::fromUtf8(page.readAll()));
 
     // The heading is looked at first, so that a retitled section fails as a section the reading did
-    // not find rather than as eleven options the page has allegedly stopped documenting.
+    // not find rather than as every option the page has allegedly stopped documenting.
     const QSet<QString> expectedSections {QString::fromLatin1(rulesSection)};
 
     QString sectionsMessage = u"the page was not read where it was expected to be read -- sections not found: ["_s + sortedWords(expectedSections - documented.ruleSections);
