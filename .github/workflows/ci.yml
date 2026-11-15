@@ -415,18 +415,19 @@ jobs:
     # not a defect at a site: no site here is a race to repair, and a list
     # keyed on those headers would encode that copy as noise.
     # That holds for the readings above, all on macOS. Whether Linux's stacks
-    # fall into the same three buckets is not answered here, and that is a
-    # decision rather than a gap left open: the classification is judged not
-    # worth making. The reason is the paragraph above -- the reports are one
-    # hand-off's payload, and the hand-off is the same code on both platforms
-    # -- so sorting the Linux stacks would restate that conclusion at the
-    # count below rather than name a contention family the macOS reading could
-    # not have found. What the platform changes is how many rounds a run gets
-    # through, and a number that moves by at least a quarter between runs is a
-    # reading of one tree rather than a property of it: a one-off sort of it
-    # would be cited as the tree's and would not be one. The cell below prints
-    # its own count on every run, and that is where to look for what this leg
-    # found.
+    # fall into the same division the reading above used -- this repository's
+    # own sites, Qt's container headers, and nothing else -- is not answered
+    # here, and that is a decision rather than a gap left open: the
+    # classification is judged not worth making. The reason is the paragraph
+    # above -- the reports are one hand-off's payload, and the hand-off is the
+    # same code on both platforms -- so sorting the Linux stacks would restate
+    # that conclusion at the count below rather than name a contention family
+    # the macOS reading could not have found. What the platform changes is how
+    # many rounds a run gets through, and a number that moves by at least a
+    # quarter between runs is a reading of one tree rather than a property of
+    # it: a one-off sort of it would be cited as the tree's and would not be
+    # one. The cell below prints its own count on every run, and that is where
+    # to look for what this leg found.
     #
     # The Linux count is a reading of the same kind. Runs of this cell -- none
     # of them a change to the logic thread it is about, the trees they were
