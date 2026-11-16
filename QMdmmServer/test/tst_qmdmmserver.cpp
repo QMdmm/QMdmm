@@ -456,7 +456,7 @@ QStringList registeredLongOptions(const QString &source)
 // exception in the same commit -- which is what the doxygen on ServerConfiguration says, too.
 //
 // The page lists settings of another class as well, the rules' own keys under `### Game rules`.
-// Those stay out of this table and out of the three comparisons above -- they are
+// Those stay out of this table and out of the comparisons above -- they are
 // LogicConfiguration's keys, not this class's -- and what holds them instead is their own table and
 // their own reading of the page (see `storedLogicKeys` and `rulesSection`).
 struct StoredServerKey
@@ -1617,7 +1617,7 @@ void tst_QMdmmServer::logLevel_decidesHowMuchOfTheLogTheTerminalIsTold()
     // line to the debugger instead of stderr whenever no console is attached -- which is the shape
     // a process started by another one has. QT_ASSUME_STDERR_HAS_CONSOLE is the override Qt
     // documents for exactly this: a parent process that reads the child's stderr and presents it
-    // itself. Without it the two readings below that ask what stderr holds would agree with
+    // itself. Without it the readings below that ask what stderr holds would agree with
     // themselves on that platform, the line never being able to arrive at all; with it every
     // platform is read the same way.
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
