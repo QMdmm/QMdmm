@@ -103,9 +103,9 @@ implemented yet; this program only asks.
 // text, but a peer that is not this plane at all is free to answer 200 with nothing behind it, and
 // that would be printed as a snapshot and reported as a healthy server to whoever reads the output.
 //
-// The four keys are asked for by name and nothing beyond them: what the program prints is the body
+// The keys are asked for by name and nothing beyond them: what the program prints is the body
 // byte for byte, so a key it does not know about is carried through as it arrived. A body missing
-// one of the four is a different shape, not a newer one.
+// one of them is a different shape, not a newer one.
 bool isTheSnapshot(const QByteArray &body)
 {
     QJsonParseError parseError {};
