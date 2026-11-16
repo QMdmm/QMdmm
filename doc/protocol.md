@@ -13,7 +13,7 @@ A frame is a JSON object encoded in a single line. One line is one packet: there
 length prefix and no delimiter other than the newline, which is also what keeps a frame
 readable in a log.
 
-The object carries four keys:
+The object carries these keys:
 
 | Key | Holds |
 |---|---|

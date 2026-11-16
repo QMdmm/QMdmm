@@ -397,7 +397,7 @@ namespace v0 {
  *
  * A packet of QMdmm Protocol is a JSON object, encoded in a single line.
  *
- * The top-level object carries four keys:
+ * The top-level object carries these keys:
  * - @c "type": @c int, one of Protocol::PacketType.
  * - @c "requestId": @c int, one of Protocol::RequestId. Meaningful only for request/reply packets,
  *   and @c Protocol::RequestInvalid for notify/invalid packets.
