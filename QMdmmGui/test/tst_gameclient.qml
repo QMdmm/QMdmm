@@ -41,16 +41,15 @@ TestCase {
     readonly property int throwAsksToWaitForAnOrder: 80
 
     // What a match that has stopped asking is given before the case calls it, in milliseconds of
-    // silence: without this the loop below would spin until the suite's own bound reported a
-    // timeout and named no case. It is a bound on silence and not on the case, because a runner
-    // plays far fewer rounds in the same time and a bound on the case cuts a match that is still
-    // going, then reports it as one that stopped -- the arm Release cell of run 43478855105 read
-    // twelve throws asked inside the sixty seconds this used to allow, all of them answered, with
-    // a second order offered and unanswered when the case gave up. Sixty seconds of silence is
-    // clear of what it guards -- the slowest of those six runs above took 3.3 s for a whole case
-    // -- and two of these, one per match the case plays, stay well inside the 360 s the suite
-    // has, which reads 41.95 s on an ubuntu Debug cell and 262.81 s / 263.95 s on Windows
-    // Release ones.
+    // silence: without this, a case whose match has stopped asking would spin until the suite's
+    // own bound reported a timeout and named no case. It is a bound on silence and not on the
+    // case, because a runner plays far fewer rounds in the same time and a bound on the case cuts
+    // a match that is still going, then reports it as one that stopped -- the arm Release cell of
+    // run 43478855105 read twelve throws asked inside the sixty seconds this used to allow, all
+    // of them answered, with a second order offered and unanswered when the case gave up. Sixty
+    // seconds of silence is clear of what it guards -- the slowest of those six runs above took
+    // 3.3 s for a whole case -- and a match that keeps asking restarts the clock on every ask, so
+    // this figure bounds one stretch of silence and nothing that adds up over a case.
     readonly property int watchdogDeadlineMs: 60000
 
     function cleanup() {
