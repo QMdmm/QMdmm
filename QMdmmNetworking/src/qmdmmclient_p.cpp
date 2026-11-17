@@ -1176,7 +1176,13 @@ void ClientP::pongDeadlinePassed()
     // heartbeat sends a ping on the way back and the deadline runs out right behind it, before
     // anything could have answered. Reporting that as "the server stopped answering" is a wrong
     // answer to the one question this path exists to answer, and the error string is all a reader
-    // gets to tell them apart.
+    // gets to tell them apart. A modal dialog and a long synchronous call hold wherever the
+    // process itself keeps running, because the clock the window is read off advances through
+    // them either way. A suspended machine is the one whose answer depends on that clock: whether
+    // it runs while the machine is suspended is a property of the platform's implementation, and
+    // it has not been measured here. Where it runs, the window comes back overdue as described;
+    // where it stops, a window opened before the suspension comes back younger than the absence,
+    // and this path is not reached at all.
     //
     // So the window is judged only once one of its pings has had a whole heartbeat interval to be
     // answered in. One that has not is a client that never really asked: it gets another window
