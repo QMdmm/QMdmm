@@ -1587,10 +1587,10 @@ void tst_QMdmmServer::logLevel_isAcceptedButNotPartOfTheConfiguration()
 // arrives too late for. The transport error is exactly that: qCritical() from the run itself,
 // on the way out of a listen it could not make.
 //
-// Three readings of that one line. With nothing asked for, the terminal is told none of it --
+// The readings of that one line. With nothing asked for, the terminal is told none of it --
 // what it has is the reason the run writes to stderr by hand, which is not the logging path --
 // and the file the run opened holds the line. With --log-level critical the same line reaches
-// the terminal too. A level that never arrived would leave all three on the quiet side except
+// the terminal too. A level that never arrived would leave all of them on the quiet side except
 // the stderr line, and the reading about the file would still pass; the loud half is the one
 // that holds the wiring, and the quiet half is what keeps the loud one from passing on a run
 // that talks whatever it was asked for.
