@@ -1445,28 +1445,48 @@ void tst_QMdmmServer::unknownPunishHpRoundStrategy_isRejected()
 // compiling and every case here green while the page had become a lie.
 //
 // What a row reads is the value the run resolves to, not that it exited zero: a run that fell back
-// to the default would exit zero as well. PlusOne is read off instead of the default
-// RoundToNearest45, and a run given no rule prints no rule at all, so the value cannot come from
-// the defaults either. The first row is the page's own spelling, so a row that disagrees says
-// whether the option stopped being read or only stopped being read in that case.
+// to the default would exit zero as well. A run given no rule prints no rule at all, so the value
+// cannot come from the defaults either, and each row asks for the number the enumeration gives its
+// own name -- so a renumbering moves the row with it instead of failing here for a reason that has
+// nothing to do with the parser.
+//
+// The rows are the enumeration's own names, so every name the parser takes has a reader: the table
+// that parser searches is a third hand-written copy of the same list, and a name dropped from it
+// left the page, the enumeration and this suite agreeing with one another and disagreeing with the
+// run. The rows below the loop are the casing family, which PlusOne carried on its own; the first
+// of them is the page's own spelling, so a row that disagrees says whether the option stopped being
+// read at all or only stopped being read in that case.
 void tst_QMdmmServer::punishHpRoundStrategySpellings_reachThePrintedConfiguration_data()
 {
     QTest::addColumn<QString>("spelling");
+    QTest::addColumn<int>("printed");
 
-    QTest::newRow("as the page spells it") << u"PlusOne"_s;
-    QTest::newRow("lower case") << u"plusone"_s;
-    QTest::newRow("mixed case") << u"PlUsOnE"_s;
+    const QMetaEnum rounding = QMetaEnum::fromType<QMdmmCore::LogicConfiguration::PunishHpRoundStrategy>();
+
+    for (int i = 0; i < rounding.keyCount(); ++i) {
+        const QString name = QString::fromLatin1(rounding.key(i));
+        QTest::newRow(qPrintable(name)) << name << rounding.keyToValue(rounding.key(i));
+    }
+
+    // -1 for a name the enumeration no longer carries, and no run prints a negative, so a renamed
+    // value turns these rows red rather than letting them compare against the wrong number.
+    const int plusOne = rounding.keyToValue("PlusOne");
+    QTest::newRow("as the page spells it") << u"PlusOne"_s << plusOne;
+    QTest::newRow("lower case") << u"plusone"_s << plusOne;
+    QTest::newRow("mixed case") << u"PlUsOnE"_s << plusOne;
 }
 
 void tst_QMdmmServer::punishHpRoundStrategySpellings_reachThePrintedConfiguration()
 {
     QFETCH(QString, spelling);
+    QFETCH(int, printed);
 
     const RunResult result = runServer({u"-R"_s, spelling, u"-d"_s});
 
     QVERIFY(result.exitStatus == QProcess::NormalExit);
     QCOMPARE(result.exitCode, 0);
-    QVERIFY2(result.standardOutput.contains(u"\"punishHpRoundStrategy\": 3"_s), qPrintable(u"-R "_s + spelling + u" printed: "_s + result.standardOutput));
+    QVERIFY2(result.standardOutput.contains(u"\"punishHpRoundStrategy\": "_s + QString::number(printed)),
+             qPrintable(u"-R "_s + spelling + u" printed: "_s + result.standardOutput));
 }
 
 // A word that names no option is left over as a positional argument. The run then has
