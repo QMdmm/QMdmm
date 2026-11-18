@@ -439,6 +439,47 @@ QStringList registeredLongOptions(const QString &source)
     return ret;
 }
 
+// The usage text config.cpp prints, as the raw string literal it is written as: everything between
+// the delimiter that opens it and the one that closes it.
+//
+// This is the copy of the option list a user reads before a run, and it is the fourth hand-written
+// copy in that file -- the registrations, the stored keys, the page, and this. The three readings
+// beside this one reach the first three; the usage text had no reader at all, so a row it drops or
+// a registration nobody printed went unnoticed by every case here while the program told a reader
+// it took an option it turns down, or the other way round.
+QString usageTextOf(const QString &source)
+{
+    static const QRegularExpression literal(u"uR\"help\\((.*?)\\)help\"_s"_s, QRegularExpression::DotMatchesEverythingOption);
+
+    return literal.match(source).captured(1);
+}
+
+// The long names the usage text offers a run, in file order: the option list of each row, and
+// nothing of the description that follows it.
+//
+// A row spells its names at the left margin and then a run of spaces before its description, so the
+// reading stops at that run. Descriptions name options of their own -- the shorthand row sends a
+// reader to `--players`, the closing prose to `--slash` and `--maximum-slash` -- and those are not
+// what their row offers. A wrapped description continues far enough in that the row check below
+// does not see it, so the names it spells stay with the row above rather than becoming rows.
+QStringList usageLongOptions(const QString &usage)
+{
+    static const QRegularExpression longOption(u"--([A-Za-z0-9-]+)"_s);
+
+    QStringList ret;
+    const QStringList lines = usage.split(u'\n');
+    for (const QString &line : lines) {
+        if (!line.startsWith(u"  -"_s))
+            continue;
+        const qsizetype description = line.indexOf(u"  "_s, 3);
+        const QString names = description < 0 ? line : line.left(description);
+        QRegularExpressionMatchIterator spelled = longOption.globalMatch(names);
+        while (spelled.hasNext())
+            ret.append(spelled.next().captured(1));
+    }
+    return ret;
+}
+
 // The stored face of ServerConfiguration: one row per key, naming the property the run prints, the
 // key the configuration file holds and a value that differs from the default so that a reading
 // says which source won. A value is spelled twice because the two faces spell it differently -- the
@@ -781,8 +822,12 @@ void tst_QMdmmServer::freeShortOptions_areTheOnesNoOptionClaims()
 // option that is neither a stored setting nor a rule belongs to nothing. The help pair, the preset,
 // the ones that save or print a configuration and the log level are exactly those.
 //
-// Both halves are read as text, config.cpp the way the free-slot case above reads it and the page
-// the way the `documented...` cases below read it, since neither is linked into this target and the
+// The usage text is read on the same terms and held to the same registrations: it is the copy a
+// user meets first, it is written by hand as well, and until this reading it had no reader -- so a
+// row could go missing, or an option could be registered and never printed, with everything green.
+//
+// All three are read as text, config.cpp the way the free-slot case above reads it and the page the
+// way the `documented...` cases below read it, since neither is linked into this target and the
 // page is not a build input.
 void tst_QMdmmServer::documentedOptions_areTheRegisteredOnes()
 {
@@ -824,6 +869,21 @@ void tst_QMdmmServer::documentedOptions_areTheRegisteredOnes()
     QString message = u"the documented options and the registered ones disagree -- documented but not registered: ["_s + sortedWords(documentedOptions - registered);
     message += u"]; registered but not documented: ["_s + sortedWords(registered - documentedOptions) + u"]"_s;
     QVERIFY2(documentedOptions == registered, qPrintable(message));
+
+    // The third copy: what the usage text offers. Both directions are held here, so a row that
+    // outlives its registration is named as loudly as a registration whose row was never written.
+    const QString usage = usageTextOf(text);
+    QVERIFY2(!usage.isEmpty(), "the usage text was not found in the source");
+
+    QSet<QString> printed;
+    for (const QString &option : usageLongOptions(usage))
+        printed.insert(option);
+
+    QVERIFY2(!printed.isEmpty(), "no option was read out of the usage text");
+
+    QString usageMessage = u"the usage text and the registered ones disagree -- printed but not registered: ["_s + sortedWords(printed - registered);
+    usageMessage += u"]; registered but not printed: ["_s + sortedWords(registered - printed) + u"]"_s;
+    QVERIFY2(printed == registered, qPrintable(usageMessage));
 }
 
 // -c and -C name two different destinations for one run's worth of configuration,
