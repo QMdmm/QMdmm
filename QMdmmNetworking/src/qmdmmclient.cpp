@@ -222,8 +222,10 @@ bool Client::isConnected() const
  * The server answers @c NotifyPingServer by echoing its timestamp back unchanged, so this is a
  * measurement taken with this client's own clock alone -- no clock on the other side takes part.
  * The reading is the latest one; it is cleared when the connection goes away, and it stays @c -1
- * for a server that never answers at all, which is what ends that connection instead (three ping
- * intervals without a pong, reported through @c socketConnectionLost()).
+ * for a server that never answers at all, which is what ends that connection instead: a pong
+ * deadline restarts with every pong, a window whose pings never had a whole interval to be
+ * answered in gets another one rather than a verdict, and so a silent peer is dropped one
+ * deadline late at worst (reported through @c socketConnectionLost()).
  */
 qint64 Client::roundTripTime() const
 {
