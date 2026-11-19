@@ -72,20 +72,23 @@ bool saidSomethingWentWrong(const QByteArray &standardError)
 // asks the program how much it had taken in and compares that with this.
 constexpr qsizetype heldAnswerSize = static_cast<qsizetype>(1024) * 1024;
 
-// How long the run in answerThatNeverEnds_exitsOneWithinTheDeadline() is given before it reads as one
-// that restarted its clock on every read rather than keeping one over the exchange.
+// How long the run in answerThatNeverEnds_exitsOneWithinTheDeadline() may go on after the last byte
+// the stand-in plane sends, before the case reads it as one that restarted its clock on every read
+// rather than keeping one over the exchange.
 //
 // This is not a claim about how fast a machine is: the two endings are seconds apart -- a run with
-// one clock gives up about five seconds in, and one that restarted the clock on the byte written at
-// four and a half goes on to about nine and a half -- so the bound sits in that gap. What the room
-// above the five buys is the part of the elapsed time that is not the program's own waiting:
-// starting it and connecting to the stand-in plane.
+// one clock over the exchange gives up half a second past that byte, and one that restarted its
+// clock on it goes on for another five -- so the bound sits in that gap. Measured from the byte,
+// what it covers is the program's own wait plus the way out of it; the launch and the connect are
+// behind the byte and do not enter, which is what the older reading taken from the start of the run
+// could not say.
 //
-// Readings: on the machine this was written on the case ends at 5.03 s (junit time="5.032",
-// 2026-11-11). The figure published for the suite that holds it is 10.36 s in the slowest cell of
-// run 42679855189 (windows Debug; the Linux cells read 5.32 and 5.34), and this case accounts for
-// no less than the five seconds it holds an answer out of.
-constexpr int giveUpDeadlineMs = 8000;
+// Readings: on the machine this was written on the run ends 506 ms past the byte at worst of nine
+// runs (500 to 506, 2026-11-20). No per-case figure is published for a CI runner -- the slowest
+// cell of run 42679855189 (windows Debug) reads 10.36 s for the whole suite it belongs to -- so
+// 2500 ms is an estimate: several times the local reading, and half of the five seconds of restarted
+// clock it has to stay inside.
+constexpr int giveUpAfterTheLastByteMs = 2500;
 
 // How much of an answer the program says it had taken in when it gave up, read out of the reason it
 // wrote. Nothing else a caller can see carries that number: the streams say a run failed and why,
@@ -143,6 +146,21 @@ quint16 freePort()
     reservation.close();
     return port;
 }
+
+// How long the run is given to knock on a stand-in plane before a case reads it as one that never
+// started.
+//
+// The knock is the first thing the run does, and every case that stands a plane in place waits for
+// it before it can say anything about an answer, so this is the one wait in the file that covers the
+// program starting. It is a fallback rather than a reading of how slow a machine may be: what it has to survive is a
+// run being loaded and reaching a loopback port, which no cell has taken anywhere near this long to
+// do, and what it has to prevent is a case that hangs instead of failing.
+//
+// Readings: on the machine this was written on the knock arrives in well under a second. No
+// per-case figure is published for a CI runner -- the slowest cell of run 42679855189 (windows
+// Debug) reads 10.36 s for the whole suite that holds most of these cases -- so fifteen seconds is
+// an estimate, well over ten times the local reading.
+constexpr int theRunKnocksWithinMs = 15000;
 
 // A stand-in for the control plane: it answers one connection with the bytes a case hands it.
 //
@@ -420,12 +438,9 @@ void tst_QMdmmCtl::answerThatNeverEnds_exitsOneWithinTheDeadline()
 {
     StandInPlane plane;
 
-    QElapsedTimer elapsed;
-    elapsed.start();
-
     QProcess process;
     startCtlAgainst(process, plane.port());
-    QTcpSocket *connection = plane.accept(15000);
+    QTcpSocket *connection = plane.accept(theRunKnocksWithinMs);
 
     // A byte that arrives half a second inside the deadline, and nothing after it: a run that
     // restarted its clock on every read would wait another full five seconds for the next one,
@@ -434,6 +449,15 @@ void tst_QMdmmCtl::answerThatNeverEnds_exitsOneWithinTheDeadline()
     connection->write("H");
     connection->flush();
 
+    // Timed from the byte rather than from the launch: the two endings this case tells apart are
+    // half a second and five seconds past it, and what precedes it -- starting the program and
+    // connecting to the stand-in plane -- is time no reading of this program's clock can be about.
+    QElapsedTimer sinceTheByte;
+    sinceTheByte.start();
+
+    // At most five seconds of the run's own deadline are left at this point, and four and a half of
+    // them are already gone, so fifteen is a fallback for collecting a child that did not end rather
+    // than a reading of how slow a machine may be.
     if (!process.waitForFinished(15000))
         qFatal("the run outlived its own deadline");
 
@@ -445,8 +469,8 @@ void tst_QMdmmCtl::answerThatNeverEnds_exitsOneWithinTheDeadline()
 
     // And what bounded it was the deadline over the exchange: restarting the five seconds on every
     // read would have put the end of this run five seconds past that byte rather than half a second
-    // past it, and giveUpDeadlineMs is set between those two endings.
-    QVERIFY2(elapsed.elapsed() < giveUpDeadlineMs, qPrintable(u"the run took %1 ms to give up"_s.arg(elapsed.elapsed())));
+    // past it, and giveUpAfterTheLastByteMs is set between those two endings.
+    QVERIFY2(sinceTheByte.elapsed() < giveUpAfterTheLastByteMs, qPrintable(u"the run went on for %1 ms past the last byte"_s.arg(sinceTheByte.elapsed())));
 }
 
 // An answer that keeps growing is a peer that is sending rather than answering. The deadline alone
@@ -458,7 +482,7 @@ void tst_QMdmmCtl::answerThatKeepsGrowing_isGivenUpOn()
 
     QProcess process;
     startCtlAgainst(process, plane.port());
-    QTcpSocket *connection = plane.accept(15000);
+    QTcpSocket *connection = plane.accept(theRunKnocksWithinMs);
 
     // Well-formed headers, and a body the declared length never contradicts: past the snapshot, the
     // only thing wrong with this answer is how much of it there is.
@@ -507,7 +531,7 @@ void tst_QMdmmCtl::anAnswerPastTheBound_isGivenUpOnWithoutAGuess()
 
     QProcess process;
     startCtlAgainst(process, plane.port());
-    QTcpSocket *connection = plane.accept(15000);
+    QTcpSocket *connection = plane.accept(theRunKnocksWithinMs);
 
     // Honest headers and an honest length: this answer is complete on its own terms, and bigger
     // than the program holds.
@@ -553,7 +577,7 @@ void tst_QMdmmCtl::answersThatAreNotTheSnapshot_exitOne()
 
     QProcess process;
     startCtlAgainst(process, plane.port());
-    QTcpSocket *connection = plane.accept(15000);
+    QTcpSocket *connection = plane.accept(theRunKnocksWithinMs);
 
     // Answered and closed the way the plane itself ends a connection: what these cases are about is
     // the content of the answer, not whether one arrived.
@@ -592,7 +616,7 @@ void tst_QMdmmCtl::answersThatStopShortOfTheSnapshot_exitOne()
 
     QProcess process;
     startCtlAgainst(process, plane.port());
-    QTcpSocket *connection = plane.accept(15000);
+    QTcpSocket *connection = plane.accept(theRunKnocksWithinMs);
 
     answerAndClose(connection, answer);
 
