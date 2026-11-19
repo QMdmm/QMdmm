@@ -442,11 +442,11 @@ QStringList registeredLongOptions(const QString &source)
 // The usage text config.cpp prints, as the raw string literal it is written as: everything between
 // the delimiter that opens it and the one that closes it.
 //
-// This is the copy of the option list a user reads before a run, and it is the fourth hand-written
-// copy in that file -- the registrations, the stored keys, the page, and this. The three readings
-// beside this one reach the first three; the usage text had no reader at all, so a row it drops or
-// a registration nobody printed went unnoticed by every case here while the program told a reader
-// it took an option it turns down, or the other way round.
+// This is the copy of the option list a user reads before a run, and it is one of the hand-written
+// copies of that list -- the registrations, the stored keys, the page, and this. The readings
+// beside this one reach the others; the usage text had no reader at all, so a row it drops or a
+// registration nobody printed went unnoticed by every case here while the program told a reader it
+// took an option it turns down, or the other way round.
 QString usageTextOf(const QString &source)
 {
     static const QRegularExpression literal(u"uR\"help\\((.*?)\\)help\"_s"_s, QRegularExpression::DotMatchesEverythingOption);
@@ -870,8 +870,9 @@ void tst_QMdmmServer::documentedOptions_areTheRegisteredOnes()
     message += u"]; registered but not documented: ["_s + sortedWords(registered - documentedOptions) + u"]"_s;
     QVERIFY2(documentedOptions == registered, qPrintable(message));
 
-    // The third copy: what the usage text offers. Both directions are held here, so a row that
-    // outlives its registration is named as loudly as a registration whose row was never written.
+    // The copy this case reads: what the usage text offers. Both directions are held here, so a
+    // row that outlives its registration is named as loudly as a registration whose row was never
+    // written.
     const QString usage = usageTextOf(text);
     QVERIFY2(!usage.isEmpty(), "the usage text was not found in the source");
 
