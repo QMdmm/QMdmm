@@ -1451,8 +1451,8 @@ void tst_QMdmmServer::unknownPunishHpRoundStrategy_isRejected()
 // own name -- so a renumbering moves the row with it instead of failing here for a reason that has
 // nothing to do with the parser.
 //
-// The rows are the enumeration's own names, so every name the parser takes has a reader: the table
-// that parser searches is a third hand-written copy of the same list, and a name dropped from it
+// The rows are the enumeration's own names, so every name it declares has a reader: the table the
+// parser searches is one of the hand-written copies of the same list, and a name dropped from it
 // left the page, the enumeration and this suite agreeing with one another and disagreeing with the
 // run. The rows below the loop are the casing family, which PlusOne carried on its own; the first
 // of them is the page's own spelling, so a row that disagrees says whether the option stopped being
