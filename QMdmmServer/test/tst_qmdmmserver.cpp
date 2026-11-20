@@ -752,7 +752,7 @@ void tst_QMdmmServer::help_printsTheUsageAndExitsZero()
 // Both halves are read out of config.cpp as text, the way QMdmmCore's protocol case reads its
 // page: the configuration code is not linked into this target, and the table is a comment.
 //
-// The usage text is deliberately not the source of truth. It is a second, hand-written copy of
+// The usage text is deliberately not the source of truth. It is one more hand-written copy of
 // the same list, so a run can register an option and leave it out of that copy -- which is the
 // very mistake this case is here to catch -- and the copy would still agree with a stale table.
 void tst_QMdmmServer::freeShortOptions_areTheOnesNoOptionClaims()
@@ -1331,7 +1331,7 @@ void tst_QMdmmServer::documentedRuleKeys_areTheStoredOnes()
 // heard of, or stopped offering one it still takes, with every case green.
 //
 // The enumeration is the side held against the page rather than the parser's own table of names,
-// which is a third copy of the same list: what a reader of the page is owed is that the names are
+// which is another copy of the same list: what a reader of the page is owed is that the names are
 // the values, and the other `documented...` cases are held against classes for the same reason. A
 // name this case accepts and a run then turns down is a question about that copy.
 void tst_QMdmmServer::documentedRoundings_areTheEnumOnes()
