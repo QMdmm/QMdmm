@@ -320,3 +320,51 @@ Read these before touching code:
   When a stand-in rests on what a platform does, the comment names the
   platform that discriminates, so that a green in front of you says what it is
   worth.
+
+### Read the state, not a reading of it
+
+- A guard, a report or an assertion can be written in terms of something that
+  merely stands for the fact: an arrival order, a search that finds a thing by
+  shape, a clock other than the one that expires, the neighbours of a value
+  rather than the value. Each of those answers for a state that has moved,
+  and nothing about it looks wrong -- the value is there, the comparison
+  holds, and the sentence reads as if it had been checked. Read the identity
+  off the thing being judged instead.
+- The pong reading is where this family is easiest to see. Answers were taken
+  in the order they arrived (`25322a8`), so an older ping's answer landing
+  late replaced a newer reading; the reading records the stamp it came from
+  now, because that stamp is the ping's identity and not the start of a
+  measurement. The guard around it then let an equal stamp through as if it
+  were a newer measurement (`3734563`); an equal stamp is the same ping
+  answered again, so only a stamp past the recorded one replaces the reading.
+- `253475e` had the same shape one level up: the deadline concluded that
+  nothing had come back without asking whether a question had been left
+  standing. It carries the window it judges now -- the first ping sent since
+  it was armed -- and a window whose pings never had a whole interval to be
+  answered in is dropped for a fresh one instead of judged.
+- `8bbc9eb` read that window's age off the wall clock while the deadline that
+  expires is the monotonic one, so an adjusted wall clock decided whether the
+  window was young. The window is an elapsed timer now.
+- `8cad71f` is the form that reads a value beside its neighbours: one field
+  was cleared where the fields it is read alongside were cleared at every
+  departure, and that was harmless only because nothing said so. Every
+  departure clears all of them now, and the comments that counted them name
+  them instead.
+- `4452150` and `f510350` found their timers by shape -- the one timer that
+  was not single-shot, the last one whose name was not the silence deadline.
+  Each was an assertion about every timer the class owned, written at the one
+  place a reader changes one of them, and each would have gone on finding
+  something the day a second timer appeared. Each of those timers is named and
+  asked for by name now.
+- `a91ddbf` and `b2bb62e` bounded a wait by how long the case had run, and
+  reported the match as one that had stopped asking when that clock ran out.
+  The case's own clock says nothing about the match; the deadline bounds
+  silence now, and every ask clears it.
+- `27a1cb0` read an answer with whatever was buffered, so the bound was the
+  point at which the program gave up rather than one it held to while the
+  answer arrived, and the verdict on every answer past it called it one that
+  never ended. Each read takes no more than what is left of the bound, and
+  the reason reports what had arrived instead.
+- The section above on test stand-ins covers one half of this -- a stand-in
+  that behaves differently on another platform. This one covers the reading
+  itself, in production code as much as in a test.
