@@ -7,6 +7,7 @@
 #include <QMdmmPlayer>
 
 #include <QQuickWidget>
+#include <QUrl>
 #include <QtQml>
 
 using namespace Qt::StringLiterals;
@@ -35,11 +36,19 @@ MainWindow::MainWindow(const QString &serverProgram, const QString &botProgram, 
     // the local game asks for them.
     game->setProgramPaths(serverProgram, botProgram);
 
-    QQuickWidget *qw = new QQuickWidget(u"qrc:///qt/qml/QMdmm/Gui/qml/main.qml"_s, this);
+    // The source comes last. Handing it to the constructor loads the scene on the
+    // spot, and everything the scene binds to has to be in place by then: the view
+    // reads "game" and "MainWindowInstance" while it builds, so a property set
+    // afterwards is one the compiled bindings never saw -- the startup used to print
+    // a ReferenceError for every one of those reads, and a Connections element whose
+    // target is still undefined reports every handler in it as one no signal matches.
+    QQuickWidget *qw = new QQuickWidget(this);
 
     qw->setResizeMode(QQuickWidget::SizeViewToRootObject);
     qw->rootContext()->setContextProperty(u"game"_s, static_cast<QObject *>(game));
     qw->rootContext()->setContextProperty(u"MainWindowInstance"_s, static_cast<QObject *>(this));
+
+    qw->setSource(QUrl(u"qrc:///qt/qml/QMdmm/Gui/qml/main.qml"_s));
 
     setCentralWidget(qw);
 }
