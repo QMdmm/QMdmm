@@ -826,9 +826,9 @@ void tst_QMdmmServer::freeShortOptions_areTheOnesNoOptionClaims()
 // user meets first, it is written by hand as well, and until this reading it had no reader -- so a
 // row could go missing, or an option could be registered and never printed, with everything green.
 //
-// All three are read as text, config.cpp the way the free-slot case above reads it and the page the
-// way the `documented...` cases below read it, since neither is linked into this target and the
-// page is not a build input.
+// Each of those copies is read as text -- config.cpp the way the free-slot case above reads it, the
+// page the way the `documented...` cases below read it, and the usage text through `usageTextOf()`
+// above -- since none of them is linked into this target and the page is not a build input.
 void tst_QMdmmServer::documentedOptions_areTheRegisteredOnes()
 {
     QFile source(QString::fromLatin1(QMDMMSERVER_CONFIG_SOURCE));
