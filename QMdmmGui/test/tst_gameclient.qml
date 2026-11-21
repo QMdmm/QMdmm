@@ -70,6 +70,21 @@ TestCase {
         game.setProgramPaths("", "");
     }
 
+    // The places the list offers for one kind of action, in order: what the view would let a player
+    // pick, read back as the numbers the reply has to carry. The entries that name a place at all
+    // are the ones that carry a number; the rest -- resting, buying, the actions that name another
+    // player -- stand at the sentinel and are not places to go.
+    function placesOffered(options, action) {
+        var places = [];
+        for (var i = 0; i < options.length; ++i) {
+            if (options[i].action === action && options[i].place >= 0)
+                places.push(options[i].place);
+        }
+        return places.sort(function (a, b) {
+            return a - b;
+        });
+    }
+
     // Whether the strip has been told something containing `what`. A status is announced as it is
     // set and the strip keeps the last few, so a case that cares about one of them has to look at
     // what was said rather than at what happens to be showing when it looks -- and the message
@@ -299,6 +314,29 @@ TestCase {
         compare(removed.count, 1);
         compare(removed.signalArguments[0][0], joinerName);
         verify(host.agentStates[joinerName] === undefined, "the state of a player who left has to go with it");
+    }
+
+    function test_aRoomDoesNotOfferCitiesPastItsLastSeat() {
+        // The other direction: a bridge set to start local games of six still joins rooms of other
+        // sizes, and the cities it may move to are the ones in the room it is in. The cities past
+        // the last seat would be entries naming a place that room does not have, and nothing below
+        // the GUI refuses one -- a move is checked for being to a place adjacent to where the
+        // player stands, not for that place existing.
+        game.playerCount = 6;
+        game.connectOnline("QMdmmUnstartedServer", "Tester");
+        verify(bridgeDriver.fillRoom(game, 2), "the bridge has a room to fill");
+        compare(game.players.length, 2, "every seat is in the mirror");
+
+        var options = game.getActionOptions();
+        var cities = placesOffered(options, coreEnumValues.actionMove);
+        compare(cities.length, 2, "one city per seat, and no others: " + JSON.stringify(options));
+        for (var i = 0; i < cities.length; ++i)
+            compare(cities[i], i + 1);
+
+        // The moves that take a room-mate along are built from the same count, so no entry of any
+        // kind may name a place past the last seat.
+        for (var j = 0; j < options.length; ++j)
+            verify(options[j].place <= 2, "no place past the room's last seat: " + JSON.stringify(options[j]));
     }
 
     function test_aServerThatIsGoneIsReported() {
@@ -778,6 +816,24 @@ TestCase {
         compare(gameStateNames[1], "Lobby");
         compare(gameStateNames[2], "Playing");
         compare(gameStateNames[3], "GameOver");
+    }
+
+    function test_theCitiesOfferedAreTheSeatsTheRoomFills() {
+        // Which cities the list offers is a question about the room, and the room is the mirror
+        // this side holds. The count a bridge hands a local server says how many players that
+        // server is to start with, and a bridge that joined a room passed it to nobody -- it is
+        // left where a fresh bridge keeps it, below the size of the room filled here, so a list
+        // built from it would stop at that count and never name the last cities.
+        game.connectOnline("QMdmmUnstartedServer", "Tester");
+        verify(bridgeDriver.fillRoom(game, 5), "the bridge has a room to fill");
+        compare(game.players.length, 5, "every seat is in the mirror");
+        compare(game.playerCount, 3, "the size of a local game is not the size of this room");
+
+        var options = game.getActionOptions();
+        var cities = placesOffered(options, coreEnumValues.actionMove);
+        compare(cities.length, 5, "one city per seat, and no others: " + JSON.stringify(options));
+        for (var i = 0; i < cities.length; ++i)
+            compare(cities[i], i + 1);
     }
 
     function test_theEndOfTheMatchReachesTheScene() {

@@ -188,6 +188,18 @@ public:
     // never the empty one, so an empty reading means the choices did not leave the bridge.
     Q_INVOKABLE QVariantList replyToUpgradeChoices(QObject *bridge, const QVariantList &items) const;
 
+    // Fill the bridge's room mirror with a room of `seats` seats, as a server would have it by the
+    // time it asks this side to act: one player per seat, each in the city its seat names, and this
+    // side standing in the Village -- where every city is a place it may move to, so the list a case
+    // reads is one entry per city in the room. False when the bridge has no room to fill.
+    //
+    // The cases need rooms of sizes the bridge never asked for: the count it hands to a local server
+    // says how many players that server is to start with, and a joined room has a size of its own.
+    // Reaching such a room through a server takes playing a match into it, so the state is written
+    // straight into the mirror here, and the live path stays where it is tested (the case in
+    // tst_gameclient.qml that reads the list off a room it filled through a server).
+    Q_INVOKABLE bool fillRoom(QObject *bridge, int seats) const;
+
 private:
     [[nodiscard]] static QMdmmNetworking::Agent *agentOf(const QObject *bridge);
 };
@@ -250,6 +262,39 @@ QVariantList QMdmmBridgeDriver::replyToUpgradeChoices(QObject *bridge, const QVa
             sent.append(static_cast<int>(item));
     }
     return sent;
+}
+
+bool QMdmmBridgeDriver::fillRoom(QObject *bridge, int seats) const
+{
+    const auto *game = qobject_cast<const QMdmmGameClient *>(bridge);
+    if (game == nullptr || seats < 1)
+        return false;
+
+    auto *client = game->findChild<QMdmmNetworking::Client *>();
+    if (client == nullptr)
+        return false;
+
+    QMdmmCore::Room *room = client->room();
+    if (room == nullptr)
+        return false;
+
+    for (int seat = 1; seat <= seats; ++seat) {
+        // This side takes the first seat; the rest are named for this fixture only, since no server
+        // is behind them to have given a name.
+        const bool isThisSide = seat == 1;
+        const QString name = isThisSide ? game->localName() : u"Seat %1"_s.arg(seat);
+        QMdmmCore::Player *player = room->addPlayer(name);
+        if (player == nullptr)
+            return false;
+
+        // Every seat is a city, and the seat a player holds is where it starts a round -- written
+        // down for every player, so the mirror looks the same to a reading that takes the seats as
+        // the players and to one that takes them as the highest seat number.
+        player->setInitialPlace(seat);
+        player->setPlace(isThisSide ? QMdmmCore::Data::Village : seat);
+    }
+
+    return true;
 }
 
 // Registers the GUI bridge type and the core data types with the QML engine so
@@ -319,12 +364,14 @@ public slots:
         // the case says nothing about where the build keeps its programs.
         engine->rootContext()->setContextProperty(u"standInBotProgram"_s, QString::fromUtf8(QMDMM_STANDIN_BOT));
 
-        // The values behind the two enums the scene names in its own branches -- the punish
-        // rounding its rules strip spells out, and the rock-paper-scissors pick its match log
-        // spells out. It is handed both as plain numbers, so the branches only hold while their
-        // numbering agrees with the core enum's, and nothing in the build says a word if it stops
-        // doing so. The case in tst_gamescene.qml is the other end of this: it feeds these in and
-        // asks the scene for the name.
+        // The values behind the core enums the QML side names or compares: the punish rounding the
+        // scene's rules strip spells out, the rock-paper-scissors pick its match log spells out,
+        // and the kind of action that is a move -- the entry a case in tst_gameclient.qml picks out
+        // of the action list to read which cities the room it is in has. The scene is handed the
+        // first two as plain numbers, so its branches only hold while their numbering agrees with
+        // the core enum's, and nothing in the build says a word if it stops doing so. The case in
+        // tst_gamescene.qml is the other end of this: it feeds these in and asks the scene for the
+        // name.
         //
         // Read here rather than written into the .qml file, because a value spelled out in QML is
         // folded into the compiled unit and the disk cache that holds it is keyed on the QML
@@ -338,6 +385,7 @@ public slots:
         coreEnumValues.insert(u"punishRoundToNearest45"_s, static_cast<int>(QMdmmCore::LogicConfiguration::RoundToNearest45));
         coreEnumValues.insert(u"punishRoundUp"_s, static_cast<int>(QMdmmCore::LogicConfiguration::RoundUp));
         coreEnumValues.insert(u"punishPlusOne"_s, static_cast<int>(QMdmmCore::LogicConfiguration::PlusOne));
+        coreEnumValues.insert(u"actionMove"_s, static_cast<int>(QMdmmCore::Data::Move));
         engine->rootContext()->setContextProperty(u"coreEnumValues"_s, coreEnumValues);
 
         // The names of the bridge's own state enum, read off its meta object here for the case in
