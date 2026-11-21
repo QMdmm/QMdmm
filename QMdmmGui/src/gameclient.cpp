@@ -3,6 +3,7 @@
 #include "gameclient.h"
 
 #include <QCoreApplication>
+#include <QDebug>
 #include <QDir>
 #include <QJsonObject>
 #include <QProcess>
@@ -459,23 +460,30 @@ void QMdmmGameClient::wireClient(QMdmmNetworking::Client *client)
         emit chatLogChanged();
     });
     // The transport's own account of a connection that was lost or refused, reported as soon as
-    // it is known: this is where the real reason ("Connection refused" and the like) arrives,
-    // while the give-up notice below only lands once the automatic reconnect has spent its
-    // retries -- and says the same generic thing whatever went wrong, so without this the user
-    // waits out the whole retry chain to be told nothing about the cause.
+    // it is known, and the give-up notice that follows it once the automatic reconnect has spent
+    // its retries. Both arrive here, and what the screen says for either is this module's own
+    // wording: what they carry is English out of somebody else's catalogue -- "Connection
+    // refused" and the like from Qt, "Reconnect failed" from the client -- and neither was ever
+    // extracted into the translations this program ships. So the reason goes to the log, where
+    // English is what a reader of a log wants and where it is still there to be looked at, and
+    // the screen gets a line that can be translated. Two lines, because the two notices say
+    // different things: one that the connection is gone, the other that it is not coming back on
+    // its own.
     //
     // Not while this bridge is running a server of its own. A local game points its client at the
     // socket in the same breath as spawning the server, so the first attempt is refused there by
-    // design and the client retries on its own (see startLocalGame): a reason shown then would be
+    // design and the client retries on its own (see startLocalGame): a line shown then would be
     // an error on the screen of a game that is starting up normally. A local game whose server
     // never comes up is still covered, by the give-up notice below.
     connect(client, &QMdmmNetworking::Client::socketConnectionLost, this, [this](const QString &errorString) {
+        qWarning("the connection to the server was lost: %s", qUtf8Printable(errorString));
         if (m_serverProcess == nullptr)
-            emit errorOccurred(errorString);
+            emit errorOccurred(tr("The server could not be reached, or the connection to it was lost"));
     });
     connect(client, &QMdmmNetworking::Client::socketErrorDisconnected, this, [this](const QString &errorString) {
-        setStatusMessage(errorString);
-        emit errorOccurred(errorString);
+        qWarning("the retries ran out: %s", qUtf8Printable(errorString));
+        setStatusMessage(tr("Disconnected"));
+        emit errorOccurred(tr("The connection to the server could not be restored"));
     });
 
     // The state map the player cards read follows one channel for every player, this one included:

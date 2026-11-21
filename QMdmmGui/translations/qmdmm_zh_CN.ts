@@ -268,43 +268,48 @@
         <translation>默认(生命)</translation>
     </message>
     <message>
-        <location filename="../qml/GameScene.qml" line="653"/>
+        <location filename="../qml/GameScene.qml" line="657"/>
         <source>Action order: %1</source>
         <translation>行动顺序：%1</translation>
     </message>
     <message>
-        <location filename="../qml/GameScene.qml" line="670"/>
+        <location filename="../qml/GameScene.qml" line="657"/>
+        <source> then </source>
+        <translation>、</translation>
+    </message>
+    <message>
+        <location filename="../qml/GameScene.qml" line="674"/>
         <source>Match started</source>
         <translation>游戏开始</translation>
     </message>
     <message>
-        <location filename="../qml/GameScene.qml" line="711"/>
+        <location filename="../qml/GameScene.qml" line="715"/>
         <source>Round over</source>
         <translation>回合结束</translation>
     </message>
     <message>
-        <location filename="../qml/GameScene.qml" line="717"/>
+        <location filename="../qml/GameScene.qml" line="721"/>
         <source>Round started</source>
         <translation>回合开始</translation>
     </message>
     <message>
-        <location filename="../qml/GameScene.qml" line="723"/>
-        <location filename="../qml/GameScene.qml" line="733"/>
+        <location filename="../qml/GameScene.qml" line="727"/>
+        <location filename="../qml/GameScene.qml" line="737"/>
         <source>%1 (%2)</source>
         <translation>%1 （%2）</translation>
     </message>
     <message>
-        <location filename="../qml/GameScene.qml" line="724"/>
+        <location filename="../qml/GameScene.qml" line="728"/>
         <source>Rock-paper-scissors: %1</source>
         <translation>石头剪刀布：%1</translation>
     </message>
     <message>
-        <location filename="../qml/GameScene.qml" line="735"/>
+        <location filename="../qml/GameScene.qml" line="739"/>
         <source>Upgrades: %1</source>
         <translation>升级：%1</translation>
     </message>
     <message>
-        <location filename="../qml/GameScene.qml" line="665"/>
+        <location filename="../qml/GameScene.qml" line="669"/>
         <source>Winner(s): </source>
         <translation>胜者: </translation>
     </message>
@@ -312,47 +317,47 @@
 <context>
     <name>PlayerCard</name>
     <message>
-        <location filename="../qml/PlayerCard.qml" line="29"/>
+        <location filename="../qml/PlayerCard.qml" line="30"/>
         <source>Online</source>
         <translation>在线</translation>
     </message>
     <message>
-        <location filename="../qml/PlayerCard.qml" line="29"/>
+        <location filename="../qml/PlayerCard.qml" line="30"/>
         <source>Offline</source>
         <translation>离线</translation>
     </message>
     <message>
-        <location filename="../qml/PlayerCard.qml" line="31"/>
+        <location filename="../qml/PlayerCard.qml" line="32"/>
         <source>Bot</source>
         <translation>电脑</translation>
     </message>
     <message>
-        <location filename="../qml/PlayerCard.qml" line="33"/>
+        <location filename="../qml/PlayerCard.qml" line="34"/>
         <source>Managed</source>
         <translation>托管</translation>
     </message>
     <message>
-        <location filename="../qml/PlayerCard.qml" line="58"/>
+        <location filename="../qml/PlayerCard.qml" line="59"/>
         <source> (you)</source>
         <translation> (你)</translation>
     </message>
     <message>
-        <location filename="../qml/PlayerCard.qml" line="151"/>
+        <location filename="../qml/PlayerCard.qml" line="153"/>
         <source>Manage</source>
         <translation>托管</translation>
     </message>
     <message>
-        <location filename="../qml/PlayerCard.qml" line="168"/>
+        <location filename="../qml/PlayerCard.qml" line="170"/>
         <source>Place: %1</source>
         <translation>位置: %1</translation>
     </message>
     <message>
-        <location filename="../qml/PlayerCard.qml" line="177"/>
+        <location filename="../qml/PlayerCard.qml" line="179"/>
         <source>Upgrade points: %1</source>
         <translation>升级点: %1</translation>
     </message>
     <message>
-        <location filename="../qml/PlayerCard.qml" line="190"/>
+        <location filename="../qml/PlayerCard.qml" line="192"/>
         <source>Out</source>
         <translation>出局</translation>
     </message>
@@ -360,12 +365,12 @@
 <context>
     <name>QMdmmGameClient</name>
     <message>
-        <location filename="../src/gameclient.cpp" line="278"/>
+        <location filename="../src/gameclient.cpp" line="366"/>
         <source>Village</source>
         <translation>城外</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="279"/>
+        <location filename="../src/gameclient.cpp" line="367"/>
         <source>City %1</source>
         <translation>城市 %1</translation>
     </message>
@@ -374,77 +379,108 @@
         <translation type="vanished">无法启动本地服务器</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="439"/>
+        <location filename="../src/gameclient.cpp" line="540"/>
         <source>The local server program was not found, so a local game cannot be started</source>
         <translation>未找到本地服务器程序，无法启动本地游戏</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="450"/>
+        <location filename="../src/gameclient.cpp" line="552"/>
         <source>Failed to start the local server</source>
         <translation>启动本地服务器失败</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="471"/>
+        <location filename="../src/gameclient.cpp" line="570"/>
         <source>Connected to local server, waiting for other players...</source>
         <translation>已连接到本地服务器，等待其他玩家加入…</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="494"/>
+        <location filename="../src/gameclient.cpp" line="599"/>
         <source>Connecting to server...</source>
         <translation>正在连接服务器…</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="501"/>
+        <location filename="../src/gameclient.cpp" line="485"/>
+        <location filename="../src/gameclient.cpp" line="606"/>
         <source>Disconnected</source>
         <translation>已断开连接</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="611"/>
+        <location filename="../src/gameclient.cpp" line="481"/>
+        <source>The server could not be reached, or the connection to it was lost</source>
+        <translation>无法连接服务器，或与服务器的连接已断开</translation>
+    </message>
+    <message>
+        <location filename="../src/gameclient.cpp" line="486"/>
+        <source>The connection to the server could not be restored</source>
+        <translation>无法恢复与服务器的连接</translation>
+    </message>
+    <message>
+        <location filename="../src/gameclient.cpp" line="513"/>
+        <source>The bot program was not found, so the seat cannot be filled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/gameclient.cpp" line="520"/>
+        <source>A bot stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/gameclient.cpp" line="523"/>
+        <source>Failed to start a bot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/gameclient.cpp" line="549"/>
+        <source>The local server stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/gameclient.cpp" line="725"/>
         <source>Do nothing / rest</source>
         <translation>不动 / 歇着</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="613"/>
+        <location filename="../src/gameclient.cpp" line="727"/>
         <source>Buy knife</source>
         <translation>买刀</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="615"/>
+        <location filename="../src/gameclient.cpp" line="729"/>
         <source>Buy horse</source>
         <translation>买马</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="623"/>
+        <location filename="../src/gameclient.cpp" line="737"/>
         <source>Move to %1</source>
         <translation>移动到 %1</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="631"/>
+        <location filename="../src/gameclient.cpp" line="745"/>
         <source>Slash %1</source>
         <translation>砍 %1</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="633"/>
+        <location filename="../src/gameclient.cpp" line="747"/>
         <source>Kick %1</source>
         <translation>踢 %1</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="638"/>
+        <location filename="../src/gameclient.cpp" line="752"/>
         <source>Move %1 to %2</source>
         <translation>拉 %1 到 %2</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="663"/>
+        <location filename="../src/gameclient.cpp" line="777"/>
         <source>Upgrade knife damage</source>
         <translation>升级刀伤</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="665"/>
+        <location filename="../src/gameclient.cpp" line="779"/>
         <source>Upgrade horse damage</source>
         <translation>升级马伤</translation>
     </message>
     <message>
-        <location filename="../src/gameclient.cpp" line="667"/>
+        <location filename="../src/gameclient.cpp" line="781"/>
         <source>Upgrade max HP</source>
         <translation>升级最大生命</translation>
     </message>
@@ -452,7 +488,7 @@
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../src/mainwindow.cpp" line="17"/>
+        <location filename="../src/mainwindow.cpp" line="18"/>
         <source>QMdmm</source>
         <translation>QMdmm</translation>
     </message>

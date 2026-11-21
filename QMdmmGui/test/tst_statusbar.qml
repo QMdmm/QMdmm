@@ -21,10 +21,10 @@ import QtTest 1.2
 // context property that tst_qmdmmgui.cpp installs the same way MainWindow does.
 //
 // What is NOT covered: the retry chain itself. A refused connection is reported twice -- the
-// transport's reason as soon as it is known, and the generic "Reconnect failed" once the
-// automatic reconnect has spent its retries (~16 s, ClientP::scheduleReconnect). The cases below
-// pin only that the reason gets through; how often the client retries in between, and when it
-// gives up, are properties of the client rather than of this strip.
+// loss as soon as the transport says so, and the give-up notice once the automatic reconnect has
+// spent its retries (~16 s, ClientP::scheduleReconnect). The cases below pin only that the first
+// of the two gets through; how often the client retries in between, and when it gives up, are
+// properties of the client rather than of this strip.
 TestCase {
     id: testCase
 
@@ -36,8 +36,8 @@ TestCase {
     }
 
     // A reason is a Text with a colour of its own (see StatusBar.qml), and finding one that way
-    // is what lets a case ask "has a reason arrived?" without knowing what the transport called
-    // it: the wording comes from the platform, not from this code.
+    // is what lets a case ask "has a reason arrived?" without reading the text: the colour is the
+    // mark of one, the wording is whatever the bridge had to say.
     function findErrorLine(root) {
         for (let i = 0; i < root.children.length; ++i) {
             const c = root.children[i];
@@ -109,20 +109,18 @@ TestCase {
     function test_theReasonForARefusedConnectionReachesTheStrip() {
         const root = makeObject("../qml/RootItem.qml", makeHost());
 
-        // A connect attempt against a port nothing listens on. The transport knows why it failed
-        // as soon as it fails and the bridge passes that on; the give-up notice that follows on
-        // the same channel takes the whole retry chain (~16 s) to arrive, so a reason on the
-        // strip well inside that window can only be the real one. Without the bridge's second
-        // channel the strip stays silent here and the user is told nothing until the generic
-        // give-up lands.
+        // A connect attempt against a port nothing listens on. The bridge reports the loss as
+        // soon as the transport says so; the give-up notice that follows on the same channel
+        // takes the whole retry chain (~16 s) to arrive, so a reason on the strip well inside
+        // that window can only be the first of the two.
         game.connectOnline("qmdmm://127.0.0.1:1", "Tester");
 
         tryVerify(function () {
             return findErrorLine(root) !== null;
         }, 5000);
 
-        // And it is the reason itself, not the give-up notice that also travels the channel.
-        verify(findErrorLine(root).text !== "Reconnect failed");
+        // And it is the loss, not the give-up notice that also travels the channel.
+        compare(findErrorLine(root).text, "The server could not be reached, or the connection to it was lost");
     }
 
     function test_theReasonIsShownAndMarkedAsAnError() {

@@ -650,7 +650,11 @@ Item {
             const names = [];
             for (let i = 0; i < keys.length; ++i)
                 names.push(game.screenName(result[keys[i]]));
-            appendMatchLog(qsTr("Action order: %1").arg(names.join(" then ")));
+            // The gap between the names is a word the reader is meant to read, so it is a
+            // translated piece of its own rather than punctuation picked here: a language that
+            // lists these differently marks the gap differently, and one that would not use a
+            // word at all writes its own separator in its place.
+            appendMatchLog(qsTr("Action order: %1").arg(names.join(qsTr(" then "))));
         }
 
         function onActionResult(playerName, action, toPlayer, toPlace) {

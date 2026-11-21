@@ -879,12 +879,12 @@ TestCase {
         tryVerify(function () {
             return errors.count > 0;
         }, 10000);
-        verify(errors.signalArguments[0][0] !== "Reconnect failed", "the transport's own reason comes first");
+        compare(errors.signalArguments[0][0], "The server could not be reached, or the connection to it was lost", "the transport's own reason comes first");
 
         tryVerify(function () {
-            return game.statusMessage === "Reconnect failed";
+            return game.statusMessage === "Disconnected";
         }, 30000);
-        compare(errors.signalArguments[errors.count - 1][0], "Reconnect failed");
+        compare(errors.signalArguments[errors.count - 1][0], "The connection to the server could not be restored");
     }
 
     function test_theOrderStillOwedAnAnswerIsTheEarliestOneWaiting() {
