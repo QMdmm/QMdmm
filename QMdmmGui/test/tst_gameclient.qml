@@ -655,7 +655,7 @@ TestCase {
                     game.replyAction(0, "", -1);
                 }
                 if (orderAsked.count > offersBefore + answeredOffers) {
-                    var offer = orderAsked.signalArguments[orderAsked.count - 1];
+                    var offer = theOrderStillOwedAnAnswer(orderAsked, offersBefore, answeredOffers);
                     if (!taken) {
                         taken = true;
                         verify(offer[0].length >= 1, "there has to be an order to pick from: " + JSON.stringify(offer));
@@ -887,6 +887,25 @@ TestCase {
         compare(errors.signalArguments[errors.count - 1][0], "Reconnect failed");
     }
 
+    function test_theOrderStillOwedAnAnswerIsTheEarliestOneWaiting() {
+        // A case that runs a whole match cannot bring two asks about on demand: the negotiation
+        // asks again only after a level throw, so when a second ask arrives is the match's own
+        // call. Which recorded ask the loop reads is the whole of the question, though, so this
+        // pins that read against a list written here -- three asks recorded, then none of them
+        // answered, one, and two, with the ask taken being the earliest still waiting each time.
+        // A loop that read the newest recorded ask would take the third one twice and leave the
+        // first standing.
+        var threeAsks = {
+            signalArguments: [["first"], ["second"], ["third"]]
+        };
+        compare(theOrderStillOwedAnAnswer(threeAsks, 0, 0)[0], "first");
+        compare(theOrderStillOwedAnAnswer(threeAsks, 0, 1)[0], "second");
+        compare(theOrderStillOwedAnAnswer(threeAsks, 0, 2)[0], "third");
+        // With one ask waiting the two readings name the same ask, which is why a match that is
+        // asked once per round never showed the difference.
+        compare(theOrderStillOwedAnAnswer(threeAsks, 2, 0)[0], "third");
+    }
+
     function test_theUpgradeChoiceGoesBackToTheAgent() {
         // The reply the overlay's selection is sent with, and the one reply that is not a single
         // pick: the numbers the scene holds are turned into upgrade items here. The case sends a
@@ -921,6 +940,17 @@ TestCase {
         compare(options[0].item, 0);
         compare(options[1].item, 1);
         compare(options[2].item, 2);
+    }
+
+    // The ask this side still owes an answer to, taken from what the negotiation has recorded so
+    // far: the earliest ask it has not answered yet. More than one can be waiting when the case
+    // that runs a match comes round -- a level throw makes the negotiation ask again -- and the
+    // newest recorded ask is the same thing only while one is waiting. Answering the newest one
+    // twice leaves the earliest one standing, and an ask left standing holds its round open for
+    // the rest of the match, which reads as a case that ran out of time rather than one that
+    // stopped answering. `asked` is what that case reads: anything carrying the recorded arguments.
+    function theOrderStillOwedAnAnswer(asked, offersBefore, answeredOffers) {
+        return asked.signalArguments[offersBefore + answeredOffers];
     }
 
     name: "GameClient"
