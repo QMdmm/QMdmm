@@ -87,8 +87,6 @@ Image {
         text: parent.text
         verticalAlignment: Text.AlignVCenter
         width: parent.width / 4 * 3
-
-        onFontInfoChanged: print(font.pixelSize, fontInfo.pixelSize)
     }
 
     MouseArea {
