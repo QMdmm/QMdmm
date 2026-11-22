@@ -265,10 +265,16 @@ jobs:
           # The flags go through CMAKE_CXX_FLAGS rather than through a build type
           # of their own because CMake passes them to the link line as well, which
           # is how the sanitizer runtimes reach the executables.
+          #
+          # Coverage instrumentation is off: what this leg reads is what the
+          # sanitizers find, and gcov's counters are a second instrument writing
+          # into the same tree. The option in the top-level CMakeLists.txt says
+          # what that costs on this kind of leg.
           cmake_args=(-B build -S QMdmm -G "Unix Makefiles"
             -DCMAKE_BUILD_TYPE=Debug
             -DBUILD_TESTING=ON
             -DQMDMM_EXPORT_PRIVATE=NO
+            -DQMDMM_CORE_COVERAGE=OFF
             -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer")
           if [ -n "${CMAKE_PREFIX_PATH:-}" ]; then
             cmake_args+=(-DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH")
@@ -492,10 +498,16 @@ jobs:
           # executables. They also have to reach every translation unit, not just
           # the one under test -- a race whose two halves are instrumented
           # differently is not a race the runtime can see.
+          #
+          # Coverage instrumentation is off, and this is the leg it matters most
+          # on: gcov increments a counter per function without atomics, so under
+          # this runtime every function two threads run at once comes back as a
+          # race. See the option in the top-level CMakeLists.txt.
           cmake -B build -S QMdmm -G "Unix Makefiles" \
             -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_TESTING=ON \
             -DQMDMM_EXPORT_PRIVATE=NO \
+            -DQMDMM_CORE_COVERAGE=OFF \
             -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer"
 
       - name: Build
@@ -747,9 +759,14 @@ jobs:
         run: |
           # BUILD_TESTING stays off: the harness is not one of the cases, so none
           # of the test frameworks are needed for it.
+          #
+          # Coverage instrumentation is off: gcov's counters are themselves a
+          # coverage signal, and libFuzzer reads feedback off the very paths they
+          # instrument. See the option in the top-level CMakeLists.txt.
           cmake -B build -S QMdmm -G "Unix Makefiles" \
             -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_TESTING=OFF \
+            -DQMDMM_CORE_COVERAGE=OFF \
             -DQMDMM_BUILD_FUZZ_TARGET=ON \
             -DCMAKE_CXX_COMPILER=clang++
 
@@ -1031,10 +1048,15 @@ jobs:
           # about the rest of the file. The header is an accelerator for the
           # compiler, not something the scan reads, so this job does without one.
           #
+          # Coverage instrumentation is off: nothing this leg runs produces a
+          # reading, so gcov's counters are work done for nobody -- and they sit
+          # in the compile database the scan reads. See the option in the
+          # top-level CMakeLists.txt.
           cmake_args=(-B build -S QMdmm -G "Unix Makefiles"
             -DCMAKE_BUILD_TYPE=Debug
             -DBUILD_TESTING=ON
             -DQMDMM_EXPORT_PRIVATE=NO
+            -DQMDMM_CORE_COVERAGE=OFF
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
             -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON)
           if [ -n "${CMAKE_PREFIX_PATH:-}" ]; then
