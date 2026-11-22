@@ -732,9 +732,11 @@ QVariantList QMdmmGameClient::actionListFor(const QMdmmCore::Player *from) const
     // read. The size handed to a local server says how many players that server is to start with,
     // which is not the size of a room this side joined: a room of five would be missing its last
     // cities, and a room of two entered from a bridge set to six would offer cities that are not
-    // there. Nobody below the GUI refuses either -- the move is checked for being to a place
-    // adjacent to where the player stands, not for the place existing. The players in the mirror
-    // are the seats, so the last city is their count.
+    // there. The engine refuses such a place on its own -- Player::canMove() and canLetMove() ask
+    // the room for the cities it has -- so the count is read here for what the screen offers, not
+    // for what the engine would accept. The players in the mirror are the seats while a game is
+    // being played: one who disconnects then keeps the seat and no removal is sent, while one who
+    // leaves before the room is full leaves the mirror and the room together.
     const int seats = static_cast<int>(m_room->players().size());
 
     const int here = from->place();

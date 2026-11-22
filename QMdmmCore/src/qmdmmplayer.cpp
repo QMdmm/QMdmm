@@ -492,14 +492,35 @@ bool Player::canKick(const Player *to) const
     return true;
 }
 
+namespace {
+
+// The places a room has are the Village and one city per seat: Room::prepareForRoundStart()
+// hands the seats out as 1..N in the order the room holds its players, and nothing else in the
+// tree names a place. A target is otherwise only checked for being adjacent to where the player
+// stands, and the Village is adjacent to every city number -- so a city past the last seat reads
+// as a legal move without this.
+bool isPlaceInTheRoom(const Room *room, int place)
+{
+    if (place == Data::Village)
+        return true;
+
+    return (place > Data::Village) && (place <= static_cast<int>(room->players().size()));
+}
+
+} // namespace
+
 /**
  * @brief If the player can move to a specific place
  * @param toPlace the target place
  * @return @c true if able, @c false if not
+ *
+ * @note the place has to be one the room has: the Village, or a city within the seats the room
+ * fills. A city past the last seat is refused even though @c Data::isPlaceAdjacent() reads it as
+ * adjacent to the Village.
  */
 bool Player::canMove(int toPlace) const
 {
-    return alive() && Data::isPlaceAdjacent(place(), toPlace);
+    return alive() && isPlaceInTheRoom(room(), toPlace) && Data::isPlaceAdjacent(place(), toPlace);
 }
 
 /**
@@ -510,11 +531,16 @@ bool Player::canMove(int toPlace) const
  *
  * @note if @c this == @c to then this function is same as @c canMove() , regardless of @ref QMdmmCore::LogicConfiguration::enableLetMove()
  *
+ * @note as with @c canMove() , the place has to be one the room has
+ *
  * @sa QMdmmCore::LogicConfiguration::enableLetMove
  */
 bool Player::canLetMove(const Player *to, int toPlace) const
 {
     Q_ASSERT(room() == to->room());
+
+    if (!isPlaceInTheRoom(room(), toPlace))
+        return false;
 
     if (this == to)
         return canMove(toPlace);

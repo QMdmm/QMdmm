@@ -319,9 +319,9 @@ TestCase {
     function test_aRoomDoesNotOfferCitiesPastItsLastSeat() {
         // The other direction: a bridge set to start local games of six still joins rooms of other
         // sizes, and the cities it may move to are the ones in the room it is in. The cities past
-        // the last seat would be entries naming a place that room does not have, and nothing below
-        // the GUI refuses one -- a move is checked for being to a place adjacent to where the
-        // player stands, not for that place existing.
+        // the last seat would be entries naming a place that room does not have; the engine refuses
+        // such a place on its own (Player::canMove() / canLetMove() ask the room for its cities),
+        // and what this case holds is that the screen does not offer one either.
         game.playerCount = 6;
         game.connectOnline("QMdmmUnstartedServer", "Tester");
         verify(bridgeDriver.fillRoom(game, 2), "the bridge has a room to fill");

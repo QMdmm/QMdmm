@@ -7,6 +7,8 @@
 #include <QSignalSpy>
 #include <QTest>
 
+#include <algorithm>
+
 using namespace Qt::StringLiterals;
 
 // NOLINTBEGIN
@@ -807,6 +809,27 @@ private slots:
 
             QVERIFY(!p1->canLetMove(p2, Data::Village));
         }
+    }
+
+    // A place is one the room has: the Village, and a city within the seats the room fills. The
+    // Village counts as adjacent to every city number, so the last city has to be read off the
+    // seats rather than off where the player stands.
+    void QMdmmPlayeraPlaceMustBeOneTheRoomHas()
+    {
+        r->prepareForRoundStart();
+
+        const int lastCity = std::max(p1->initialPlace(), p2->initialPlace());
+
+        p1->setPlace(Data::Village);
+        p2->setPlace(Data::Village);
+
+        // the last city is reachable from here, so what the two refusals below answer to is the
+        // place and not the player standing in the Village
+        QVERIFY(p1->canMove(lastCity));
+        QVERIFY(!p1->canMove(lastCity + 1));
+
+        QVERIFY(p1->canLetMove(p2, lastCity));
+        QVERIFY(!p1->canLetMove(p2, lastCity + 1));
     }
 
     void QMdmmPlayerupgradeKnifeRemainingTimes()
