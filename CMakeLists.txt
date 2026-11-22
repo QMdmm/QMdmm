@@ -114,6 +114,23 @@ if (QMDMM_BUILD_FUZZ_TARGET)
     add_link_options(-fsanitize=address)
 endif()
 
+# Gcov instrumentation, added to the Debug configuration of every target that
+# consumes QMdmmCore (QMdmmCore/CMakeLists.txt). On by default, because a Debug
+# tree is what this project's coverage report is read off and that is the shape
+# a developer builds without saying anything.
+#
+# The legs that ask what a tool finds in this tree pass it OFF in their own
+# configure step: Sanitizers, ThreadSanitizer, Fuzz and clang-tidy (ci.yml).
+# Gcov gives every function a counter and increments it without atomics, so a
+# tree built with both it and ThreadSanitizer reports a data race in
+# __gcov0.<function> on every thread that runs the same function at once -- a
+# report about the instrument rather than about this code, and the leg's own
+# reading drowns in it. The same counters feed libFuzzer's coverage feedback,
+# which is a measurement disturbed by the instrument it is measured with. A leg
+# added later that asks what a tool finds wants the same OFF; one that asks what
+# the tests do keeps the default.
+option(QMDMM_CORE_COVERAGE "Instrument Debug builds for gcov" ON)
+
 option(QMDMM_EXPORT_PRIVATE "Export private symbols, copy headers of private classes" false)
 
 # macOS has two ways of putting this project's programs on a machine, and they

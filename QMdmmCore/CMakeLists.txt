@@ -110,15 +110,17 @@ target_include_directories(QMdmmCore
               # the bare <QMdmmPlayer> through QMdmmCore6's own entry below.
               "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
-if (NOT MSVC)
-    target_compile_options(QMdmmCore
-        INTERFACE "$<$<CONFIG:Debug>:--coverage>"
-    )
-    target_link_options(QMdmmCore
-        INTERFACE "$<$<CONFIG:Debug>:--coverage>"
-    )
-else()
-    if ( ( Debug IN_LIST CMAKE_CONFIGURATION_TYPES ) OR ( CMAKE_BUILD_TYPE STREQUAL Debug ) )
+if (QMDMM_CORE_COVERAGE)
+    # See the option in the top-level CMakeLists.txt: it is where the legs that
+    # turn this off are named.
+    if (NOT MSVC)
+        target_compile_options(QMdmmCore
+            INTERFACE "$<$<CONFIG:Debug>:--coverage>"
+        )
+        target_link_options(QMdmmCore
+            INTERFACE "$<$<CONFIG:Debug>:--coverage>"
+        )
+    elseif ( ( Debug IN_LIST CMAKE_CONFIGURATION_TYPES ) OR ( CMAKE_BUILD_TYPE STREQUAL Debug ) )
         message(AUTHOR_WARNING "Coverage generation is not supported in MSVC")
     endif()
 endif()
