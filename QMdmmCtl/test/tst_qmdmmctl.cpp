@@ -457,8 +457,10 @@ void tst_QMdmmCtl::answerThatNeverEnds_exitsOneWithinTheDeadline()
 
     // At most five seconds of the run's own deadline are left at this point, and four and a half of
     // them are already gone, so fifteen is a fallback for collecting a child that did not end rather
-    // than a reading of how slow a machine may be.
-    if (!process.waitForFinished(15000))
+    // than a reading of how slow a machine may be. A child that has already gone needs no waiting,
+    // and Qt answers a wait on one with a failure rather than a success -- read the other way round,
+    // a run that ended before the byte arrived would be reported as one that outlived its deadline.
+    if (process.state() != QProcess::NotRunning && !process.waitForFinished(15000))
         qFatal("the run outlived its own deadline");
 
     QCOMPARE(process.exitStatus(), QProcess::NormalExit);
@@ -466,6 +468,13 @@ void tst_QMdmmCtl::answerThatNeverEnds_exitsOneWithinTheDeadline()
     QVERIFY2(process.readAllStandardOutput().isEmpty(), "a run that read no snapshot printed something");
     const QByteArray standardError = process.readAllStandardError();
     QVERIFY2(standardError.contains("did not finish"), qPrintable(QString::fromLocal8Bit(standardError)));
+
+    // And it gave up with that byte in hand. Everything above holds just as well for a run whose
+    // clock had already run out by the time the byte was written -- a machine slow enough that
+    // starting the program and connecting to the stand-in plane ate the rest of the deadline -- and
+    // such a run says nothing about what this case is for. The count the reason carries is what
+    // separates the two, so it is asked for by name rather than left to be inferred.
+    QCOMPARE(bytesInTheReason(standardError), qlonglong(1));
 
     // And what bounded it was the deadline over the exchange: restarting the five seconds on every
     // read would have put the end of this run five seconds past that byte rather than half a second

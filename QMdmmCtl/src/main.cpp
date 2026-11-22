@@ -159,8 +159,13 @@ QByteArray fetchSnapshot(quint16 port, QString *failure)
     // this program gives up rather than one it holds to while the answer arrives.
     //
     // The reason reports what had arrived when it gave up, because that is the only reading from
-    // outside of how much was held. It says nothing about whether the answer would have ended --
-    // this program stops reading at the bound and does not wait to find out.
+    // outside of how much was held. Over the bound it says nothing about whether the answer would
+    // have ended -- this program stops reading at the bound and does not wait to find out.
+    //
+    // The deadline branch reports the same count for a reason of its own: a run that ran out of
+    // time with a piece of the answer in hand and one that ran out before anything arrived end with
+    // the same words and the same status, so the count is what separates the two in what the caller
+    // is told.
     QByteArray answer;
     for (;;) {
         if (socket.bytesAvailable() > 0) {
@@ -182,7 +187,9 @@ QByteArray fetchSnapshot(quint16 port, QString *failure)
         // statement a moment later, and is not worth a wait of its own.
         const int left = timeLeft();
         if (left == 0 || (!socket.waitForReadyRead(left) && socket.state() != QAbstractSocket::UnconnectedState)) {
-            *failure = u"the answer from 127.0.0.1:%1 did not finish within %2 ms"_s.arg(static_cast<int>(port)).arg(answerTimeout);
+            *failure = u"the answer from 127.0.0.1:%1 did not finish within %2 ms, reached %3 bytes"_s.arg(static_cast<int>(port))
+                           .arg(answerTimeout)
+                           .arg(static_cast<qlonglong>(answer.size()));
             return {};
         }
     }
