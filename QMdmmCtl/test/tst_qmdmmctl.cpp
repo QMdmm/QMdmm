@@ -317,6 +317,12 @@ QByteArray askControlPlane(QProcess &process, quint16 port, const QByteArray &re
     return {};
 }
 
+// A run that is asked to stop ends on its own: on POSIX the request is a signal whose handler the
+// run's own poll turns into closing the listeners and exiting, a tick later; elsewhere there is no
+// such request a console run can read, so the run is killed outright. Either way the child ends on
+// its own rather than on the clock, so fifteen seconds is many times what a stop costs and owes no
+// readings of a machine -- it is a fallback for a run that has stopped stopping, and the kill on
+// the next line is what ends that one rather than leaving the suite to hang on it.
 void stopRun(QProcess &process)
 {
 #ifdef Q_OS_UNIX
