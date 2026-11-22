@@ -454,28 +454,65 @@ QString usageTextOf(const QString &source)
     return literal.match(source).captured(1);
 }
 
+// The rows of the usage text, in file order: the lines that set an option list down at the left
+// margin of the list -- two spaces, then the dash that opens the first name on the row.
+//
+// That indentation is the one thing this reading knows about a row, and so the one thing a row has
+// to get wrong to fall out of it. `rowsThatOpenWithAFlag()` counts what it leaves behind.
+QStringList usageRows(const QString &usage)
+{
+    QStringList ret;
+    const QStringList lines = usage.split(u'\n');
+    for (const QString &line : lines) {
+        if (line.startsWith(u"  -"_s))
+            ret.append(line);
+    }
+    return ret;
+}
+
 // The long names the usage text offers a run, in file order: the option list of each row, and
 // nothing of the description that follows it.
 //
 // A row spells its names at the left margin and then a run of spaces before its description, so the
 // reading stops at that run. Descriptions name options of their own -- the shorthand row sends a
 // reader to `--players`, the closing prose to `--slash` and `--maximum-slash` -- and those are not
-// what their row offers. A wrapped description continues far enough in that the row check below
+// what their row offers. A wrapped description continues far enough in that the row shape above
 // does not see it, so the names it spells stay with the row above rather than becoming rows.
-QStringList usageLongOptions(const QString &usage)
+QStringList usageLongOptions(const QStringList &rows)
 {
     static const QRegularExpression longOption(u"--([A-Za-z0-9-]+)"_s);
 
     QStringList ret;
-    const QStringList lines = usage.split(u'\n');
-    for (const QString &line : lines) {
-        if (!line.startsWith(u"  -"_s))
-            continue;
+    for (const QString &line : rows) {
         const qsizetype description = line.indexOf(u"  "_s, 3);
         const QString names = description < 0 ? line : line.left(description);
         QRegularExpressionMatchIterator spelled = longOption.globalMatch(names);
         while (spelled.hasNext())
             ret.append(spelled.next().captured(1));
+    }
+    return ret;
+}
+
+// The lines of the usage text that open with a flag, at whatever indentation: the rows it writes,
+// counted without the one shape `usageRows()` knows.
+//
+// A row indented by anything but those two spaces is a row no longer -- it leaves the rows above,
+// and the names on it leave the set the case below compares. That set would then report such an
+// option as one registered and never printed, which is a different fault from a row the reading
+// could not see; the counts are asked apart, before the set, so that the message names the shape.
+//
+// A bullet is not one of these: it sets its text off with a space after the dash, where a flag puts
+// the name it opens. A description carried onto a line of its own does not open with a flag either;
+// one that did would be counted here, which is why the case prints both numbers rather than
+// comparing them silently.
+qsizetype rowsThatOpenWithAFlag(const QString &usage)
+{
+    qsizetype ret = 0;
+    const QStringList lines = usage.split(u'\n');
+    for (const QString &line : lines) {
+        const QString trimmed = line.trimmed();
+        if (trimmed.startsWith(u'-') && trimmed.size() > 1 && trimmed.at(1) != u' ')
+            ++ret;
     }
     return ret;
 }
@@ -876,8 +913,17 @@ void tst_QMdmmServer::documentedOptions_areTheRegisteredOnes()
     const QString usage = usageTextOf(text);
     QVERIFY2(!usage.isEmpty(), "the usage text was not found in the source");
 
+    // Every row the text writes has to be one the reading saw. A row in a shape it does not know
+    // drops out of both sides below when the names it offers are also unregistered -- so, as with
+    // the registrations above, the two counts are held together before either set is compared.
+    const QStringList rows = usageRows(usage);
+    const qsizetype writtenRows = rowsThatOpenWithAFlag(usage);
+    QString rowMessage = u"the reading did not see every row the usage text writes -- lines that open with a flag: %1"_s.arg(writtenRows);
+    rowMessage += u"; rows it can read: %1"_s.arg(rows.size());
+    QVERIFY2(writtenRows == rows.size(), qPrintable(rowMessage));
+
     QSet<QString> printed;
-    for (const QString &option : usageLongOptions(usage))
+    for (const QString &option : usageLongOptions(rows))
         printed.insert(option);
 
     QVERIFY2(!printed.isEmpty(), "no option was read out of the usage text");
