@@ -924,8 +924,9 @@ TestCase {
         // runner, which stretches the chain's six attempts far past the fifteen-odd seconds the
         // backoff alone adds up to and past any window worth waiting), while a name with nothing
         // at it is refused at once everywhere. This case is about the retries and the notice,
-        // not about that. The reason that arrives first is asserted apart from the notice, the
-        // two being different channels: a looser reading would be satisfied by either.
+        // not about that. The line that arrives first is asserted apart from the give-up notice,
+        // the loss and the give-up coming through different channels: a looser reading would be
+        // satisfied by either.
         var errors = createTemporaryObject(signalSpyComponent, testCase, {
                                                target: game,
                                                signalName: "errorOccurred"
@@ -935,7 +936,7 @@ TestCase {
         tryVerify(function () {
             return errors.count > 0;
         }, 10000);
-        compare(errors.signalArguments[0][0], "The server could not be reached, or the connection to it was lost", "the transport's own reason comes first");
+        compare(errors.signalArguments[0][0], "The server could not be reached, or the connection to it was lost", "the bridge's own line for the loss comes first");
 
         tryVerify(function () {
             return game.statusMessage === "Disconnected";
