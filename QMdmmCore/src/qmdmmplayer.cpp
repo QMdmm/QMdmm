@@ -495,8 +495,8 @@ bool Player::canKick(const Player *to) const
 namespace {
 
 // The places a room has are the Village and one city per seat: Room::prepareForRoundStart()
-// hands the seats out as 1..N in the order the room holds its players, and nothing else in the
-// tree names a place. A target is otherwise only checked for being adjacent to where the player
+// hands the seats out as 1..N in the order the room holds its players, and the room has no place
+// beyond those seats. A target is otherwise only checked for being adjacent to where the player
 // stands, and the Village is adjacent to every city number -- so a city past the last seat reads
 // as a legal move without this.
 bool isPlaceInTheRoom(const Room *room, int place)

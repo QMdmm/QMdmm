@@ -823,8 +823,9 @@ private slots:
         p1->setPlace(Data::Village);
         p2->setPlace(Data::Village);
 
-        // the last city is reachable from here, so what the two refusals below answer to is the
-        // place and not the player standing in the Village
+        // the last city is reachable from here, so the refusal of a move to a city past it, and
+        // of a move that takes a room-mate there, answer to the place and not to the player
+        // standing in the Village
         QVERIFY(p1->canMove(lastCity));
         QVERIFY(!p1->canMove(lastCity + 1));
 
