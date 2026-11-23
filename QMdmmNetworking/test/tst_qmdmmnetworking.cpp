@@ -3015,6 +3015,13 @@ void tst_QMdmmNetworking::server_survivesTheCorpusInItsOwnProcess()
     // And the shape of the ending. The handler for a stop signal is installed on POSIX only, so that
     // half is read there and the run is simply killed elsewhere -- the same split as
     // tst_qmdmmserver.cpp's stop-signal case takes, which is where the contract itself lives.
+    //
+    // Fifteen seconds is not a reading of a machine. Either way the run ends on its own -- a
+    // signal whose flag the run's own poll turns into closing the listeners and exiting, a tick
+    // later, or a kill -- rather than on the clock, so the wait is many times what a stop costs and
+    // what it stands in for is a run that has stopped stopping. That one ends when this QProcess
+    // goes out of scope, which keeps a run that will not stop from becoming a suite that hangs:
+    // the bound sits well under the 120 s this case is given.
 #ifdef Q_OS_UNIX
     server.terminate();
     QVERIFY2(server.waitForFinished(15000), "the server executable did not stop on SIGTERM");
