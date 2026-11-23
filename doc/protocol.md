@@ -68,6 +68,18 @@ A client that neither replies nor refuses within the server's request timer
 period before the connection is treated as gone) is treated as gone and disconnected. A
 timeout of 0 turns that timer off: the server then waits for that client indefinitely.
 
+Neither side's state changes because a request or a reply travelled. A request asks
+one question and a reply answers that question; both are read by the Logic, and what
+a client sees of the room -- who is in it, whose turn it is, what was played -- moves
+only when a notify says so. That view is therefore reconstructible from the notify
+stream alone: a reconnecting client is caught up by replaying the round events it
+missed, and a recorded match is watched by feeding its notifies back in order.
+
+Which makes it a rule for every id added from here on, not just a description of the
+present set. A new request must not carry a state change either side is supposed to
+apply, and neither must a new reply; a change that has to travel travels as a notify.
+Requests ask, replies answer, notifies are the only thing that moves the game.
+
 ## Request ids
 
 Request payloads are described from the server's side of the wire (what the client

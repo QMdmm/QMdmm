@@ -9,6 +9,8 @@ repository and is intentionally not covered here.
 Read these before touching code:
 
 - [README](README.md) -- game rules, build/run instructions, protocol overview.
+- [doc/protocol.md](doc/protocol.md) -- the wire protocol: frames, packet types,
+  every request and notify id, and the rule that only a notify moves state.
 - [doc/architecture.md](doc/architecture.md) -- how the modules
   (`QMdmmCore` / `QMdmmNetworking` / `QMdmmBot` / `QMdmmGui` / `QMdmmServer` /
   `QMdmmCtl`) fit together.
