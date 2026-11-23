@@ -9,9 +9,9 @@ import QtQuick 6.5
 // reader: with nothing on screen saying why, a failed connect just looks like a GUI
 // that stopped responding.
 //
-// RootItem hosts it above the three scenes, because no single scene owns the message:
-// a connection is asked for from the connect scene, the outcome shows up in the game
-// scene, and a drop can happen while either is on screen.
+// RootItem hosts it above the start, connect and game scenes, because no single scene owns
+// the message: a connection is asked for from the connect scene, the outcome shows up in
+// the game scene, and a drop can happen in any of them.
 Item {
     id: statusBar
 

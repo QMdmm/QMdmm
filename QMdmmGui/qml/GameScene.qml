@@ -129,8 +129,8 @@ Item {
         return qsTr("This throw is for action order %1 (contested by %2)").arg(rpsOrder).arg(players);
     }
 
-    // A "<what>: <initial> (up to <maximum>)" rule, for the three damage / HP
-    // pairs the configuration carries.
+    // A "<what>: <initial> (up to <maximum>)" rule, for the damage / HP pairs the
+    // configuration carries: knife damage, horse damage and max HP.
     function ruleRange(label, from, to) {
         return qsTr("%1: %2 (up to %3)").arg(label).arg(from).arg(to);
     }

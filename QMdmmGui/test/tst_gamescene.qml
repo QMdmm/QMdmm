@@ -302,14 +302,15 @@ TestCase {
     function test_theNamesTheSceneShowsAreTheCoreEnumsOwnValues() {
         const scene = makeScene();
 
-        // The scene names two enums it is handed as plain numbers: the punish rounding the rules
+        // The scene names the enums it is handed as plain numbers: the punish rounding the rules
         // strip spells out, and the rock-paper-scissors pick the match log spells out. Both
         // numberings live in QMdmmCore, and the scene writes them down a second time in its own
-        // branches -- so the names hold only while the two agree. The values below are the core
-        // enum's own, handed in by the fixture, which makes this case the one place the two meet:
-        // move a value in the enum and the scene is asked for a name it has no branch for. The
-        // cases above reach these branches through the broadcast map, but none of them can notice
-        // a renumbering -- the numbers they write down are the ones the branches write down too.
+        // branches -- so a name holds while the core's numbering and the scene's agree. The values
+        // below are the core enum's own, handed in by the fixture, which makes this case where the
+        // core's numbering is held against the scene's: move a value in the enum and the scene is
+        // asked for a name it has no branch for. The cases above reach these branches through the
+        // broadcast map, but a renumbering passes them by -- the numbers they write down are the
+        // ones the branches write down too.
         compare(scene.punishStrategyName(coreEnumValues.punishRoundDown), "rounded down");
         compare(scene.punishStrategyName(coreEnumValues.punishRoundToNearest45), "rounded to nearest");
         compare(scene.punishStrategyName(coreEnumValues.punishRoundUp), "rounded up");

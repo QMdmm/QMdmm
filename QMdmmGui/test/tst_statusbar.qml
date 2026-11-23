@@ -9,8 +9,9 @@ import QtTest 1.2
 // announces has to reach it through RootItem). The wiring half is not optional -- a
 // strip that renders perfectly and stays empty for the whole session is exactly the
 // state this work started from: GameClient knew the status all along and nothing read
-// it -- so the last two cases drive the bridge's own channels instead of the strip's
-// properties.
+// it -- so the cases that raise the bridge's own channels, the reported error, the
+// refused connection's reason and the announced status, do that instead of setting the
+// strip's properties.
 //
 // The cases run with a visible window and wait for a frame: what is being asserted is
 // that the line is on screen, and an item below an invisible one is not visible either

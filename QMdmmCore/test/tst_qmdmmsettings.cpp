@@ -238,10 +238,11 @@ void tst_QMdmmSettings::runtimeDataDirectoryIsResolvedAlongsideTheConfigurationD
     QCOMPARE(Global::runtimeDataDirectory(), QDir::home().absoluteFilePath(u".QMdmm/var"_s));
 }
 
-// The cases above pin where two of the three instances live; this one pins that they are
+// The cases above pin where the per-user and the global instance live; this one pins that they are
 // read at all. The lookup is a chain -- what the program set, then the user's file, then the
-// machine's -- and nothing else in the tree calls value() or contains(), so without this case
-// the whole reading half of this class would be exercised by nothing.
+// machine's -- and QMdmmServer walks it too: Config::read_ asks contains() and value() for every
+// key it knows by name, and a reader that goes through the chain cannot say which step answered,
+// which is what the readings below, moving one instance at a time, are for.
 void tst_QMdmmSettings::valueAndContainsReadEveryInstance()
 {
     Settings settings;

@@ -131,9 +131,10 @@ void QMdmmGameClient::watchChildProcess(QProcess *process, const QString &failur
     // A program a local game runs is wanted for as long as the game lasts: the server is what the
     // game is played on and the bots are what fill its seats, so one that is gone has taken the
     // floor out from under a game the view is still showing. Saying so is what the strip is for,
-    // and it is the same strip the two "not found" notices land on (see startLocalGame / addBot).
-    // A bot's share of that is one match rather than the whole game; the finished() handler below
-    // is where the two are told apart.
+    // and it is the same strip the notices that the bot or the local server program was not found
+    // land on (see startLocalGame / addBot). A bot's share of that is one match rather than the
+    // whole game; the finished() handler below is where a server's lifetime and a bot's are told
+    // apart.
     //
     // A program that never started is not watched: whoever started it reports that itself (the
     // waitForStarted right after each start()), and there is nothing left to watch. Everything
@@ -488,8 +489,9 @@ void QMdmmGameClient::wireClient(QMdmmNetworking::Client *client)
     // The state map the player cards read follows one channel for every player, this one included:
     // the state the server reports (a drop, a reconnect, the flag it applied) and the state this
     // side moves itself (see setManaged) both arrive here, the latter as it is made rather than at
-    // the next broadcast. Nothing else writes a state into the map except the two room signals
-    // above, which carry the same values at the moments a player appears or leaves.
+    // the next broadcast. The other writers are the room signals that report a player appearing or
+    // leaving -- playerAddNotified and playerRemoveNotified above -- and they carry the same values
+    // at those moments.
     connect(client, &QMdmmNetworking::Client::agentStateChanged, this, [this](const QString &playerName, const QMdmmCore::Data::AgentState &agentState) {
         m_agentStates.insert(playerName, agentState);
         emit agentStatesChanged();

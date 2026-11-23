@@ -159,12 +159,12 @@ QStringList QMdmmAgentInventory::problems() const
     return result;
 }
 
-// Drives a bridge from the far end of its wiring, for the three places where an agent call turns
-// into something the screen acts on: the request that asks a player to spend an upgrade point, the
+// Drives a bridge from the far end of its wiring, for the places where an agent call turns into
+// something the screen acts on: the request that asks a player to spend an upgrade point, the
 // notice that the match is over, and the reply that carries the choice back. The cases go through
 // this object rather than reaching the agent themselves, because the bridge keeps its client
 // private -- the client is a child of the bridge all the same (see QMdmmGameClient::connectOnline),
-// and the agent is the end those three points are wired to (see QMdmmGameClient::wireClient).
+// and the agent is the end those are wired to (see QMdmmGameClient::wireClient).
 //
 // Every call names the bridge it drives: each case builds its own, as it builds its own GameClient.
 // No server stands behind any of this -- the cases point the bridge at a socket name with nothing
@@ -349,12 +349,12 @@ public slots:
         // reachable from QML.
         engine->rootContext()->setContextProperty(u"bridgeDriver"_s, m_bridgeDriver);
 
-        // The two names a local game's ends have to agree on, for the case in tst_gameclient.qml
+        // The names a local game's ends have to agree on, for the case in tst_gameclient.qml
         // that compares them: the socket the bridge hands its own client and the bots it starts,
         // and the socket the server it starts listens on -- which is the server configuration's
-        // own default, because the server is handed no name at all. Nothing in the build ties the
-        // two together, and a game played here only finds out that they parted by a room that
-        // never fills (see that case for why it is worth saying earlier).
+        // own default, because the server is handed no name at all. Nothing in the build ties
+        // them together, and a game played here finds out that they parted by a room that never
+        // fills (see that case for why it is worth saying earlier).
         engine->rootContext()->setContextProperty(u"bridgeSocketName"_s, QMdmmGameClient::serverSocketName());
         engine->rootContext()->setContextProperty(u"serverDefaultSocketName"_s, QMdmmNetworking::ServerConfiguration::defaults().localSocketName());
 
