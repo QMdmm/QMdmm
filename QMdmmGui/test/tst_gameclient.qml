@@ -806,10 +806,11 @@ TestCase {
     function test_theBridgesOwnStateEnumIsRegistered() {
         // The bridge's state enum is only reachable by name because gameclient.h registers it
         // (Q_ENUM) -- and that registration is what a reader of the meta object gets, whether the
-        // reader is QML naming a state or anything else asking the enum for its members. Nothing
-        // else in the tree reads it, so a registration that stopped being there would take no
-        // other reading down with it. The names are read on the C++ side (the context property
-        // tst_qmdmmgui.cpp sets); spelling them out here would be the same mistake the fixture
+        // reader is QML naming a state or anything else asking the enum for its members. What
+        // reads those members is the C++ side (the gameStateNames context property
+        // tst_qmdmmgui.cpp sets), and a registration that went away would make that reading
+        // come out empty -- the comparison below would then fail on it. The names are read
+        // there rather than spelled out here; doing that would be the same mistake the fixture
         // warns about for the core enums.
         compare(gameStateNames.length, 4, "the bridge's state enum should have four states");
         compare(gameStateNames[0], "Start");
