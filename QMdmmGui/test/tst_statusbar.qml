@@ -97,6 +97,22 @@ TestCase {
                           });
     }
 
+    // The strip's height is a binding over its column (see StatusBar.qml), so before the
+    // column has placed anything it reads the margin round an empty column -- a value a case
+    // about the height must not take for the box on screen. There is no "laid out" state to
+    // read either, so ask the lines themselves: each takes a height of its own once its text
+    // has been laid out, and the strip then has to be at least as tall as the lines it holds.
+    function stripIsTallEnoughFor(strip, texts) {
+        let held = 0;
+        for (let i = 0; i < texts.length; ++i) {
+            const line = findText(strip, texts[i]);
+            if (line === null || line.height <= 0)
+                return false;
+            held += line.height;
+        }
+        return strip.height >= held;
+    }
+
     function test_theErrorTheBridgeReportsReachesTheStrip() {
         const root = makeObject("../qml/RootItem.qml", makeHost());
 
@@ -133,7 +149,8 @@ TestCase {
         strip.append("Connecting to server...", false);
         strip.append("Connection refused", true);
 
-        wait(50);
+        // The line's colour follows the flag append was given, and both are properties of the
+        // item that append created, so they are read rather than waited for.
         const line = findText(strip, "Connection refused");
         verify(line !== null, "the reason should be on the strip");
         compare(line.color, "#ff6b6b");
@@ -162,12 +179,23 @@ TestCase {
 
         for (let i = 0; i < 3; ++i)
             strip.append("line " + i, false);
-        wait(50);
+
+        // Waiting for the lines to be laid out rather than for a time: a height read before
+        // that is the margin alone, and comparing it against a laid-out box says nothing
+        // about the bound this case is here for. The layout follows the event loop turn the
+        // wait gives it, so the bound is a fallback for a tree that never lays out rather
+        // than a reading of how slow the machine is.
+        tryVerify(function () {
+            return stripIsTallEnoughFor(strip, ["line 0", "line 1", "line 2"]);
+        }, 5000);
         const boxWithThree = strip.height;
 
         for (let i = 3; i < 20; ++i)
             strip.append("line " + i, false);
-        wait(50);
+
+        tryVerify(function () {
+            return stripIsTallEnoughFor(strip, ["line 17", "line 18", "line 19"]);
+        }, 5000);
 
         compare(strip.lines.length, 3);
         compare(strip.height, boxWithThree);
@@ -180,12 +208,12 @@ TestCase {
     function test_theStripShowsNothingUntilThereIsSomethingToSay() {
         const strip = makeStrip(makeHost());
 
-        wait(50);
+        // An empty strip is not shown at all: visibility follows the lines it holds, so this
+        // is a read of the state rather than a wait for it.
         compare(strip.visible, false);
 
         strip.append("Connecting to server...", false);
 
-        wait(50);
         compare(strip.visible, true);
         verify(hasText(strip, "Connecting to server..."));
     }
