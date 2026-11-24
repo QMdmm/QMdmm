@@ -338,9 +338,9 @@ public slots:
 
         engine->rootContext()->setContextProperty(u"game"_s, m_game);
 
-        // The one case that reads the agent's signal surface instead of driving the client --
-        // see QMdmmAgentInventory above for what it checks and why it lives here rather than in
-        // a build step.
+        // The case in tst_agentsignals.qml reads the agent's signal surface instead of driving
+        // the client -- see QMdmmAgentInventory above for what it checks and why it lives here
+        // rather than in a build step.
         engine->rootContext()->setContextProperty(u"agentInventory"_s, m_agentInventory);
 
         // What drives a bridge from the far end -- see QMdmmBridgeDriver above. The cases that
@@ -352,9 +352,9 @@ public slots:
         // The names a local game's ends have to agree on, for the case in tst_gameclient.qml
         // that compares them: the socket the bridge hands its own client and the bots it starts,
         // and the socket the server it starts listens on -- which is the server configuration's
-        // own default, because the server is handed no name at all. Nothing in the build ties
-        // them together, and a game played here finds out that they parted by a room that never
-        // fills (see that case for why it is worth saying earlier).
+        // own default, because the server is handed no name at all. No build step compares
+        // them; that case is what holds them together, and a game played here finds out that they
+        // parted by a room that never fills (see it for why it is worth saying earlier).
         engine->rootContext()->setContextProperty(u"bridgeSocketName"_s, QMdmmGameClient::serverSocketName());
         engine->rootContext()->setContextProperty(u"serverDefaultSocketName"_s, QMdmmNetworking::ServerConfiguration::defaults().localSocketName());
 
@@ -369,7 +369,7 @@ public slots:
         // and the kind of action that is a move -- the entry a case in tst_gameclient.qml picks out
         // of the action list to read which cities the room it is in has. The scene is handed the
         // first two as plain numbers, so its branches only hold while their numbering agrees with
-        // the core enum's, and nothing in the build says a word if it stops doing so. The case in
+        // the core enum's; no build-time check holds the scene's numbering against it. The case in
         // tst_gamescene.qml is the other end of this: it feeds these in and asks the scene for the
         // name.
         //
@@ -391,8 +391,9 @@ public slots:
         // The names of the bridge's own state enum, read off its meta object here for the case in
         // tst_gameclient.qml. The enum is reachable at all because gameclient.h registers it
         // (Q_ENUM), and that registration is what QML would go through to name one of its states;
-        // nothing else reads it, so a registration that went away would take no other reading with
-        // it. Read here rather than spelled out in the .qml file for the reason right above.
+        // what reads those names is that case, which holds them against the names it writes down
+        // itself -- a registration that went away would take that comparison down with it. Read
+        // here rather than spelled out in the .qml file for the reason right above.
         QStringList gameStateNames;
         const QMetaEnum gameState = QMetaEnum::fromType<QMdmmGameClient::GameState>();
         for (int i = 0; i < gameState.keyCount(); ++i)
