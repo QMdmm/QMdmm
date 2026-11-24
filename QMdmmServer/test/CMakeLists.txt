@@ -76,6 +76,17 @@ target_compile_definitions(tst_qmdmmserver6 PRIVATE
     "QMDMM_COMMAND_LINE_DOC=\"${PROJECT_SOURCE_DIR}/doc/command-line.md\""
 )
 
+# The level names --log-level takes are settled in QMdmmCore's debug source and written out again
+# by hand in each program's help text. Each is read as text: the table is a function-local static
+# with no public face, and the configuration code of the programs that carry the option is not
+# linked into this target. The bot's file is named here because the copies are one fact and one
+# case holds them to the table -- a reading split across suites would be another copy of the
+# reading.
+target_compile_definitions(tst_qmdmmserver6 PRIVATE
+    "QMDMMDEBUG_SOURCE=\"${PROJECT_SOURCE_DIR}/QMdmmCore/src/qmdmmdebug.cpp\""
+    "QMDMMBOT_CONFIG_SOURCE=\"${PROJECT_SOURCE_DIR}/QMdmmBot/src/config.cpp\""
+)
+
 # The networking suite drives this executable as well: its inbound-corpus case spawns the server and
 # feeds it the same frames, which is how "the server survived the corpus" becomes a reading about a
 # process rather than about a case's own verdict (see tst_qmdmmnetworking.cpp). The two modules are

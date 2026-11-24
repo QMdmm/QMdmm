@@ -103,10 +103,10 @@ void qMdmmDebugSetConsoleLevel(LogLevel level)
  * @param value The name to read
  * @return The level @p value names, or nothing if it names none of them
  *
- * The five names are the ones @c --log-level takes, and case is not part of a name: @c Warning and
- * @c warning are the same level. This is the only place they are written down -- a program that
- * kept its own copy of them would go on refusing a name the level had gained, or go on accepting
- * one it had lost, and nothing would report the difference.
+ * The names are the ones @c --log-level takes, and case is not part of a name: @c Warning and
+ * @c warning are the same level. This table is what a program reads its level through, while the
+ * help text of each program that carries that option and the command-line page write the names out
+ * again by hand.
  */
 std::optional<LogLevel> qMdmmDebugLogLevelFromString(const QString &value)
 {

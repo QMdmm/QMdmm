@@ -517,6 +517,77 @@ qsizetype rowsThatOpenWithAFlag(const QString &usage)
     return ret;
 }
 
+// The names the level table in QMdmmCore's debug source holds, in file order: the names
+// --log-level takes, and the copy the parser itself goes by.
+//
+// The table is read out of the source text like the option list above it: QMdmmCore is linked into
+// this target, but the table is a function-local static with no public face, and what the case
+// below is about is what the tree writes down rather than what the linked code does with it.
+QStringList levelNamesInTheTable(const QString &source)
+{
+    static const QRegularExpression table(uR"table(levelHash \{(.*?)\};)table"_s, QRegularExpression::DotMatchesEverythingOption);
+    static const QRegularExpression name(uR"name(u"([A-Za-z]+)"_s)name"_s);
+
+    const QString body = table.match(source).captured(1);
+
+    QStringList ret;
+    QRegularExpressionMatchIterator spelled = name.globalMatch(body);
+    while (spelled.hasNext())
+        ret.append(spelled.next().captured(1));
+    return ret;
+}
+
+// The level names a program's own help text writes out, in file order: the rows of the "One of:"
+// block that follows its --log-level line, each row's name being the word it opens with.
+//
+// That block is written by hand -- the table above is what the program reads, so a name added there
+// and not here is one the program takes while its own help text says it does not.
+QStringList levelNamesInTheUsageText(const QString &source)
+{
+    static const QRegularExpression option(uR"option(--log-level <level>)option"_s);
+    static const QRegularExpression oneOf(uR"oneOf(One of:)oneOf"_s);
+    static const QRegularExpression row(uR"row(^ {2,}([A-Za-z]+) {2,}\S.*$)row"_s);
+
+    const qsizetype optionAt = source.indexOf(option);
+    if (optionAt < 0)
+        return {};
+
+    const qsizetype oneOfAt = source.indexOf(oneOf, optionAt);
+    if (oneOfAt < 0)
+        return {};
+
+    // The first line is the one "One of:" closes; the rows run from the line after it until one
+    // that is not shaped like them, which is the prose that follows the block.
+    const QStringList lines = source.mid(oneOfAt).split(u'\n');
+    QStringList ret;
+    for (qsizetype i = 1; i < lines.size(); ++i) {
+        const QRegularExpressionMatch match = row.match(lines.at(i));
+        if (!match.hasMatch())
+            break;
+        ret.append(match.captured(1));
+    }
+    return ret;
+}
+
+// The level names the command-line page lists, one list per section that documents the option: the
+// page carries a section per console front end, and each repeats the names in its own prose.
+QList<QStringList> levelNamesInThePage(const QString &page)
+{
+    static const QRegularExpression listed(uR"listed(the values are(.*?):)listed"_s, QRegularExpression::DotMatchesEverythingOption);
+    static const QRegularExpression name(uR"name(`([A-Za-z]+)`)name"_s);
+
+    QList<QStringList> ret;
+    QRegularExpressionMatchIterator blocks = listed.globalMatch(page);
+    while (blocks.hasNext()) {
+        QStringList names;
+        QRegularExpressionMatchIterator spelled = name.globalMatch(blocks.next().captured(1));
+        while (spelled.hasNext())
+            names.append(spelled.next().captured(1));
+        ret.append(names);
+    }
+    return ret;
+}
+
 // The stored face of ServerConfiguration: one row per key, naming the property the run prints, the
 // key the configuration file holds and a value that differs from the default so that a reading
 // says which source won. A value is spelled twice because the two faces spell it differently -- the
@@ -721,6 +792,7 @@ private slots:
     void help_printsTheUsageAndExitsZero();
     void freeShortOptions_areTheOnesNoOptionClaims();
     void documentedOptions_areTheRegisteredOnes();
+    void logLevelNames_areTheOnesEveryHandWrittenCopyNames();
     void savingToBothInstances_isRejected();
     void savingPerUserConfiguration_writesTheFileUnderHome();
     void savingPerUserConfiguration_reportsASaveThatCannotReachItsHome();
@@ -931,6 +1003,81 @@ void tst_QMdmmServer::documentedOptions_areTheRegisteredOnes()
     QString usageMessage = u"the usage text and the registered ones disagree -- printed but not registered: ["_s + sortedWords(printed - registered);
     usageMessage += u"]; registered but not printed: ["_s + sortedWords(registered - printed) + u"]"_s;
     QVERIFY2(printed == registered, qPrintable(usageMessage));
+}
+
+// The level names --log-level takes are settled in one table and written out again by hand in the
+// help text of each program that carries the option, and in a section of the command-line page per
+// such program. The table is the copy the parser goes by, so a name added to it is one the programs
+// take while their help text and the page go on offering the list they were written with -- and
+// nothing noticed: the debug source said that table was the only place the names were written down,
+// which was false from the day it was written.
+//
+// Each copy is read as text -- the configuration code of those programs is not linked into this
+// target, the table has no public face, and the page is not a build input -- and held to the table
+// in both directions, so a name that reaches one place and not the others turns this red and is
+// named.
+void tst_QMdmmServer::logLevelNames_areTheOnesEveryHandWrittenCopyNames()
+{
+    QFile debug(QString::fromLatin1(QMDMMDEBUG_SOURCE));
+    QVERIFY2(debug.open(QIODevice::ReadOnly), qPrintable(debug.fileName() + u": "_s + debug.errorString()));
+
+    const QStringList table = levelNamesInTheTable(QString::fromLocal8Bit(debug.readAll()));
+    QVERIFY2(!table.isEmpty(), "no level name was read out of the table");
+
+    QSet<QString> expected;
+    for (const QString &name : table)
+        expected.insert(name);
+
+    // The help text of each program that carries the option. The bot's file is read here rather
+    // than by its own suite because the copies are one fact: one reading holds them to the table,
+    // and another reading of the same block elsewhere would be another hand copy of the reading.
+    const struct HelpText
+    {
+        const char *path;
+        const char *what;
+    } helpTexts[] {
+        {QMDMMSERVER_CONFIG_SOURCE, "the server's help text"},
+        {QMDMMBOT_CONFIG_SOURCE, "the bot's help text"},
+    };
+
+    for (const HelpText &help : helpTexts) {
+        QFile source(QString::fromLatin1(help.path));
+        const QString what = QString::fromLatin1(help.what);
+        QVERIFY2(source.open(QIODevice::ReadOnly), qPrintable(what + u" could not be read -- "_s + source.fileName() + u": "_s + source.errorString()));
+
+        const QStringList named = levelNamesInTheUsageText(QString::fromLocal8Bit(source.readAll()));
+        QSet<QString> namedSet;
+        for (const QString &name : named)
+            namedSet.insert(name);
+
+        QString message = what + u" and the table disagree -- named there but not in the table: ["_s + sortedWords(namedSet - expected);
+        message += u"]; in the table but not named there: ["_s + sortedWords(expected - namedSet) + u"]"_s;
+        QVERIFY2(namedSet == expected, qPrintable(message));
+    }
+
+    QFile pageFile(QString::fromLatin1(QMDMM_COMMAND_LINE_DOC));
+    QVERIFY2(pageFile.open(QIODevice::ReadOnly), qPrintable(pageFile.fileName() + u": "_s + pageFile.errorString()));
+
+    const QString page = QString::fromUtf8(pageFile.readAll());
+    const QList<QStringList> lists = levelNamesInThePage(page);
+
+    // Each section that documents the option carries one list, so the sections are counted apart
+    // from the lists the reading found: a section whose prose is reshaped so that the reading no
+    // longer sees it would otherwise drop out of both sides and leave this green.
+    const qsizetype sections = page.count(u"- `--log-level <level>`"_s);
+    QString countMessage = u"the reading did not see every section that documents --log-level -- sections: %1"_s.arg(sections);
+    countMessage += u"; lists it could read: %1"_s.arg(lists.size());
+    QVERIFY2(sections == lists.size(), qPrintable(countMessage));
+
+    for (const QStringList &list : lists) {
+        QSet<QString> listed;
+        for (const QString &name : list)
+            listed.insert(name);
+
+        QString message = u"the page's list of level names and the table disagree -- listed there but not in the table: ["_s + sortedWords(listed - expected);
+        message += u"]; in the table but not listed there: ["_s + sortedWords(expected - listed) + u"]"_s;
+        QVERIFY2(listed == expected, qPrintable(message));
+    }
 }
 
 // -c and -C name two different destinations for one run's worth of configuration,
