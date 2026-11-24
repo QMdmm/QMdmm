@@ -21,11 +21,11 @@ import QtTest 1.2
 // executable, which this test does not link. They read the client through the `game`
 // context property that tst_qmdmmgui.cpp installs the same way MainWindow does.
 //
-// What is NOT covered: the retry chain itself. A refused connection is reported twice -- the
-// loss as soon as the transport says so, and the give-up notice once the automatic reconnect has
-// spent its retries (~16 s, ClientP::scheduleReconnect). The cases below pin only that the first
-// of the two gets through; how often the client retries in between, and when it gives up, are
-// properties of the client rather than of this strip.
+// What is NOT covered: the retry chain itself. The loss is reported as soon as the client hears
+// of it, and the give-up notice once the automatic reconnect has spent its retries (~16 s,
+// ClientP::scheduleReconnect). The cases below pin only that the loss notice gets through; how
+// often the client retries in between, and when it gives up, are properties of the client rather
+// than of this strip.
 TestCase {
     id: testCase
 
@@ -127,9 +127,9 @@ TestCase {
         const root = makeObject("../qml/RootItem.qml", makeHost());
 
         // A connect attempt against a port nothing listens on. The bridge reports the loss as
-        // soon as the transport says so; the give-up notice that follows on the same channel
-        // takes the whole retry chain (~16 s) to arrive, so a reason on the strip well inside
-        // that window can only be the first of the two.
+        // soon as it hears of it; the give-up notice that follows on the same channel takes the
+        // whole retry chain (~16 s) to arrive, so a reason on the strip well inside that window
+        // can only be the loss notice.
         game.connectOnline("qmdmm://127.0.0.1:1", "Tester");
 
         tryVerify(function () {
@@ -144,8 +144,8 @@ TestCase {
         const strip = makeStrip(makeHost());
 
         // The reason has to be readable as a reason and not as just another state line:
-        // which of the two it is is what tells the user whether to wait a little longer
-        // or to go and look at the server.
+        // that marking is what tells the user to wait a little longer rather than to go and
+        // look at the server.
         strip.append("Connecting to server...", false);
         strip.append("Connection refused", true);
 

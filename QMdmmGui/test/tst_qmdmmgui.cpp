@@ -368,10 +368,10 @@ public slots:
         // scene's rules strip spells out, the rock-paper-scissors pick its match log spells out,
         // and the kind of action that is a move -- the entry a case in tst_gameclient.qml picks out
         // of the action list to read which cities the room it is in has. The scene is handed the
-        // first two as plain numbers, so its branches only hold while their numbering agrees with
-        // the core enum's; no build-time check holds the scene's numbering against it. The case in
-        // tst_gamescene.qml is the other end of this: it feeds these in and asks the scene for the
-        // name.
+        // punish rounding and the pick as plain numbers, so its branches only hold while their
+        // numbering agrees with the core enum's; no build-time check holds the scene's numbering
+        // against it. The case in tst_gamescene.qml is the other end of this: it feeds these in
+        // and asks the scene for the name.
         //
         // Read here rather than written into the .qml file, because a value spelled out in QML is
         // folded into the compiled unit and the disk cache that holds it is keyed on the QML
