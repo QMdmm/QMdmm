@@ -222,19 +222,27 @@ TestCase {
         // A local game points its client at the socket in the same breath as spawning the server,
         // so the first attempt is refused and the client retries on its own (see startLocalGame).
         // That refusal is part of coming up rather than a failure to act on: reported as an error,
-        // it would sit on the strip as a red reason through a game that is running perfectly well.
+        // it would sit on the strip as a red reason through a game that is running perfectly well,
+        // and written to the log it would be the same false alarm in a place that keeps it longer.
+        // The screen and the log are read here, because the bridge keeps them to one rule.
         var errors = createTemporaryObject(signalSpyComponent, testCase, {
                                                target: game,
                                                signalName: "errorOccurred"
                                            });
 
         game.playerCount = 2;
+        logWatch.watch();
         game.startLocalGame("Tester");
 
         tryCompare(game, "gameState", "playing", 15000);
         // The refused attempt lands long before the match starts, so by here it would have been
         // reported -- while the game the user is looking at is fine.
         compare(errors.count, 0);
+        // The log keeps the same rule as the screen (see wireClient): the same refusal written there
+        // would be the same false alarm in a place that keeps it longer. Nothing read that half
+        // before; the fragment stops before the colon because the reason after it is the transport's
+        // own and differs per platform.
+        compare(logWatch.countContaining("the connection to the server was lost"), 0, "a local game coming up writes nothing about a lost connection");
         compare(game.players.length, 2);
     }
 
@@ -932,12 +940,17 @@ TestCase {
                                                target: game,
                                                signalName: "errorOccurred"
                                            });
+        logWatch.watch();
         game.connectOnline("QMdmmUnstartedServer", "Tester");
 
         tryVerify(function () {
             return errors.count > 0;
         }, 10000);
         compare(errors.signalArguments[0][0], "The server could not be reached, or the connection to it was lost", "the bridge's own line for the loss comes first");
+        // The screen's half of the loss is asserted above; this is the log's half, and it doubles as
+        // the control for the case where a local game comes up -- a watch that caught nothing would
+        // leave the zero there saying nothing about the line.
+        verify(logWatch.countContaining("the connection to the server was lost") >= 1, "the loss is written to the log as well");
 
         tryVerify(function () {
             return game.statusMessage === "Disconnected";

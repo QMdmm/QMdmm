@@ -3,6 +3,7 @@
 #include <QtQuickTest/quicktest.h>
 
 #include <QMetaEnum>
+#include <QMutex>
 #include <QQmlContext>
 #include <QSignalSpy>
 #include <QStringList>
@@ -128,6 +129,26 @@ bool hasDispositionRow(const QString &name)
     return false;
 }
 
+// What the program wrote to the log while a case was watching, for QMdmmLogWatch below. The lines
+// arrive from whichever thread raised them, so they are kept under a lock; the handler itself is
+// called on the thread that logged.
+QMutex g_logLinesMutex;
+QStringList g_logLines;
+QtMessageHandler g_replacedLogHandler = nullptr;
+
+void keepLogLine(QtMsgType type, const QMessageLogContext &context, const QString &message)
+{
+    {
+        QMutexLocker locker(&g_logLinesMutex);
+        g_logLines.append(message);
+    }
+
+    // Handed on rather than swallowed. Whatever handler was in place writes the run's own report of
+    // what each case printed, and this one is only here to keep a copy.
+    if (g_replacedLogHandler != nullptr)
+        g_replacedLogHandler(type, context, message);
+}
+
 } // namespace
 
 QStringList QMdmmAgentInventory::problems() const
@@ -158,6 +179,49 @@ QStringList QMdmmAgentInventory::problems() const
     result.sort();
     return result;
 }
+
+// Counts what the program wrote to the log, for the rule that the log and the screen say the same
+// thing about a connection that was lost (see QMdmmGameClient::wireClient). The screen's half of
+// that rule is a signal a case can spy on; the log's half is a line nobody sees, so without this it
+// is only a run by hand and a look at the terminal -- and moving the line back above the check the
+// local game relies on leaves the whole suite green.
+//
+// A fragment rather than a whole line: the line carries the transport's own reason after the colon,
+// which is English out of somebody else's catalogue and differs per platform.
+class QMdmmLogWatch : public QObject
+{
+    Q_OBJECT
+
+public:
+    using QObject::QObject;
+
+    // Start a fresh reading. Installed afresh for every case rather than once for the run: the test
+    // runner puts a handler of its own in place per case, so one kept from an earlier case would be
+    // handing lines to a handler that is no longer listening.
+    Q_INVOKABLE void watch()
+    {
+        {
+            QMutexLocker locker(&g_logLinesMutex);
+            g_logLines.clear();
+        }
+
+        const QtMessageHandler replaced = qInstallMessageHandler(&keepLogLine);
+        if (replaced != &keepLogLine)
+            g_replacedLogHandler = replaced;
+    }
+
+    Q_INVOKABLE int countContaining(const QString &fragment) const
+    {
+        QMutexLocker locker(&g_logLinesMutex);
+
+        int seen = 0;
+        for (const QString &line : g_logLines) {
+            if (line.contains(fragment))
+                ++seen;
+        }
+        return seen;
+    }
+};
 
 // Drives a bridge from the far end of its wiring, for the places where an agent call turns into
 // something the screen acts on: the request that asks a player to spend an upgrade point, the
@@ -311,6 +375,7 @@ public:
         : m_game(new QMdmmGameClient(this))
         , m_agentInventory(new QMdmmAgentInventory(this))
         , m_bridgeDriver(new QMdmmBridgeDriver(this))
+        , m_logWatch(new QMdmmLogWatch(this))
     {
         qmlRegisterUncreatableMetaObject(QMdmmCore::Data::staticMetaObject, "QMdmm.Core", 1, 0, "Data", u"Access to enums only"_s);
         qmlRegisterUncreatableType<QMdmmCore::Player>("QMdmm.Core", 1, 0, "Player", u"Player is created by the engine"_s);
@@ -348,6 +413,12 @@ public slots:
         // the client those are wired to is private to the bridge and the agent is not otherwise
         // reachable from QML.
         engine->rootContext()->setContextProperty(u"bridgeDriver"_s, m_bridgeDriver);
+
+        // What the program wrote to the log, for the cases in tst_gameclient.qml that hold the log to
+        // the same rule as the screen about a connection that was lost: the one where a local game
+        // comes up (nothing written there) and the one where a connection cannot be made (the loss
+        // written once at least). That half of the rule had no reader in a test before this.
+        engine->rootContext()->setContextProperty(u"logWatch"_s, m_logWatch);
 
         // The names a local game's ends have to agree on, for the case in tst_gameclient.qml
         // that compares them: the socket the bridge hands its own client and the bots it starts,
@@ -405,6 +476,7 @@ private:
     QMdmmGameClient *m_game = nullptr;
     QMdmmAgentInventory *m_agentInventory = nullptr;
     QMdmmBridgeDriver *m_bridgeDriver = nullptr;
+    QMdmmLogWatch *m_logWatch = nullptr;
 };
 
 // The setup object is a fixture, not a test. Qt looks up two hooks on it by name -- applicationAvailable() and
