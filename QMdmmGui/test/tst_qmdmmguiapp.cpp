@@ -26,10 +26,11 @@ struct RunResult
 
 // Runs the executable under test with @p arguments and collects what it printed.
 //
-// The run made here -- the usage -- prints and exits on its own, so a run that
-// outlives the timeout means the program stopped exiting where it is expected to:
-// it read the command line and went on to its window, which never returns. The
-// helper kills it and fails rather than reporting a result of its own.
+// The runs made here end on their own: the usage prints and exits, and a probe run leaves
+// once the window is up (see main). So a run that outlives the timeout means the program
+// stopped ending where it is expected to -- it read the command line and stayed in its
+// window, which never returns on its own. The helper kills it and fails rather than
+// reporting a result of its own.
 //
 // The platform plugin is named rather than inherited. QApplication needs one before
 // main() reaches the parser, and the cases have to run both on a machine with no
@@ -81,7 +82,10 @@ RunResult runGui(const QStringList &arguments, int timeoutMs = 60000)
 // belong to the executable, so the view comes up with nothing to load. What the case
 // pins is the window the constructor builds -- its title, its content widget and the two
 // paths it hands to the client -- while what the scenes paint is the smoke test's own
-// subject.
+// subject. What the startup has to say about the view is a reading of its own, and it is
+// taken from a run of the program: the probe switch ends such a run once the window is up
+// (see main), and the log it leaves behind is what
+// theStartup_reachesTheViewWithoutWarningsFromTheBindings reads.
 class tst_QMdmmGuiApp : public QObject
 {
     Q_OBJECT
@@ -89,6 +93,7 @@ class tst_QMdmmGuiApp : public QObject
 private slots:
     void help_printsTheUsageAndExitsZero();
     void theWindow_handsTheGivenProgramPathsToTheClient();
+    void theStartup_reachesTheViewWithoutWarningsFromTheBindings();
 };
 
 void tst_QMdmmGuiApp::help_printsTheUsageAndExitsZero()
@@ -126,6 +131,28 @@ void tst_QMdmmGuiApp::theWindow_handsTheGivenProgramPathsToTheClient()
     QVERIFY(game != nullptr);
     QCOMPARE(game->serverProgram(), serverProgram);
     QCOMPARE(game->botProgram(), botProgram);
+}
+
+// The view is handed its context properties before its source, and MainWindow's own comment
+// carries the reason: the scene binds to them while it builds, so a property set afterwards is
+// one the compiled bindings never saw. What that ordering is worth shows up on the log of a
+// run and nowhere else -- out of order, the scene says "game is not defined" once per read and
+// a line per handler in a Connections element whose target never matched a signal. The window
+// still comes up either way, so a run that reads the screen alone sees nothing wrong.
+void tst_QMdmmGuiApp::theStartup_reachesTheViewWithoutWarningsFromTheBindings()
+{
+    const RunResult result = runGui({u"--probe"_s});
+
+    QVERIFY(result.exitStatus == QProcess::NormalExit);
+    QCOMPARE(result.exitCode, 0);
+
+    // The run has to have got as far as the view. Its source is one of this program's own
+    // resources, so a URL that does not resolve is a log line of its own -- and a log without
+    // warnings then only says that nothing was built.
+    QVERIFY2(!result.standardError.contains(u"No such file or directory"_s), qPrintable(result.standardError));
+
+    QVERIFY2(!result.standardError.contains(u"ReferenceError"_s), qPrintable(result.standardError));
+    QVERIFY2(!result.standardError.contains(u"no signal of the target matches"_s), qPrintable(result.standardError));
 }
 
 QTEST_MAIN(tst_QMdmmGuiApp)
