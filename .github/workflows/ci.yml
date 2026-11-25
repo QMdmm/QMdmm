@@ -192,7 +192,7 @@ jobs:
           git init -b main
           git add -A
           git commit -m "coverage: publish gcovr HTML report for ${{ github.sha }}"
-          git remote add origin "https://x-access-token:${COVERAGE_TOKEN}@github.com/nemn9852/qmdmm-coverage.git"
+          git remote add origin "https://x-access-token:${COVERAGE_TOKEN}@github.com/QMdmm/qmdmm-coverage.git"
           git push -f origin main
 
   sanitizers:
@@ -1000,7 +1000,7 @@ jobs:
           git init -b main
           git add -A
           git commit -m "docs: publish doxygen-generated API reference for ${{ github.sha }}"
-          git remote add origin "https://x-access-token:${DOCS_TOKEN}@github.com/nemn9852/qmdmm-docs.git"
+          git remote add origin "https://x-access-token:${DOCS_TOKEN}@github.com/QMdmm/qmdmm-docs.git"
           git push -f origin main
 
   tidy:
