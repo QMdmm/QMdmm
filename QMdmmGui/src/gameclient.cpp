@@ -474,13 +474,21 @@ void QMdmmGameClient::wireClient(QMdmmNetworking::Client *client)
     // Not while this bridge is running a server of its own. A local game points its client at the
     // socket in the same breath as spawning the server, so the first attempt is refused there by
     // design and the client retries on its own (see startLocalGame): a line shown then would be
-    // an error on the screen of a game that is starting up normally. A local game whose server
-    // never comes up is still covered, by the give-up notice below.
+    // an error on the screen of a game that is starting up normally, and a line logged then would
+    // be the same false alarm in a place that keeps it longer. So the log keeps the same rule as
+    // the screen and says nothing either. A local game that really does lose its server is still
+    // reported: on the strip by this bridge's own watch of that process, and in the log by the
+    // give-up notice, which is where retries having run out is written.
     connect(client, &QMdmmNetworking::Client::socketConnectionLost, this, [this](const QString &errorString) {
+        if (m_serverProcess != nullptr)
+            return;
         qWarning("the connection to the server was lost: %s", qUtf8Printable(errorString));
-        if (m_serverProcess == nullptr)
-            emit errorOccurred(tr("The server could not be reached, or the connection to it was lost"));
+        emit errorOccurred(tr("The server could not be reached, or the connection to it was lost"));
     });
+    // This one arrives only when the automatic reconnect has given up -- it has spent its retries,
+    // or found the host unconnectable at all -- rather than on an attempt a retry may still
+    // rescue, so it is a failure whichever kind of game it is in, and it is written to the log and
+    // the screen alike, a local game included.
     connect(client, &QMdmmNetworking::Client::socketErrorDisconnected, this, [this](const QString &errorString) {
         qWarning("the retries ran out: %s", qUtf8Printable(errorString));
         setStatusMessage(tr("Disconnected"));
