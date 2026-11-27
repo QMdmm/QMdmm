@@ -103,7 +103,6 @@ Image {
                 anchors.leftMargin: 20
                 anchors.verticalCenter: parent.verticalCenter
                 height: 64
-                source: "../assets/btn.png"
                 text: "-"
                 width: 120
 
@@ -115,7 +114,6 @@ Image {
                 anchors.rightMargin: 20
                 anchors.verticalCenter: parent.verticalCenter
                 height: 64
-                source: "../assets/btn.png"
                 text: "+"
                 width: 120
 
@@ -127,7 +125,6 @@ Image {
                 anchors.bottomMargin: 12
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: 56
-                source: "../assets/btn.png"
                 text: qsTr("OK")
                 width: 160
 
@@ -179,7 +176,6 @@ Image {
                 anchors.bottomMargin: 12
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: 56
-                source: "../assets/btn.png"
                 text: qsTr("Close")
                 width: 160
 

@@ -23,7 +23,6 @@ Item {
 
             Button {
                 height: parent.height / 3
-                source: "../assets/btn.png"
                 text: qsTr("Start game")
                 width: parent.width
 
@@ -32,7 +31,6 @@ Item {
 
             Button {
                 height: parent.height / 3
-                source: "../assets/btn.png"
                 text: qsTr("Configuration")
                 width: parent.width
 
@@ -41,7 +39,6 @@ Item {
 
             Button {
                 height: parent.height / 3
-                source: "../assets/btn.png"
                 text: qsTr("About")
                 width: parent.width
 

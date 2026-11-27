@@ -218,7 +218,6 @@ Item {
             anchors.rightMargin: 16
             anchors.verticalCenter: parent.verticalCenter
             height: 44
-            source: "../assets/btn.png"
             text: qsTr("Disconnect")
             width: 120
 
@@ -408,7 +407,6 @@ Item {
 
                 Button {
                     height: 80
-                    source: "../assets/btn.png"
                     text: qsTr("Rock")
                     width: 120
 
@@ -420,7 +418,6 @@ Item {
 
                 Button {
                     height: 80
-                    source: "../assets/btn.png"
                     text: qsTr("Scissors")
                     width: 120
 
@@ -432,7 +429,6 @@ Item {
 
                 Button {
                     height: 80
-                    source: "../assets/btn.png"
                     text: qsTr("Paper")
                     width: 120
 
@@ -475,7 +471,6 @@ Item {
 
                     Button {
                         height: 56
-                        source: "../assets/btn.png"
                         text: String(modelData)
                         width: 90
 
@@ -490,7 +485,6 @@ Item {
                 Button {
                     enabled: orderRemaining === 0
                     height: 56
-                    source: "../assets/btn.png"
                     text: qsTr("Confirm order")
                     width: 200
 
@@ -502,7 +496,6 @@ Item {
 
                 Button {
                     height: 56
-                    source: "../assets/btn.png"
                     text: qsTr("Yield (auto-assign)")
                     width: 200
 
@@ -541,7 +534,6 @@ Item {
 
                     Button {
                         height: 56
-                        source: "../assets/btn.png"
                         text: modelData.label
                         width: Math.min(260, requestOverlay.width - 20)
 
@@ -577,7 +569,6 @@ Item {
 
                     Button {
                         height: 56
-                        source: "../assets/btn.png"
                         text: modelData.label
                         width: 240
 
@@ -592,7 +583,6 @@ Item {
                 Button {
                     enabled: upgradeRemaining === 0
                     height: 56
-                    source: "../assets/btn.png"
                     text: qsTr("Confirm upgrade")
                     width: 200
 
@@ -604,7 +594,6 @@ Item {
 
                 Button {
                     height: 56
-                    source: "../assets/btn.png"
                     text: qsTr("Default (HP)")
                     width: 200
 

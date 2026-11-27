@@ -24,7 +24,6 @@ set(QMDMMGUI_QML_FILES
 )
 set(QMDMMGUI_RESOURCES
     assets/1.jpg
-    assets/btn.png
     assets/horse.png
     assets/knife.png
 )

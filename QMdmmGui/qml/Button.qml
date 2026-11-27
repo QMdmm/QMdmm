@@ -2,143 +2,52 @@
 
 import QtQuick 6.5
 
-Image {
+// A push button drawn where it stands, rather than an image of one. The outline of the drawn
+// shape is the outline of the button, so the area that takes a click is the area that is on
+// screen -- the image this used to be was a pill inside a square, and it took clicks over the
+// corners that are not part of the pill.
+//
+// `enabled` is Item's own, so the dimming below is all this adds: a disabled button's mouse
+// area is disabled with it, and a press that lands on one reaches nothing.
+Rectangle {
     id: qMdmmButton
 
     property bool checkable: false
     property bool checked: false
-    property bool enabled: true
-    property font font
-    property string text
+    property alias text: label.text
 
     signal clicked
     signal doubleClicked
 
-    state: "exited"
-
-    states: [
-        State {
-            name: "exited"
-
-            PropertyChanges {
-                target: hover
-                visible: false
-            }
-        },
-        State {
-            name: "entered"
-
-            PropertyChanges {
-                target: hover
-                visible: true
-            }
-        },
-        State {
-            name: "downEntered"
-
-            PropertyChanges {
-                target: hover
-                visible: true
-            }
-        },
-        State {
-            name: "downExited"
-
-            PropertyChanges {
-                target: hover
-                visible: true
-            }
-        },
-        State {
-            name: "disabled"
-
-            PropertyChanges {
-                target: hover
-                visible: true
-            }
-        }
-    ]
-
-    onClicked: {
-        if (checkable)
-            checked = !checked;
-    }
-    onEnabledChanged: {
-        if (!enabled)
-            state = "disabled";
-        else
-            state = "exited";
-    }
-
-    Rectangle {
-        id: hover
-
-        anchors.fill: parent
-        color: Qt.rgba(1, 1, 1, .25)
-        visible: false
-    }
+    border.color: mouse.pressed || checked ? "#1d4518" : "#31682a"
+    border.width: 2
+    color: mouse.pressed ? "#2d6427" : checked ? "#3b7f32" : mouse.containsMouse ? "#67ba55" : "#529c45"
+    opacity: enabled ? 1 : 0.4
+    radius: Math.min(width, height) / 3
 
     Text {
+        id: label
+
         anchors.centerIn: parent
-        font: parent.font
+        color: "white"
         fontSizeMode: Text.Fit
         height: parent.height / 8 * 7
         horizontalAlignment: Text.AlignHCenter
-        text: parent.text
         verticalAlignment: Text.AlignVCenter
         width: parent.width / 4 * 3
     }
 
     MouseArea {
-        id: qMdmmButtonMouseArea
+        id: mouse
 
         anchors.fill: parent
         hoverEnabled: true
 
         onClicked: {
-            if (parent.enabled) {
-                parent.clicked();
-                if (!parent.checkable || !parent.checked)
-                    parent.state = "entered";
-                else
-                    parent.state = "downEntered";
-            }
+            if (checkable)
+                qMdmmButton.checked = !qMdmmButton.checked;
+            qMdmmButton.clicked();
         }
-        onDoubleClicked: {
-            if (parent.enabled) {
-                parent.doubleClicked();
-            }
-        }
-        onEntered: {
-            if (parent.enabled) {
-                if (!parent.checkable || !parent.checked)
-                    parent.state = "entered";
-                else
-                    parent.state = "downEntered";
-            }
-        }
-        onExited: {
-            if (parent.enabled) {
-                if (!parent.checkable || !parent.checked)
-                    parent.state = "exited";
-                else
-                    parent.state = "downExited";
-            }
-        }
-        onPressed: {
-            if (parent.enabled) {
-                parent.state = "downEntered";
-            } else {
-                mouse.accepted = false;
-            }
-        }
-        onReleased: {
-            if (parent.enabled) {
-                if (!parent.checkable || !parent.checked)
-                    parent.state = "entered";
-                else
-                    parent.state = "downEntered";
-            }
-        }
+        onDoubleClicked: qMdmmButton.doubleClicked()
     }
 }

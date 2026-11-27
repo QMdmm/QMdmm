@@ -100,7 +100,6 @@ Item {
             anchors.top: nameBox.bottom
             anchors.topMargin: 56
             height: 48
-            source: "../assets/btn.png"
             text: "-"
             width: 48
 
@@ -113,7 +112,6 @@ Item {
             anchors.top: nameBox.bottom
             anchors.topMargin: 56
             height: 48
-            source: "../assets/btn.png"
             text: "+"
             width: 48
 
@@ -126,7 +124,6 @@ Item {
             anchors.top: nameBox.bottom
             anchors.topMargin: 52
             height: 56
-            source: "../assets/btn.png"
             text: qsTr("Start local game")
             width: 220
 
@@ -174,7 +171,6 @@ Item {
             anchors.top: parent.top
             anchors.topMargin: 328
             height: 56
-            source: "../assets/btn.png"
             text: qsTr("Connect")
             width: 180
 
@@ -187,7 +183,6 @@ Item {
             anchors.left: parent.left
             anchors.leftMargin: 60
             height: 48
-            source: "../assets/btn.png"
             text: qsTr("Back")
             width: 120
 
