@@ -64,6 +64,8 @@ a running `QMdmmServer` over TCP or WebSocket.
 
 ## Documentation
 
+- [Rules](doc/rules.md) — how a game is played: the places, the actions, what a
+  slash costs, how a round runs, and what wins.
 - [Architecture](doc/architecture.md) — how the modules fit together, and how
   a round actually runs.
 - [Concepts](doc/concepts.md) — what each library is for, how the two meet, and

@@ -51,6 +51,7 @@ if (DOXYGEN_FOUND)
         concepts.md
         getting-started.md
         protocol.md
+        rules.md
         ALL
         USE_STAMP_FILE
     )
