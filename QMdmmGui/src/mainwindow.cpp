@@ -14,6 +14,7 @@ using namespace Qt::StringLiterals;
 
 MainWindow::MainWindow(const QString &serverProgram, const QString &botProgram, QWidget *parent)
     : QMainWindow(parent)
+    , m_view(nullptr)
 {
     setWindowTitle(QObject::tr("QMdmm"));
 
@@ -43,6 +44,7 @@ MainWindow::MainWindow(const QString &serverProgram, const QString &botProgram, 
     // a ReferenceError for every one of those reads, and a Connections element whose
     // target is still undefined reports every handler in it as one no signal matches.
     QQuickWidget *qw = new QQuickWidget(this);
+    m_view = qw;
 
     qw->setResizeMode(QQuickWidget::SizeViewToRootObject);
     qw->rootContext()->setContextProperty(u"game"_s, static_cast<QObject *>(game));
@@ -51,4 +53,18 @@ MainWindow::MainWindow(const QString &serverProgram, const QString &botProgram, 
     qw->setSource(QUrl(u"qrc:///qt/qml/QMdmm/Gui/qml/main.qml"_s));
 
     setCentralWidget(qw);
+}
+
+// The scene reads "game" through the context property, and the game client is a child of
+// this window, so the two are taken down together at the end of a run. Children go in the
+// order they were added and the client is the older one: left alone, the object every
+// binding in the scene reads is destroyed while the bindings are still there, each of them
+// re-evaluates against a null context property, and a run that otherwise ended quietly
+// printed a TypeError for every binding the scene still held. Taking the view down first
+// destroys those bindings while the object they read is still in place, so the teardown says
+// nothing.
+MainWindow::~MainWindow()
+{
+    delete m_view;
+    m_view = nullptr;
 }

@@ -139,6 +139,10 @@ void tst_QMdmmGuiApp::theWindow_handsTheGivenProgramPathsToTheClient()
 // run and nowhere else -- out of order, the scene says "game is not defined" once per read and
 // a line per handler in a Connections element whose target never matched a signal. The window
 // still comes up either way, so a run that reads the screen alone sees nothing wrong.
+//
+// The probe run's log has a second half: the program leaves the event loop and the window
+// comes down, which is where the same bindings meet the same objects for the last time. Both
+// halves are read here -- the case is about what a whole run says, not about one end of it.
 void tst_QMdmmGuiApp::theStartup_reachesTheViewWithoutWarningsFromTheBindings()
 {
     const RunResult result = runGui({u"--probe"_s});
@@ -153,6 +157,15 @@ void tst_QMdmmGuiApp::theStartup_reachesTheViewWithoutWarningsFromTheBindings()
 
     QVERIFY2(!result.standardError.contains(u"ReferenceError"_s), qPrintable(result.standardError));
     QVERIFY2(!result.standardError.contains(u"no signal of the target matches"_s), qPrintable(result.standardError));
+
+    // The other end of the same log. The scene reads "game" through a context property and
+    // the client behind it is a child of the window, so the two are taken down together at
+    // the end of the run; children go in the order they were added, and out of order the
+    // scene outlived that object and reported every binding it still held as a read of
+    // null. MainWindow's destructor carries the reason for the order it uses. Kept here
+    // because the order is not readable off the code -- it is one line, and what it does
+    // shows up on the log of a run like this one.
+    QVERIFY2(!result.standardError.contains(u"TypeError"_s), qPrintable(result.standardError));
 }
 
 QTEST_MAIN(tst_QMdmmGuiApp)
