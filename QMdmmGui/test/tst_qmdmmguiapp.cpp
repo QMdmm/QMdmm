@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <QDir>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QSettings>
+#include <QSize>
 #include <QStringList>
+#include <QTemporaryDir>
 #include <QTest>
+
+#include <QMdmmSettings>
 
 #include "gameclient.h"
 #include "mainwindow.h"
@@ -91,10 +97,39 @@ class tst_QMdmmGuiApp : public QObject
     Q_OBJECT
 
 private slots:
+    void initTestCase();
+
     void help_printsTheUsageAndExitsZero();
     void theWindow_handsTheGivenProgramPathsToTheClient();
+    void theWindow_opensAtTheSizeTheLastRunWasClosedAt();
     void theStartup_reachesTheViewWithoutWarningsFromTheBindings();
+
+private:
+    // The home this process resolves, which is where a window that is closed leaves its size.
+    // See initTestCase.
+    QTemporaryDir home;
 };
+
+// Settings resolves the home directory once, when the first settings object of this process is
+// built, and the per-user file it writes is fixed there. A closed window keeps its size in that
+// file, so the home moves before any case builds a window; nothing here touches settings before
+// this hook has returned. The runs of the executable started from the other cases inherit the
+// environment and write into the same temporary home.
+//
+// Whether the home can be moved is the platform's answer rather than this file's: Windows takes
+// the profile directory out of the process token before it looks at the environment, so the
+// temporary home never becomes the one settings resolves there -- which is why the case that
+// reads the file back names the keys it changes and puts them back rather than relying on an
+// empty file.
+void tst_QMdmmGuiApp::initTestCase()
+{
+    QVERIFY(home.isValid());
+    qputenv("HOME", home.path().toLocal8Bit());
+
+#ifndef Q_OS_WIN
+    QCOMPARE(QDir::homePath(), home.path());
+#endif
+}
 
 void tst_QMdmmGuiApp::help_printsTheUsageAndExitsZero()
 {
@@ -131,6 +166,71 @@ void tst_QMdmmGuiApp::theWindow_handsTheGivenProgramPathsToTheClient()
     QVERIFY(game != nullptr);
     QCOMPARE(game->serverProgram(), serverProgram);
     QCOMPARE(game->botProgram(), botProgram);
+}
+
+// A window opens at the size the last one was closed at, and that size outlives the run in the
+// per-user configuration. What that is easy to get wrong does not show on the screen: the
+// settings setter fills an in-memory instance while the save call is what reaches the file, and
+// a window with nothing stored has to open at the default rather than at whatever size the
+// widget happens to take.
+void tst_QMdmmGuiApp::theWindow_opensAtTheSizeTheLastRunWasClosedAt()
+{
+    // Where the per-user file lives is fixed by the first settings object this process builds;
+    // the plain QSettings below has to name the same file the window writes, so one is built
+    // here to fix it.
+    {
+        const QMdmmCore::Settings settings;
+    }
+
+    QSettings stored(QSettings::IniFormat, QSettings::UserScope, u"Fsu0413.me"_s, u"QMdmm"_s);
+
+    // Whatever size the client was last closed at on this machine belongs to whoever ran it
+    // here, and this case is about to replace it; the values are put back at the end.
+    const QVariant widthBefore = stored.value(u"gui/window-width"_s);
+    const QVariant heightBefore = stored.value(u"gui/window-height"_s);
+
+    // From nothing stored, which is where a run that has never been closed starts. The keys are
+    // removed rather than the file, since a platform whose home does not follow the environment
+    // resolves a real one (see initTestCase) and that file is not this case's to discard.
+    stored.remove(u"gui/window-width"_s);
+    stored.remove(u"gui/window-height"_s);
+    stored.sync();
+
+    {
+        MainWindow window(u""_s, u""_s);
+        QCOMPARE(window.size(), QSize(1280, 800));
+
+        window.resize(1440, 900);
+        QVERIFY(window.close());
+    }
+
+    // Read back through this instance rather than the settings object the window wrote
+    // through: what is being asserted is what reached the file, and a setter whose save call is
+    // missing leaves it without a size while a run of the client would still open at the one
+    // that was in memory.
+    stored.sync();
+    QCOMPARE(stored.value(u"gui/window-width"_s).toInt(), 1440);
+    QCOMPARE(stored.value(u"gui/window-height"_s).toInt(), 900);
+
+    // The next run picks the size up where the last one left it.
+    MainWindow window(u""_s, u""_s);
+    QCOMPARE(window.size(), QSize(1440, 900));
+
+    // The floor the window may not be dragged below.
+    window.resize(200, 100);
+    QCOMPARE(window.size(), QSize(1024, 700));
+
+    if (widthBefore.isValid())
+        stored.setValue(u"gui/window-width"_s, widthBefore);
+    else
+        stored.remove(u"gui/window-width"_s);
+
+    if (heightBefore.isValid())
+        stored.setValue(u"gui/window-height"_s, heightBefore);
+    else
+        stored.remove(u"gui/window-height"_s);
+
+    stored.sync();
 }
 
 // The view is handed its context properties before its source, and MainWindow's own comment

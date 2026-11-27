@@ -6,6 +6,7 @@
 #include <QMainWindow>
 #include <QString>
 
+class QCloseEvent;
 class QQuickWidget;
 
 class MainWindow : public QMainWindow
@@ -23,6 +24,12 @@ public:
     ~MainWindow() override;
 
 signals:
+
+protected:
+    // The size the window is left at is written out here, for the constructor to open the
+    // next run at. The setter only fills the specified settings instance, so what reaches the
+    // per-user file follows from the save call in this hook.
+    void closeEvent(QCloseEvent *event) override;
 
 private:
     // The view of the scene, held so that the destructor can take it down first; the order
