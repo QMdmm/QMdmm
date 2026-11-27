@@ -6,7 +6,6 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
-#include <QFont>
 #include <QLocale>
 #include <QTimer>
 #include <QTranslator>
@@ -38,11 +37,6 @@ int main(int argc, char *argv[])
     QTranslator translator;
     if (translator.load(QLocale(), u"qmdmm"_s, u"_"_s, u":/i18n"_s))
         QApplication::installTranslator(&translator);
-
-    // Make font suitable for displaying
-    QFont font = QApplication::font();
-    font.setPixelSize(50);
-    QApplication::setFont(font);
 
     MainWindow mainwindow(parser.value(u"server"_s), parser.value(u"bot"_s));
 

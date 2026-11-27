@@ -30,6 +30,7 @@ Rectangle {
 
         anchors.centerIn: parent
         color: "white"
+        font.pixelSize: game.fontSizeButton
         fontSizeMode: Text.Fit
         height: parent.height / 8 * 7
         horizontalAlignment: Text.AlignHCenter

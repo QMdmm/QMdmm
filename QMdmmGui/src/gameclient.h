@@ -33,6 +33,8 @@ class QMdmmGameClient : public QObject
     Q_PROPERTY(int stateMaskOnline READ stateMaskOnline CONSTANT)
     Q_PROPERTY(int stateMaskBot READ stateMaskBot CONSTANT)
     Q_PROPERTY(int stateMaskTrust READ stateMaskTrust CONSTANT)
+    Q_PROPERTY(int fontSizeBody READ fontSizeBody CONSTANT)
+    Q_PROPERTY(int fontSizeButton READ fontSizeButton CONSTANT)
 
 public:
     Q_DISABLE_COPY_MOVE(QMdmmGameClient)
@@ -74,6 +76,18 @@ public:
     [[nodiscard]] int stateMaskOnline() const;
     [[nodiscard]] int stateMaskBot() const;
     [[nodiscard]] int stateMaskTrust() const;
+
+    // The sizes the scene draws text at. They are in the units main.qml lays the scene out in:
+    // that layer is a fixed height of 1024 scaled to the window height, so a size read here is
+    // already a fraction of the window's height and nothing multiplies it again.
+    //
+    // They live here because a size set on the application's font, the way the startup used to,
+    // is invisible to the QML that has to fit a text into a box, and one value cannot stand for
+    // a label, a paragraph and the text on a button. The bridge is also the object the whole
+    // scene already reads: a component loaded straight out of the source tree, as the tests
+    // load one, has no module singleton in scope.
+    [[nodiscard]] int fontSizeBody() const;
+    [[nodiscard]] int fontSizeButton() const;
 
     // The socket a local game runs on: the name the server of such a game listens on, and the
     // name this side reaches it over -- the human's own client as well as every bot this side

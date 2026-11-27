@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QSize>
 #include <QStringList>
@@ -20,6 +23,61 @@
 using namespace Qt::StringLiterals;
 
 namespace {
+
+// The places in @p path where an element that draws text opens without naming the size it draws
+// at, as "path:line"; an unreadable file is reported in the same list, because a file the scan
+// could not read would otherwise pass for one with nothing to report.
+//
+// The block an opening line starts is read to its matching closing brace by indentation: a line
+// that is exactly a closing brace at the opening line's own depth ends it. A text opened and
+// closed on one line is not read that way, so the openings the pattern finds are counted against
+// the opening braces the file has and a difference is reported rather than passed over.
+QStringList textsWithoutASize(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {path + u": could not be read"_s};
+
+    const QStringList lines = QString::fromUtf8(file.readAll()).split(u'\n');
+
+    const QRegularExpression opening(uR"(^(\s*)(?:Text|TextInput)\s*\{\s*$)"_s);
+    const QRegularExpression anyOpening(uR"(\b(?:Text|TextInput)\s*\{)"_s);
+
+    QStringList problems;
+    int readOpenings = 0;
+    for (int i = 0; i < lines.size(); ++i) {
+        const QRegularExpressionMatch match = opening.match(lines.at(i));
+        if (!match.hasMatch())
+            continue;
+
+        ++readOpenings;
+        const int depth = match.captured(1).size();
+        bool sized = false;
+        for (int j = i + 1; j < lines.size(); ++j) {
+            const QString &line = lines.at(j);
+            if (line.trimmed() == u"}"_s && line.size() - line.trimmed().size() <= depth)
+                break;
+            if (line.contains(u"font.pixelSize"_s)) {
+                sized = true;
+                break;
+            }
+        }
+
+        if (!sized)
+            problems.append(path + u':' + QString::number(i + 1));
+    }
+
+    int openings = 0;
+    QRegularExpressionMatchIterator it = anyOpening.globalMatch(lines.join(u'\n'));
+    while (it.hasNext()) {
+        it.next();
+        ++openings;
+    }
+    if (openings != readOpenings)
+        problems.append(path + u": an element that draws text is opened other than on a line of its own"_s);
+
+    return problems;
+}
 
 // Everything a run of the executable under test left behind.
 struct RunResult
@@ -103,6 +161,7 @@ private slots:
     void theWindow_handsTheGivenProgramPathsToTheClient();
     void theWindow_opensAtTheSizeTheLastRunWasClosedAt();
     void theStartup_reachesTheViewWithoutWarningsFromTheBindings();
+    void theScene_givesEveryTextItsSize();
 
 private:
     // The home this process resolves, which is where a window that is closed leaves its size.
@@ -266,6 +325,31 @@ void tst_QMdmmGuiApp::theStartup_reachesTheViewWithoutWarningsFromTheBindings()
     // because the order is not readable off the code -- it is one line, and what it does
     // shows up on the log of a run like this one.
     QVERIFY2(!result.standardError.contains(u"TypeError"_s), qPrintable(result.standardError));
+}
+
+// A text that names no size of its own is drawn at whatever the application's font says, and the
+// startup used to name one there. The texts that left their size out -- a button's label, the
+// lines that say what a field is for, the paragraph of the about popup -- came out at that one
+// size, larger than the text around them and larger than the boxes they sat in, and nothing on
+// screen said which texts those were. The sizes are the bridge's now (see
+// QMdmmGameClient::fontSizeBody and fontSizeButton), so what is left to hold is that no element
+// goes back to a size nobody named. The scene is read as text here because the shape being
+// guarded is a property of the source; the elements themselves only show up on a screen with
+// somebody looking at it.
+void tst_QMdmmGuiApp::theScene_givesEveryTextItsSize()
+{
+    const QDir scene(QString::fromLatin1(QMDMMGUI_QML_DIR));
+    const QFileInfoList files = scene.entryInfoList({u"*.qml"_s}, QDir::Files, QDir::Name);
+
+    // The directory comes from the build system rather than from this file, and a scan of nothing
+    // reads as a scan that found nothing wrong.
+    QVERIFY2(!files.isEmpty(), qPrintable(scene.absolutePath()));
+
+    QStringList problems;
+    for (const QFileInfo &file : files)
+        problems += textsWithoutASize(file.absoluteFilePath());
+
+    QVERIFY2(problems.isEmpty(), qPrintable(problems.join(u'\n')));
 }
 
 QTEST_MAIN(tst_QMdmmGuiApp)

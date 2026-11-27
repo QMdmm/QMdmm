@@ -46,6 +46,7 @@ Item {
             anchors.top: title.bottom
             anchors.topMargin: 24
             color: "#ccc"
+            font.pixelSize: game.fontSizeBody
             text: qsTr("Your name")
         }
 
@@ -81,6 +82,7 @@ Item {
             anchors.top: nameBox.bottom
             anchors.topMargin: 28
             color: "#ccc"
+            font.pixelSize: game.fontSizeBody
             text: qsTr("Local play (in-process server + bots fill the room)")
         }
 
@@ -137,6 +139,7 @@ Item {
             anchors.top: parent.top
             anchors.topMargin: 300
             color: "#ccc"
+            font.pixelSize: game.fontSizeBody
             text: qsTr("Online mode (connect to an external server, e.g. qmdmm://host:6366)")
         }
 

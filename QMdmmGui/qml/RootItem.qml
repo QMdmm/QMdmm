@@ -86,6 +86,7 @@ Image {
                 anchors.top: parent.top
                 anchors.topMargin: 16
                 color: "white"
+                font.pixelSize: game.fontSizeBody
                 text: qsTr("Player count (local)")
             }
 
@@ -166,6 +167,7 @@ Image {
                 anchors.fill: parent
                 anchors.margins: 24
                 color: "white"
+                font.pixelSize: game.fontSizeBody
                 text: qsTr(
                           "QMdmm - a playful brawler\n\nA turn-based multiplayer mini-game. Built with Qt 6 / C++20, AGPL-3.0.\n\nLocal mode starts an in-process server and fills the room with bots,\nso you can play a full match alone. Online mode connects to an external server.")
                 wrapMode: Text.Wrap

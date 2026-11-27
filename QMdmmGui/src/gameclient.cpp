@@ -29,6 +29,13 @@ namespace {
 // is a second copy of the server's own name -- and the GUI test is what holds the two together.
 constexpr char LOCAL_SOCKET_NAME[] = "QMdmm";
 
+// The sizes the scene draws text at, in the units main.qml lays the scene out in (see the note
+// on their accessors in the header). Body text is a label or a paragraph; a button's own text
+// is larger than that, and the element that shows it scales it down further where the label
+// would not fit.
+constexpr int BodyFontPixelSize = 22;
+constexpr int ButtonFontPixelSize = 40;
+
 // How long a program a local game runs gets to appear and to go away again before the bridge
 // stops waiting for it. The server is what the game is played on and the bots are what fill its
 // seats, so the two of them are watched over the same clock.
@@ -268,6 +275,16 @@ int QMdmmGameClient::stateMaskBot() const
 int QMdmmGameClient::stateMaskTrust() const
 {
     return static_cast<int>(QMdmmCore::Data::StateMaskTrust);
+}
+
+int QMdmmGameClient::fontSizeBody() const
+{
+    return BodyFontPixelSize;
+}
+
+int QMdmmGameClient::fontSizeButton() const
+{
+    return ButtonFontPixelSize;
 }
 
 QString QMdmmGameClient::locateProgram(const QString &programName, const QString &explicitPath)

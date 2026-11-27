@@ -7,6 +7,7 @@ Item {
     property string title
 
     Text {
+        font.pixelSize: game.fontSizeBody
         text: title
     }
 

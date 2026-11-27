@@ -112,6 +112,10 @@ target_include_directories(tst_qmdmmguiapp6 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}
 # the version suffix or the bundle this program is laid out as.
 target_compile_definitions(tst_qmdmmguiapp6 PRIVATE
     "QMDMMGUI_EXECUTABLE=\"$<TARGET_FILE:QMdmm6>\""
+    # The scenes themselves, for the case that reads them as text: they are loaded from the
+    # source tree by the smoke test, and nothing in the build carries the size each text is drawn
+    # at, so the case that holds texts to naming a size has to read the sources.
+    "QMDMMGUI_QML_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../qml\""
 )
 
 # The same reading arrangement as the smoke test above.
