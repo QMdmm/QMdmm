@@ -81,6 +81,11 @@ namespace v0 {
  * @brief if the player is dead
  *
  * @note This property is not stored and is calculated from @c hp property.
+ *
+ * It reports @c hpChanged instead of a signal of its own, @c hp being what it is calculated from:
+ * a binding on @c dead is a binding on @c hp. Which @c hp counts as dead comes from
+ * @c LogicConfiguration::zeroHpAsDead, and a configuration that arrives after the binding
+ * was made does not announce itself through that signal.
  */
 
 /**

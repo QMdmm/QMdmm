@@ -5,8 +5,8 @@ import QtTest 1.2
 
 // Guards the player card: the agent-state line, which turns the state mask (Data::AgentState:
 // online / bot / managed) into words -- the card is the only place in the GUI where it does, and
-// the managed flag in particular has nothing else on screen -- and the one control the card
-// carries, the managed switch on your own card.
+// the managed flag in particular has nothing else on screen -- the one control the card carries,
+// the managed switch on your own card, and the cover it puts over a player who has died.
 //
 // Like tst_scene.qml, the card is loaded from the source tree (the QMdmm.Gui module resource
 // lives in the QMdmm6 executable, which this test does not link) and reads the client through
@@ -60,7 +60,23 @@ TestCase {
         return false;
     }
 
-    function makeCard(agentState, you, host) {
+    // The same walk, stopping at anything that is not on screen: what a case is after here is what
+    // a player sitting in front of the window would read, and the card keeps a good deal of itself
+    // in the tree while hiding it.
+    function hasVisibleText(root, text) {
+        for (let i = 0; i < root.children.length; ++i) {
+            const c = root.children[i];
+            if (!c.visible)
+                continue;
+            if (c.text === text)
+                return true;
+            if (hasVisibleText(c, text))
+                return true;
+        }
+        return false;
+    }
+
+    function makeCard(agentState, you, host, player) {
         const comp = Qt.createComponent(Qt.resolvedUrl("../qml/PlayerCard.qml"));
         tryCompare(comp, "status", Component.Ready);
         verify(comp.status === Component.Ready, "PlayerCard should load");
@@ -68,15 +84,7 @@ TestCase {
         const card = createTemporaryObject(comp, host === undefined ? testCase : host, {
                                                agentState: agentState,
                                                displayName: "P1",
-                                               player: {
-                                                   "dead": false,
-                                                   "hasHorse": false,
-                                                   "hasKnife": false,
-                                                   "hp": 10,
-                                                   "maxHp": 20,
-                                                   "place": 0,
-                                                   "upgradePoint": 0
-                                               },
+                                               player: player === undefined ? plainPlayer() : player,
                                                you: you === true
                                            });
         verify(card !== null, "PlayerCard should instantiate");
@@ -94,6 +102,21 @@ TestCase {
         return host;
     }
 
+    // The card reads the player it is handed and writes nothing back, so the cases about the state
+    // line and the switch pass a plain object. The one about the cover needs a player that
+    // announces its own changes, so it takes a real one out of the room mirror.
+    function plainPlayer() {
+        return {
+            "dead": false,
+            "hasHorse": false,
+            "hasKnife": false,
+            "hp": 10,
+            "maxHp": 20,
+            "place": 0,
+            "upgradePoint": 0
+        };
+    }
+
     function test_eachStateBitIsSpelledOut() {
         // One case per bit, with both readings of the online bit: a bit the wire sets has to
         // show up, and a bit it does not set must not be invented. The state is read off the
@@ -104,6 +127,29 @@ TestCase {
         expectStateText(0x11, "Online, Bot");
         expectStateText(0x18, "Online, Managed");
         expectStateText(0x19, "Online, Bot, Managed");
+    }
+
+    function test_theCoverFollowsTheHealth() {
+        // The cover over a dead player reads `dead`, which the engine calculates from `hp` -- a
+        // calculated property moves a binding only if it carries a notify signal, and what is read
+        // here is the screen, not the property. The seat comes out of the room mirror because that
+        // is what a card in a running game is handed; the plain object the state-line and switch
+        // cases pass announces nothing, so it could not tell a binding that follows the health from
+        // one that never moves. The reading follows the health on the next turn of the event loop
+        // and the bound is far above that turn, so a cover that stopped following reads as the
+        // wrong card rather than as a slow machine.
+        game.connectOnline("QMdmmUnstartedServer", "Tester");
+        verify(bridgeDriver.fillRoom(game, 2), "the bridge has a room to fill");
+
+        const player = game.players[0];
+        verify(player.hp > 0, "a seat starts with health");
+        const card = makeCard(0x10, true, makeHost(), player);
+        verify(!hasVisibleText(card, "Out"), "a player with health wears no cover");
+
+        player.hp = 0;
+        tryVerify(function () {
+            return hasVisibleText(card, "Out");
+        }, 15000, "the cover comes up once the health reaches zero");
     }
 
     function test_theManagedSwitchIsOnlyOnYourOwnOnlineCard() {

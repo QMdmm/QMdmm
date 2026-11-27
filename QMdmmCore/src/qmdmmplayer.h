@@ -38,7 +38,7 @@ class QMDMMCORE_EXPORT Player final : public QObject
     Q_PROPERTY(int upgradePoint READ upgradePoint WRITE setUpgradePoint NOTIFY upgradePointChanged DESIGNABLE false FINAL)
 
     // Not-stored properties (i.e. calculated one)
-    Q_PROPERTY(bool dead READ dead STORED false DESIGNABLE false FINAL)
+    Q_PROPERTY(bool dead READ dead NOTIFY hpChanged STORED false DESIGNABLE false FINAL)
     Q_PROPERTY(bool alive READ alive STORED false DESIGNABLE false FINAL)
 
 public:
