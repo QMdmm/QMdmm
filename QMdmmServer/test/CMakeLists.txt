@@ -81,10 +81,13 @@ target_compile_definitions(tst_qmdmmserver6 PRIVATE
 # with no public face, and the configuration code of the programs that carry the option is not
 # linked into this target. The bot's file is named here because the copies are one fact and one
 # case holds them to the table -- a reading split across suites would be another copy of the
-# reading.
+# reading. The tree root is here so that the set of programs carrying the option is found by
+# reading the programs rather than listed by hand: a program that starts writing the option into
+# its own help text has to turn that case red until it is read there too.
 target_compile_definitions(tst_qmdmmserver6 PRIVATE
     "QMDMMDEBUG_SOURCE=\"${PROJECT_SOURCE_DIR}/QMdmmCore/src/qmdmmdebug.cpp\""
     "QMDMMBOT_CONFIG_SOURCE=\"${PROJECT_SOURCE_DIR}/QMdmmBot/src/config.cpp\""
+    "QMDMM_SOURCE_ROOT=\"${PROJECT_SOURCE_DIR}\""
 )
 
 # The networking suite drives this executable as well: its inbound-corpus case spawns the server and

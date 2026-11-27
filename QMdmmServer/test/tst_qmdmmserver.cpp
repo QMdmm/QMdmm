@@ -588,6 +588,53 @@ QList<QStringList> levelNamesInThePage(const QString &page)
     return ret;
 }
 
+// What the programs under the tree root say about the option in their own sources: the files whose
+// help text carries it, and the files that could not be read at all. The unreadable ones are kept
+// apart because a file the reading never opened would leave the carrying list short with nothing to
+// show for it -- the case below would compare a short set and go green on it.
+struct ProgramSources
+{
+    QStringList carryingTheOption;
+    QStringList unreadable;
+};
+
+// The source files under a module's src/ that carry the option in their help text, in tree order:
+// module directory, then file. Found rather than listed, because the set of programs carrying the
+// option is a fact about the tree -- a program that writes the option into its own help text after
+// this was written is one the case below has to read, and a list in its body would know nothing
+// about it. It is the same reading the page side of that case takes of its own sections.
+//
+// The option is looked for with its value name rather than by its bare name: QMdmmCore's debug
+// source names the option in a doxygen comment of its own, and that file is the table's home
+// rather than another help text.
+ProgramSources programSourcesWhoseHelpCarriesTheLogLevelOption(const QString &root)
+{
+    static const QString option = u"--log-level <level>"_s;
+
+    ProgramSources ret;
+    const QDir tree(root);
+    const QStringList modules = tree.entryList({u"QMdmm*"_s}, QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QString &module : modules) {
+        const QDir sources(tree.filePath(module + u"/src"_s));
+        if (!sources.exists())
+            continue;
+
+        const QStringList files = sources.entryList({u"*.cpp"_s}, QDir::Files, QDir::Name);
+        for (const QString &file : files) {
+            const QString path = module + u"/src/"_s + file;
+            QFile source(sources.filePath(file));
+            if (!source.open(QIODevice::ReadOnly)) {
+                ret.unreadable.append(path);
+                continue;
+            }
+
+            if (QString::fromLocal8Bit(source.readAll()).contains(option))
+                ret.carryingTheOption.append(path);
+        }
+    }
+    return ret;
+}
+
 // The stored face of ServerConfiguration: one row per key, naming the property the run prints, the
 // key the configuration file holds and a value that differs from the default so that a reading
 // says which source won. A value is spelled twice because the two faces spell it differently -- the
@@ -1039,6 +1086,31 @@ void tst_QMdmmServer::logLevelNames_areTheOnesEveryHandWrittenCopyNames()
         {QMDMMSERVER_CONFIG_SOURCE, "the server's help text"},
         {QMDMMBOT_CONFIG_SOURCE, "the bot's help text"},
     };
+
+    // The list above is held to what the programs themselves carry, so that it cannot go on
+    // reading a set of help texts the tree has outgrown: a program that starts writing the option
+    // into its own help text makes the sets differ and is named, and one that stops carrying it is
+    // named as well. The page side of this case already works that way, by counting its sections
+    // apart from the lists it reads.
+    const QString root = QString::fromLatin1(QMDMM_SOURCE_ROOT);
+    const ProgramSources found = programSourcesWhoseHelpCarriesTheLogLevelOption(root);
+    QVERIFY2(found.unreadable.isEmpty(), qPrintable(u"source files the reading could not open: ["_s + found.unreadable.join(u", "_s) + u"]"_s));
+
+    QStringList read;
+    for (const HelpText &help : helpTexts)
+        read.append(QDir(root).relativeFilePath(QString::fromLatin1(help.path)));
+
+    QSet<QString> carrying;
+    for (const QString &file : found.carryingTheOption)
+        carrying.insert(file);
+    QSet<QString> listed;
+    for (const QString &file : read)
+        listed.insert(file);
+
+    QString filesMessage
+        = u"the programs whose help text carries --log-level and the ones this case reads disagree -- carrying it but not read here: ["_s + sortedWords(carrying - listed);
+    filesMessage += u"]; read here but not carrying it: ["_s + sortedWords(listed - carrying) + u"]"_s;
+    QVERIFY2(carrying == listed, qPrintable(filesMessage));
 
     for (const HelpText &help : helpTexts) {
         QFile source(QString::fromLatin1(help.path));
