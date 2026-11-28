@@ -143,7 +143,7 @@ jobs:
       - name: generate coverage
         if: ${{ github.event_name != 'pull_request' && matrix.coverage }}
         env:
-          COVERAGE_TOKEN: ${{ secrets.QMDMM_DOCS_TOKEN }}
+          COVERAGE_DEPLOY_KEY: ${{ secrets.QMDMM_COVERAGE_DEPLOY_KEY }}
         run: |
           pip3 install gcovr
           mkdir -p build/coverage
@@ -192,7 +192,18 @@ jobs:
           git init -b main
           git add -A
           git commit -m "coverage: publish gcovr HTML report for ${{ github.sha }}"
-          git remote add origin "https://x-access-token:${COVERAGE_TOKEN}@github.com/nemn9852/qmdmm-coverage.git"
+          #
+          # The publish repository takes a deploy key rather than a token. A key
+          # reaches exactly one repository and cannot be widened without adding
+          # another; a token's repository list can. accept-new records GitHub's
+          # host key on the first connection instead of pinning it here, where a
+          # rotation would read as a failure of this step.
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$COVERAGE_DEPLOY_KEY" > ~/.ssh/qmdmm_coverage
+          chmod 600 ~/.ssh/qmdmm_coverage
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/qmdmm_coverage -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git remote add origin "git@github.com:QMdmm/qmdmm-coverage.git"
           git push -f origin main
 
   sanitizers:
@@ -985,7 +996,7 @@ jobs:
 
       - name: Publish to qmdmm-docs
         env:
-          DOCS_TOKEN: ${{ secrets.QMDMM_DOCS_TOKEN }}
+          DOCS_DEPLOY_KEY: ${{ secrets.QMDMM_DOCS_DEPLOY_KEY }}
         run: |
           git config --global user.name "`git -C QMdmm log -1 "--pretty=format:%an"`"
           git config --global user.email "`git -C QMdmm log -1 "--pretty=format:%ae"`"
@@ -994,7 +1005,15 @@ jobs:
           git init -b main
           git add -A
           git commit -m "docs: publish doxygen-generated API reference for ${{ github.sha }}"
-          git remote add origin "https://x-access-token:${DOCS_TOKEN}@github.com/nemn9852/qmdmm-docs.git"
+          #
+          # A deploy key, for the reason given at the coverage step: it reaches
+          # this one repository by construction.
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DOCS_DEPLOY_KEY" > ~/.ssh/qmdmm_docs
+          chmod 600 ~/.ssh/qmdmm_docs
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/qmdmm_docs -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git remote add origin "git@github.com:QMdmm/qmdmm-docs.git"
           git push -f origin main
 
   tidy:

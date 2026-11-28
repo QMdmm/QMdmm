@@ -76,7 +76,7 @@ a running `QMdmmServer` over TCP or WebSocket.
   game end-to-end.
 - [Command-line programs](doc/command-line.md) — every option `QMdmmBot`,
   `QMdmmCtl` and `QMdmmServer` accept.
-- [API reference](https://nemn9852.github.io/qmdmm-docs/) — Doxygen for the
+- [API reference](https://qmdmm.github.io/qmdmm-docs/) — Doxygen for the
   `QMdmmCore` and `QMdmmNetworking` public classes.
 
 ## Building
