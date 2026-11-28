@@ -13,6 +13,13 @@ import QtTest 1.2
 TestCase {
     id: testCase
 
+    // A press that lands within the platform's double click interval of the one before it is
+    // read as the second half of a double click, and a double click is not a press: the cases
+    // below are about single presses, so they have to be separated by more than that interval.
+    // The interval is the platform's -- a system setting the user can raise -- so this is a
+    // margin over its default rather than a time anything here takes.
+    readonly property int betweenPresses: 700
+
     function findButtonByText(root, text) {
         for (var i = 0; i < root.children.length; ++i) {
             var c = root.children[i];
@@ -60,7 +67,9 @@ TestCase {
                                             signalName: "clicked"
                                         });
 
-        wait(50);
+        // A press has to reach a button that is on screen, so what this waits for is a rendered
+        // frame of it rather than a number of milliseconds that was enough once.
+        verify(waitForRendering(button), "the button should reach the screen");
         verify(button.enabled, "a button starts out enabled");
         verify(button.opacity === 1, "an enabled button is not dimmed");
         mouseClick(button);
@@ -69,7 +78,7 @@ TestCase {
         button.enabled = false;
         verify(button.opacity < 1, "a disabled button is dimmed");
 
-        wait(700);
+        wait(betweenPresses);
         mouseClick(button);
         compare(spy.count, 1, "a disabled button takes no press");
     }
@@ -108,16 +117,15 @@ TestCase {
                                             signalName: "clicked"
                                         });
 
-        wait(50);
+        verify(waitForRendering(button), "the button should reach the screen");
         mouseClick(button);
         compare(spy.count, 1, "a press on the button itself reaches it");
 
-        // The waits keep the next press from being read as the second half of a double click.
-        wait(700);
+        wait(betweenPresses);
         mouseClick(button, button.width + 2, button.height / 2);
         compare(spy.count, 1, "a press past the right edge reaches nothing");
 
-        wait(700);
+        wait(betweenPresses);
         mouseClick(button, button.width / 2, button.height + 2);
         compare(spy.count, 1, "a press below the bottom edge reaches nothing");
     }

@@ -188,7 +188,7 @@ TestCase {
         }, 15000);
 
         cardUnderTest = makeCard(0x10, true, makeHost());
-        wait(50);
+        verify(waitForRendering(cardUnderTest), "the card should reach the screen");
         verify(findToggle(cardUnderTest) !== null, "your own online card carries the switch");
         verify(!cardUnderTest.managed, "the switch starts off");
 
