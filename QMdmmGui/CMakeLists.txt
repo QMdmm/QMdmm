@@ -15,7 +15,6 @@ set(QMDMMGUI_QML_FILES
     qml/main.qml
     qml/Button.qml
     qml/StartScene.qml
-    qml/Window.qml
     qml/RootItem.qml
     qml/ConnectScene.qml
     qml/GameScene.qml
