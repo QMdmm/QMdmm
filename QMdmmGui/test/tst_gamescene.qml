@@ -31,6 +31,32 @@ import QtTest 1.2
 TestCase {
     id: testCase
 
+    // The dock names the things its cases look for, so that they can ask for one of them
+    // without depending on the order the objects were built in.
+    function findByObjectName(root, name) {
+        for (let i = 0; i < root.children.length; ++i) {
+            const c = root.children[i];
+            if (c.objectName === name)
+                return c;
+            const found = findByObjectName(c, name);
+            if (found !== null)
+                return found;
+        }
+        return null;
+    }
+
+    function findTab(root, label) {
+        for (let i = 0; i < root.children.length; ++i) {
+            const c = root.children[i];
+            if (c.objectName === "requestDockTab" && hasText(c, label))
+                return c;
+            const found = findTab(c, label);
+            if (found !== null)
+                return found;
+        }
+        return null;
+    }
+
     // Recursive search for a rendered Text, so a case can assert on what the
     // overlay actually says rather than on the properties behind it.
     function hasText(root, text) {
@@ -44,12 +70,12 @@ TestCase {
         return false;
     }
 
-    function makeScene() {
+    function makeScene(parent) {
         const comp = Qt.createComponent(Qt.resolvedUrl("../qml/GameScene.qml"));
         tryCompare(comp, "status", Component.Ready);
         verify(comp.status === Component.Ready, "GameScene should load");
 
-        const scene = createTemporaryObject(comp, testCase);
+        const scene = createTemporaryObject(comp, parent === undefined ? testCase : parent);
         verify(scene !== null, "GameScene should instantiate");
         return scene;
     }
@@ -186,6 +212,45 @@ TestCase {
         game.disconnectAll();
     }
 
+    // Which page of the dock is on screen follows the request that is open, and the dock itself
+    // stays put between requests. Both halves are guarded here rather than left to the cases
+    // above: those read the scene's own properties, so a dock that kept the wrong page up -- or
+    // none at all -- would leave those cases green. The scene is in a window of its own
+    // because a page is on screen or it is not, and a scene handed no window has nothing shown at
+    // all -- every page would read as hidden and the case would say nothing.
+    function test_eachRequestBringsUpItsOwnPage() {
+        const win = createTemporaryObject(windowComponent, testCase);
+        verify(win !== null, "the host window should be created");
+
+        const scene = makeScene(win.contentItem);
+
+        const dock = findByObjectName(scene, "requestDock");
+        verify(dock !== null, "the dock should be there");
+        verify(waitForRendering(dock), "the dock should reach the screen");
+
+        verify(hasText(scene, "Nothing to answer right now"), "the dock has to say there is nothing to answer");
+
+        game.requestRockPaperScissors(["p1", "p2"], 0);
+        verifyOnlyPageIsUp(scene, "rps");
+
+        game.requestActionOrder([3, 4], 5, 2);
+        verifyOnlyPageIsUp(scene, "order");
+
+        game.requestAction(3);
+        verifyOnlyPageIsUp(scene, "action");
+
+        game.requestUpgrade(2);
+        verifyOnlyPageIsUp(scene, "upgrade");
+
+        // The request that ends the turn takes its page down; the dock stays, and what the match
+        // last said is what the empty area carries.
+        game.requestWithdrawn();
+        verifyOnlyPageIsUp(scene, "");
+
+        game.gameStart();
+        verify(!hasText(scene, "Nothing to answer right now"), "a line from the match replaces the empty dock");
+    }
+
     function test_gameStartIsLogged() {
         const scene = makeScene();
 
@@ -299,6 +364,29 @@ TestCase {
         verify(hasText(scene, "slash self-punish: off | 0 HP is still alive | let-move not allowed | buy: starting city only"));
     }
 
+    // The dock keeps the corner the design puts it in, in the units the scene is drawn in: the
+    // sketch's 322 x 242 measured on a 1280 x 720 view, on the 1024-high layer, and the share of
+    // the width it leaves on the right. The match is drawn to the left of it, so those numbers
+    // are also what keeps the dock off the star.
+    function test_theDockKeepsItsCorner() {
+        const host = createTemporaryObject(sizedHostComponent, testCase, {
+                                               "height": 1024,
+                                               "width": 1820
+                                           });
+        verify(host !== null, "the host item should be created");
+
+        const scene = makeScene(host);
+
+        const dock = findByObjectName(scene, "requestDock");
+        verify(dock !== null, "the dock should be there");
+
+        compare(dock.width, 458);
+        compare(dock.height, 344);
+        compare(host.width - (dock.x + dock.width), 313);
+        compare(host.height - (dock.y + dock.height), 40);
+        verify(dock.x > host.width / 2, "the dock stays right of the match");
+    }
+
     function test_theNamesTheSceneShowsAreTheCoreEnumsOwnValues() {
         const scene = makeScene();
 
@@ -320,6 +408,29 @@ TestCase {
         compare(scene.rpsName(coreEnumValues.rpsPaper), "Paper");
     }
 
+    // Nothing on the strip pages: the page belongs to the request. A press is what a player would
+    // try first, so it is what the case does -- on a page the open request did not bring up.
+    function test_theStripCannotPage() {
+        const win = createTemporaryObject(windowComponent, testCase);
+        verify(win !== null, "the host window should be created");
+
+        const scene = makeScene(win.contentItem);
+
+        game.requestRockPaperScissors(["p1", "p2"], 0);
+        verifyOnlyPageIsUp(scene, "rps");
+
+        const tab = findTab(scene, "Action");
+        verify(tab !== null, "the strip should name the action page");
+
+        // A press only reaches an item that is on screen, so what this waits for is a rendered
+        // frame of it rather than a number of milliseconds that was enough once.
+        verify(waitForRendering(tab), "the strip should reach the screen");
+
+        mouseClick(tab);
+        compare(scene.activeRequest, "rps", "a press on the strip opens no request");
+        verifyOnlyPageIsUp(scene, "rps");
+    }
+
     function test_upgradeResultIsLogged() {
         const scene = makeScene();
 
@@ -332,5 +443,35 @@ TestCase {
         compare(scene.matchLog[0], "Upgrades: p1 (knife damage, horse damage, max HP)");
     }
 
+    // Exactly one page up, the one the open request belongs to: a dock that left the previous
+    // page behind would stack two of them, and one that showed none would answer nothing.
+    function verifyOnlyPageIsUp(scene, page) {
+        const pages = ["rps", "order", "action", "upgrade"];
+        for (let i = 0; i < pages.length; ++i) {
+            const item = findByObjectName(scene, pages[i] + "Page");
+            verify(item !== null, pages[i] + " page should be in the dock");
+            compare(item.visible, pages[i] === page, pages[i] + " page");
+        }
+    }
+
     name: "GameScene"
+
+    // A scene that is handed a size of its own, for the cases that read where it put things.
+    Component {
+        id: sizedHostComponent
+
+        Item {
+        }
+    }
+
+    // A window of the size the scene is drawn at, for the case that presses something.
+    Component {
+        id: windowComponent
+
+        Window {
+            height: 1024
+            visible: true
+            width: 1820
+        }
+    }
 }

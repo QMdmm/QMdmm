@@ -360,185 +360,184 @@ Item {
         }
     }
 
-    // ---- request overlay --------------------------------------------------
+    // ---- request dock -----------------------------------------------------
+    // The dock keeps the bottom right corner whatever the window is. Its size is the sketch's,
+    // in logical units: 322 x 242 on a 1280 x 720 view is 458 x 344 on the 1024-high layer the
+    // scene is drawn on, and the gap it leaves on the right is the share of the width the sketch
+    // left (17 %), so the match keeps the area the layout gives it.
+    //
+    // Which page is on screen follows the open request: the strip names the pages and marks the
+    // one showing, and no part of it takes a press. Between requests the area carries the last
+    // line the match put in the log.
     Item {
-        id: requestOverlay
+        id: requestDock
+
+        readonly property int contentWidth: dockWidth - 2 * padding
+        readonly property int dockHeight: 344
+        readonly property int dockWidth: 458
+        readonly property int padding: 12
+        readonly property var pages: ["rps", "order", "action", "upgrade"]
+
+        // What the dock says between requests: the last line the match put in the log, or, before
+        // anything has happened, that there is nothing to answer.
+        function idleText() {
+            if (scene.matchLog.length > 0)
+                return scene.matchLog[scene.matchLog.length - 1];
+            return qsTr("Nothing to answer right now");
+        }
+
+        // What the strip calls each page. The names live in one place so a page added later is
+        // one more branch here rather than a second table beside the first.
+        function pageLabel(page) {
+            if (page === "rps")
+                return qsTr("Throw");
+            if (page === "order")
+                return qsTr("Order");
+            if (page === "action")
+                return qsTr("Action");
+            if (page === "upgrade")
+                return qsTr("Upgrade");
+            return "";
+        }
 
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 12
+        anchors.bottomMargin: 40
         anchors.right: parent.right
-        anchors.rightMargin: 40
-        anchors.top: playersRow.bottom
-        anchors.topMargin: 12
-        visible: activeRequest !== ""
-        width: parent.width / 2 - 50
+        anchors.rightMargin: Math.round(parent.width * 0.172)
+        height: dockHeight
+        objectName: "requestDock"
+        width: dockWidth
 
         Rectangle {
             anchors.fill: parent
-            color: "#44000000"
-            radius: 8
+            border.color: "#666"
+            color: "#33000000"
+            radius: 10
         }
 
-        // rps
-        Column {
-            anchors.centerIn: parent
-            spacing: 12
+        Row {
+            id: tabStrip
+
+            anchors.left: parent.left
+            anchors.leftMargin: requestDock.padding
+            anchors.top: parent.top
+            anchors.topMargin: requestDock.padding
+            spacing: 8
+
+            Repeater {
+                model: requestDock.pages
+
+                Rectangle {
+                    border.color: activeRequest === modelData ? "#7fd4a0" : "#555"
+                    color: activeRequest === modelData ? "#2f4f3f" : "#22000000"
+                    height: 34
+                    objectName: "requestDockTab"
+                    radius: 6
+                    width: tabText.width + 20
+
+                    Text {
+                        id: tabText
+
+                        anchors.centerIn: parent
+                        color: activeRequest === modelData ? "white" : "#999"
+                        font.pixelSize: 18
+                        text: requestDock.pageLabel(modelData)
+                    }
+                }
+            }
+        }
+
+        // What the pages share. Each page fills it; the page that does not need it is the frame's
+        // own empty state below.
+        Item {
+            id: pageArea
+
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: requestDock.padding
+            anchors.left: parent.left
+            anchors.leftMargin: requestDock.padding
+            anchors.right: parent.right
+            anchors.rightMargin: requestDock.padding
+            anchors.top: tabStrip.bottom
+            anchors.topMargin: 8
+        }
+
+        // No request open: the last thing the match said stays on screen, so the corner is not
+        // blank between turns. Before anything has happened there is nothing to carry.
+        Text {
+            id: idleLine
+
+            anchors.centerIn: pageArea
+            color: "#bbb"
+            font.pixelSize: game.fontSizeBody
+            horizontalAlignment: Text.AlignHCenter
+            text: requestDock.idleText()
+            visible: activeRequest === ""
+            width: pageArea.width
+            wrapMode: Text.Wrap
+        }
+
+        // The throw: the picks, and what the throw is for.
+        Item {
+            id: rpsPage
+
+            anchors.fill: pageArea
+            objectName: "rpsPage"
             visible: activeRequest === "rps"
 
-            Text {
-                color: "white"
-                font.pixelSize: 30
-                horizontalAlignment: Text.AlignHCenter
-                text: qsTr("Rock-paper-scissors!")
-                width: requestOverlay.width
-            }
-
-            Text {
-                color: "#ccc"
-                font.pixelSize: game.fontSizeBody
-                horizontalAlignment: Text.AlignHCenter
-                text: rpsStakeText()
-                width: requestOverlay.width
-                wrapMode: Text.Wrap
-            }
-
-            Row {
+            Column {
+                anchors.centerIn: parent
                 spacing: 12
 
-                Button {
-                    height: 80
-                    text: qsTr("Rock")
-                    width: 120
-
-                    onClicked: {
-                        game.replyRps(0);
-                        activeRequest = "";
-                    }
+                Text {
+                    color: "white"
+                    font.pixelSize: 30
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("Rock-paper-scissors!")
+                    width: requestDock.contentWidth
                 }
 
-                Button {
-                    height: 80
-                    text: qsTr("Scissors")
-                    width: 120
-
-                    onClicked: {
-                        game.replyRps(1);
-                        activeRequest = "";
-                    }
+                Text {
+                    color: "#ccc"
+                    font.pixelSize: game.fontSizeBody
+                    horizontalAlignment: Text.AlignHCenter
+                    text: rpsStakeText()
+                    width: requestDock.contentWidth
+                    wrapMode: Text.Wrap
                 }
 
-                Button {
-                    height: 80
-                    text: qsTr("Paper")
-                    width: 120
-
-                    onClicked: {
-                        game.replyRps(2);
-                        activeRequest = "";
-                    }
-                }
-            }
-        }
-
-        // Action order
-        Column {
-            anchors.centerIn: parent
-            spacing: 10
-            visible: activeRequest === "order"
-
-            Text {
-                color: "white"
-                font.pixelSize: 26
-                text: qsTr("Choose action order (%1 more)").arg(orderRemaining)
-                width: requestOverlay.width
-                wrapMode: Text.Wrap
-            }
-
-            Text {
-                color: "#ccc"
-                font.pixelSize: game.fontSizeBody
-                text: qsTr("Action orders go from 1 to %1").arg(orderMaximum)
-                width: requestOverlay.width
-                wrapMode: Text.Wrap
-            }
-
-            Flow {
-                spacing: 8
-                width: requestOverlay.width - 20
-
-                Repeater {
-                    model: orderOptions
+                Row {
+                    spacing: 12
 
                     Button {
-                        height: 56
-                        text: String(modelData)
-                        width: 90
-
-                        onClicked: toggleOrder(modelData)
-                    }
-                }
-            }
-
-            Row {
-                spacing: 12
-
-                Button {
-                    enabled: orderRemaining === 0
-                    height: 56
-                    text: qsTr("Confirm order")
-                    width: 200
-
-                    onClicked: {
-                        game.replyActionOrder(orderSelected);
-                        activeRequest = "";
-                    }
-                }
-
-                Button {
-                    height: 56
-                    text: qsTr("Yield (auto-assign)")
-                    width: 200
-
-                    onClicked: {
-                        game.yieldActionOrder(orderNeed);
-                        activeRequest = "";
-                    }
-                }
-            }
-        }
-
-        // Action
-        Column {
-            anchors.centerIn: parent
-            spacing: 10
-            visible: activeRequest === "action"
-
-            Text {
-                color: "white"
-                font.pixelSize: 28
-                text: qsTr("Your turn to act")
-            }
-
-            Text {
-                color: "#ccc"
-                font.pixelSize: game.fontSizeBody
-                text: qsTr("Action order %1").arg(turnOrder)
-            }
-
-            Flow {
-                spacing: 8
-                width: requestOverlay.width - 20
-
-                Repeater {
-                    model: actionOptions
-
-                    Button {
-                        height: 56
-                        text: modelData.label
-                        width: Math.min(260, requestOverlay.width - 20)
+                        height: 80
+                        text: qsTr("Rock")
+                        width: 120
 
                         onClicked: {
-                            game.replyAction(modelData.action, modelData.target, modelData.place);
+                            game.replyRps(0);
+                            activeRequest = "";
+                        }
+                    }
+
+                    Button {
+                        height: 80
+                        text: qsTr("Scissors")
+                        width: 120
+
+                        onClicked: {
+                            game.replyRps(1);
+                            activeRequest = "";
+                        }
+                    }
+
+                    Button {
+                        height: 80
+                        text: qsTr("Paper")
+                        width: 120
+
+                        onClicked: {
+                            game.replyRps(2);
                             activeRequest = "";
                         }
                     }
@@ -546,62 +545,189 @@ Item {
             }
         }
 
-        // Upgrade
-        Column {
-            anchors.centerIn: parent
-            spacing: 10
-            visible: activeRequest === "upgrade"
+        // The action order.
+        Item {
+            id: orderPage
 
-            Text {
-                color: "white"
-                font.pixelSize: 26
-                text: qsTr("Upgrade (%1 more)").arg(upgradeRemaining)
-                width: requestOverlay.width
-                wrapMode: Text.Wrap
-            }
+            anchors.fill: pageArea
+            objectName: "orderPage"
+            visible: activeRequest === "order"
 
-            Flow {
-                spacing: 8
-                width: requestOverlay.width - 20
+            Column {
+                anchors.centerIn: parent
+                spacing: 10
 
-                Repeater {
-                    model: upgradeOptions
+                Text {
+                    color: "white"
+                    font.pixelSize: 26
+                    text: qsTr("Choose action order (%1 more)").arg(orderRemaining)
+                    width: requestDock.contentWidth
+                    wrapMode: Text.Wrap
+                }
+
+                Text {
+                    color: "#ccc"
+                    font.pixelSize: game.fontSizeBody
+                    text: qsTr("Action orders go from 1 to %1").arg(orderMaximum)
+                    width: requestDock.contentWidth
+                    wrapMode: Text.Wrap
+                }
+
+                Flow {
+                    spacing: 8
+                    width: requestDock.contentWidth - 20
+
+                    Repeater {
+                        model: orderOptions
+
+                        Button {
+                            height: 56
+                            text: String(modelData)
+                            width: 90
+
+                            onClicked: toggleOrder(modelData)
+                        }
+                    }
+                }
+
+                Row {
+                    spacing: 12
+
+                    Button {
+                        enabled: orderRemaining === 0
+                        height: 56
+                        text: qsTr("Confirm order")
+                        width: 200
+
+                        onClicked: {
+                            game.replyActionOrder(orderSelected);
+                            activeRequest = "";
+                        }
+                    }
 
                     Button {
                         height: 56
-                        text: modelData.label
-                        width: 240
+                        text: qsTr("Yield (auto-assign)")
+                        width: 200
 
-                        onClicked: toggleUpgrade(modelData.item)
+                        onClicked: {
+                            game.yieldActionOrder(orderNeed);
+                            activeRequest = "";
+                        }
                     }
                 }
             }
+        }
 
-            Row {
-                spacing: 12
+        // The action.
+        Item {
+            id: actionPage
 
-                Button {
-                    enabled: upgradeRemaining === 0
-                    height: 56
-                    text: qsTr("Confirm upgrade")
-                    width: 200
+            anchors.fill: pageArea
+            objectName: "actionPage"
+            visible: activeRequest === "action"
 
-                    onClicked: {
-                        game.replyUpgrade(upgradeSelected);
-                        activeRequest = "";
+            Column {
+                anchors.centerIn: parent
+                spacing: 10
+
+                Text {
+                    color: "white"
+                    font.pixelSize: 28
+                    text: qsTr("Your turn to act")
+                }
+
+                Text {
+                    color: "#ccc"
+                    font.pixelSize: game.fontSizeBody
+                    text: qsTr("Action order %1").arg(turnOrder)
+                }
+
+                Flow {
+                    spacing: 8
+                    width: requestDock.contentWidth - 20
+
+                    Repeater {
+                        model: actionOptions
+
+                        Button {
+                            height: 56
+                            text: modelData.label
+                            width: Math.min(260, requestDock.contentWidth - 20)
+
+                            onClicked: {
+                                game.replyAction(modelData.action, modelData.target, modelData.place);
+                                activeRequest = "";
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // The upgrade.
+        Item {
+            id: upgradePage
+
+            anchors.fill: pageArea
+            objectName: "upgradePage"
+            visible: activeRequest === "upgrade"
+
+            Column {
+                anchors.centerIn: parent
+                spacing: 10
+
+                Text {
+                    color: "white"
+                    font.pixelSize: 26
+                    text: qsTr("Upgrade (%1 more)").arg(upgradeRemaining)
+                    width: requestDock.contentWidth
+                    wrapMode: Text.Wrap
+                }
+
+                Flow {
+                    spacing: 8
+                    width: requestDock.contentWidth - 20
+
+                    Repeater {
+                        model: upgradeOptions
+
+                        Button {
+                            height: 56
+                            text: modelData.label
+                            width: 240
+
+                            onClicked: toggleUpgrade(modelData.item)
+                        }
                     }
                 }
 
-                Button {
-                    height: 56
-                    text: qsTr("Default (HP)")
-                    width: 200
+                Row {
+                    spacing: 12
 
-                    onClicked: {
-                        for (var i = 0; i < upgradeNeed; ++i)
-                            upgradeSelected.push(2);
-                        game.replyUpgrade(upgradeSelected);
-                        activeRequest = "";
+                    Button {
+                        enabled: upgradeRemaining === 0
+                        height: 56
+                        text: qsTr("Confirm upgrade")
+                        width: 200
+
+                        onClicked: {
+                            game.replyUpgrade(upgradeSelected);
+                            activeRequest = "";
+                        }
+                    }
+
+                    Button {
+                        height: 56
+                        text: qsTr("Default (HP)")
+                        width: 200
+
+                        onClicked: {
+                            for (var i = 0; i < upgradeNeed; ++i)
+                                upgradeSelected.push(2);
+                            game.replyUpgrade(upgradeSelected);
+                            activeRequest = "";
+                        }
                     }
                 }
             }
