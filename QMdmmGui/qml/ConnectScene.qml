@@ -162,7 +162,7 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 8
                 color: "white"
-                font.pixelSize: 22
+                font.pixelSize: game.fontSizeBody
                 text: "qmdmm://localhost:6366"
                 verticalAlignment: TextInput.AlignVCenter
             }

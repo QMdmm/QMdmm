@@ -324,7 +324,7 @@ Item {
 
                     Text {
                         color: game.isYou(modelData.name) ? "#ffe082" : "white"
-                        font.pixelSize: 22
+                        font.pixelSize: game.fontSizeBody
                         text: game.screenName(modelData.name) + ": " + modelData.content
                         width: logArea.width - 16
                         wrapMode: Text.Wrap
@@ -395,7 +395,7 @@ Item {
 
             Text {
                 color: "#ccc"
-                font.pixelSize: 22
+                font.pixelSize: game.fontSizeBody
                 horizontalAlignment: Text.AlignHCenter
                 text: rpsStakeText()
                 width: requestOverlay.width
@@ -456,7 +456,7 @@ Item {
 
             Text {
                 color: "#ccc"
-                font.pixelSize: 22
+                font.pixelSize: game.fontSizeBody
                 text: qsTr("Action orders go from 1 to %1").arg(orderMaximum)
                 width: requestOverlay.width
                 wrapMode: Text.Wrap
@@ -521,7 +521,7 @@ Item {
 
             Text {
                 color: "#ccc"
-                font.pixelSize: 22
+                font.pixelSize: game.fontSizeBody
                 text: qsTr("Action order %1").arg(turnOrder)
             }
 
